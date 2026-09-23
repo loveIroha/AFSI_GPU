@@ -7,7 +7,9 @@ from dataclasses import dataclass
 import torch
 from torch import Tensor
 
-from .materials import neo_hookean_energy, neo_hookean_pk1
+from .materials import (neo_hookean_energy, neo_hookean_pk1,
+                        guccione_energy as guccione_density, guccione_pk1,
+                        active_potential, active_pk1)
 from .mechanics import determinant3
 from .quadrature import tetrahedron_rule
 from .tetrahedron import EDGES, tabulate, validate_mesh
@@ -68,5 +70,30 @@ def energy(x: Tensor, geometry: P2Geometry, mu: float, lam: float) -> Tensor:
 def stress_force(x: Tensor, geometry: P2Geometry, mu: float, lam: float) -> Tensor:
     """Integrated nodal force, g=-dE/dx; no division by mass/volume."""
     P = neo_hookean_pk1(deformation_gradient(x, geometry), mu, lam)
+    return assemble_pk1(P, geometry)
+
+
+def assemble_pk1(P: Tensor, geometry: P2Geometry) -> Tensor:
+    """Assemble -integral(P grad(N)) from batched (E,Q,3,3) PK1 stresses."""
     local = -torch.einsum("eq,eqiJ,eqaJ->eai", geometry.weights, P, geometry.gradients)
-    return torch.zeros_like(x).index_add(0, geometry.cells.reshape(-1), local.reshape(-1, 3))
+    return P.new_zeros((geometry.node_count, 3)).index_add(0, geometry.cells.reshape(-1), local.reshape(-1, 3))
+
+
+def guccione_energy(x, geometry, fields, parameters):
+    """Passive energy plus fixed-Ta active potential, not cycle stored energy.
+
+    fields must be prepared on the SAME geometry and held fixed in x derivatives.
+    Validate det(F)>0 separately, as for the Neo-Hookean kernel.
+    """
+    F = deformation_gradient(x, geometry)
+    W = guccione_density(F, fields.fiber, fields.sheet, fields.normal, parameters)
+    W = W + active_potential(F, fields.fiber, fields.tension)
+    return (geometry.weights*W).sum()
+
+
+def guccione_force(x, geometry, fields, parameters):
+    """Integrated passive+active force with afsi's negative weak-form sign."""
+    F = deformation_gradient(x, geometry)
+    P = guccione_pk1(F, fields.fiber, fields.sheet, fields.normal, parameters)
+    P = P + active_pk1(F, fields.fiber, fields.tension)
+    return assemble_pk1(P, geometry)

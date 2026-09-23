@@ -1,25 +1,52 @@
-# afsi-torch：P1/P2 非线性有限元验证
+# AFSI_GPU：PyTorch P1/P2 非线性有限元验证
 
-目标是逐步把 afsi 的 IB/FEM 计算移到 PyTorch。0.2.0 已实现三维 P1/P2 四面体、可压缩 Neo-Hookean 能量、解析 PK1 节点力及切线验证。P2 支持直边参考网格上的二次变形；尚未实现 Guccione、流体求解和 IB 耦合。详见 [P2 数学与代码说明](docs/P2.md)。
+目标是逐步把 afsi 的 IB/FEM 计算移到 PyTorch。0.3.0 在三维 P1/P2 与 Neo-Hookean 基础上加入 Guccione 被动材料、P2 纤维/片层场和给定主动张力，支持节点力及切线作用。P2 支持直边参考网格上的二次变形；尚未实现边界压力、流体求解和 IB 耦合。详见 [P2 数学说明](docs/P2.md) 与 [Guccione/主动应力说明](docs/GUCCIONE.md)。
 
-## 已有环境：运行第二步
+## GitHub 协作
 
-无需重建已经通过首轮 GPU 测试的环境。将本次代码放入 Linux 项目目录，在该目录执行：
+仓库为 [loveIroha/AFSI_GPU](https://github.com/loveIroha/AFSI_GPU)。仓库名称为 AFSI_GPU，Python 包名仍为 afsi_torch，Conda 环境名仍为 afsi-torch。
+
+在 Linux 上首次获取代码：
 
 ```bash
+git clone git@github.com:loveIroha/AFSI_GPU.git
+cd AFSI_GPU
 conda activate afsi-torch
 python -m pip install -e ".[test]"
-CUDA_VISIBLE_DEVICES=0 python examples/p2_patch.py --device cuda
 CUDA_VISIBLE_DEVICES=0 python -m pytest -q
 ```
 
-GPU 可用时，本版完整测试应为 **34 passed**。若出现 skipped，请先运行环境检查，不能将跳过项当作 GPU 验证成功。
+后续获取已经测试并提交的更新：
+
+```bash
+git pull --ff-only
+python -m pip install -e ".[test]"
+CUDA_VISIBLE_DEVICES=0 python -m pytest -q
+git rev-parse --short HEAD
+```
+
+反馈测试结果时附上提交号，避免把不同版本的测试结果混在一起。测试记录区分本地 CPU、Basix 对照与目标 Linux GPU；一次 CPU 测试通过不表示 GPU 测试已完成。若本地有修改导致 pull 失败，先保留和整合修改，不使用强制覆盖。
+
+## 已有环境：运行第三步
+
+无需重建已经通过 P2 测试的环境。在 AFSI_GPU 项目目录执行：
+
+```bash
+conda activate afsi-torch
+git pull --ff-only
+python -m pip install -e ".[test]"
+CUDA_VISIBLE_DEVICES=0 python examples/guccione_patch.py --device cuda
+CUDA_VISIBLE_DEVICES=0 python -m pytest -q
+```
+
+GPU 可用时，本版完整测试应为 **52 passed**。若出现 skipped，请先运行环境检查，不能将跳过项当作 GPU 验证成功。
 
 可选的 Basix 独立对照（只需轻量的 Basix，无需安装完整 FEniCSx）：
 
 ```bash
 python -m pip install -e ".[reference]"
 python validation/compare_basix.py
+python validation/compare_guccione.py
 ```
 
 Basix 仅用于 CPU 参考验证，不是 GPU 计算依赖。该对照在相同积分点上比较基函数、导数、总能量和多单元节点力；尚未覆盖 DOLFINx 全局自由度、边界项或 afsi 完整算例。
@@ -60,9 +87,11 @@ python -m pip freeze > requirements-local-linux-cu130.txt
 
 本地 Windows 验证环境使用 Python 3.12.14、PyTorch 2.14.0+cpu、NumPy 2.5.3、pytest 9.1.1。它不能证明目标 Linux/CUDA 环境已通过测试。
 
-首轮 P1 历史验证：本地 **4 passed, 5 skipped**；用户反馈 Linux RTX 4090 上 **9 passed**。本轮 P2 的 GPU 验证需在目标机器运行，不能沿用首轮的结论。PyTorch 内部在 JVP 测试中会发出 TorchScript 弃用提示。3x3 行列式使用标量三重积实现，使参考构形处的二阶导数通过有限差分检验。
+历史验证：用户反馈 Linux RTX 4090 上 P1 的 **9 项**及 0.2.0 P2 的 **34 项**测试均通过；P2 基线提交为 `82dadab`。0.3.0 的 GPU 验证仍需在目标机器运行。PyTorch 内部在 JVP 测试中会发出 TorchScript 弃用提示。3x3 行列式使用标量三重积实现，使参考构形处的二阶导数通过有限差分检验。
 
 0.2.0 本地验证：**16 passed, 18 skipped**（全部跳过项为 CUDA 测试）。两单元示例通过，解析力/自动求导力最大差 1.11e-16。Basix 0.10.0 独立对照通过，形函数最大差 5.83e-16、导数最大差 1.55e-15、节点力最大差 1.05e-15。详见 [验证记录](docs/VALIDATION.md)。
+
+0.3.0 本地验证：**25 passed, 27 skipped**。Guccione 独立 Basix + NumPy 复步长对照通过，PK1 最大差 2.36e-9、组装力最大差 1.38e-10；CUDA 验证待目标机器执行。
 
 ## 哪些包需要安装
 
@@ -83,12 +112,16 @@ torchcor 的完整依赖还包含 pandas、wfdb、seaborn、scikit-learn。当�
 src/afsi_torch/mechanics.py      P1 几何、变形梯度、能量、PK1 节点力
 src/afsi_torch/tetrahedron.py    P2 形函数、参考节点、共享边自由度
 src/afsi_torch/quadrature.py     四面体积分点与权重（预处理）
-src/afsi_torch/materials.py      积分点 Neo-Hookean 能量与 PK1
+src/afsi_torch/materials.py      Neo-Hookean、Guccione、给定张力的主动应力
+src/afsi_torch/fields.py         参考方向/张力场插值，积分点法向
 src/afsi_torch/solid.py          P2 参考几何、积分及节点力组装
 tests/test_mechanics.py         刚体运动、解析能量、力组装、差分、切线及 CPU/GPU 对照
 tests/test_p2.py                P2 多项式再现、解析变形、积分收敛及切线验证
+tests/test_guccione.py          各向异性、主动应力、方向场、节点力与切线验证
 examples/p2_patch.py            可在 CPU/CUDA 运行的两单元例子
+examples/guccione_patch.py      afsi 材料参数与变纤维方向的两单元例子
 validation/compare_basix.py     可选的 Basix/NumPy 独立对照
+validation/compare_guccione.py  Basix + NumPy 复步长应力/力独立对照
 scripts/check_environment.py    运行环境和必要张量运算检查
 pyproject.toml                 包与可选依赖定义
 requirements-test.txt          已验证的 NumPy/pytest 版本
@@ -96,7 +129,7 @@ requirements-test.txt          已验证的 NumPy/pytest 版本
 
 首个数值链路为 X -> 单元形函数梯度/体积 -> F=grad_X(x) -> W(F) -> E -> g=-dE/dx。解析 PK1 组装独立核对自动求导，torch.func.jvp 核对切线矩阵与向量乘积。使用 float64 建立精度基线。
 
-下一步在积分点本构层加入 Guccione、纤维场和主动应力，再与 afsi 的节点力逐项比较，然后加入 IB 插值/散布，最后连接流体时间步。afsi 当前选定示例以显式更新固体坐标为主，因此不把完整 Newton 求解器设为首阶段必需项。
+下一步加入表面压力与基底约束，并使用相同网格、积分点和材料场与 DOLFINx 节点力逐项比较；随后加入 IB 插值/散布，最后连接流体时间步。afsi 当前选定示例以显式更新固体坐标为主，因此不把完整 Newton 求解器设为首阶段必需项。
 
 ## 来源
 
