@@ -1,5 +1,27 @@
 # 验证记录
 
+## 0.4.0：随动压力与基底弹簧
+
+本地环境为 Windows CPU，版本与下述基线一致。完整 pytest 为 **39 passed, 42 skipped**，跳过项全部依赖 CUDA；目标 GPU 可用时应执行 **81 项**。本版尚未在目标 Linux GPU 上验证。
+
+| 检查 | 结果 |
+| --- | --- |
+| 可编辑安装 | afsi-torch 0.4.0 成功 |
+| 完整固体节点力示例 | 1 个 P2 四面体，10 节点，4 个外表面 |
+| 基底弹簧解析力/能量梯度最大差 | 1.7763568394002505e-15 |
+| 完整残量切线作用/有限差分相对误差 | 1.1929863471576661e-10 |
+| Basix 体单元余子式参照：压力节点力最大差 | 2.2737367544323206e-13 |
+| 独立参照：基底弹簧节点力最大差 | 9.237055564881302e-14 |
+| 独立参照：基底弹簧能量差 | 1.2434497875801753e-14 |
+
+```bash
+python -m pytest -q
+python examples/boundary_patch.py --device cpu
+python validation/compare_boundary.py
+```
+
+新增测试覆盖法向与内部面剔除、平面/曲面压力、闭合面的合力和力矩、开放受压面的非对称切线、参考面积弹簧，以及材料与边界项组合后的残量切线。独立对照使用 Basix 的完整四面体基函数导数构造 F 和 cof(F)N，与主实现的表面切向量叉积比较。它尚不等于实际 DOLFINx 全局装配对照。PyTorch 内部 JVP 路径仍产生一次 TorchScript 弃用警告。
+
 ## 0.3.0：Guccione 与给定主动张力
 
 本地环境仍为下述 Windows CPU 环境。完整 pytest 为 **25 passed, 27 skipped**，所有 skipped 均为 CUDA 测试；没有将跳过项记为通过。GPU 可用时应执行 **52 项**。
@@ -27,6 +49,8 @@ python validation/compare_basix.py
 ```
 
 本轮未在 Linux GPU 上执行，也没有声称完成完整 DOLFINx/afsi 对照。一次 TorchScript 弃用警告仍来自 PyTorch 的 JVP 路径。
+
+后续用户反馈：Linux RTX 4090 上 0.3.0 的 **52 项测试全部通过**，对应提交 `b85202f`。这是用户在目标机器运行和反馈的结果。
 
 ## 0.2.0：P2 基线
 
