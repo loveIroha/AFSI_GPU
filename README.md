@@ -20,6 +20,8 @@ CUDA_VISIBLE_DEVICES=0 python -m pytest -q
 
 Gmsh 在 CPU 生成网格，后续张量计算可运行于 CUDA。结果包含可用 ParaView 打开的网格、表面标签和给定位移/节点力。本地 CPU **74 passed, 57 skipped**；安装 geometry 且 CUDA 可用时应执行 **131 项**。当前示例验证给定变形下的力，尚未求解平衡或流固耦合时间步。
 
+0.7.0 的 [Linux 自动验证已通过](https://github.com/loveIroha/AFSI_GPU/actions/runs/36018932241)，包含实际 DOLFINx 回归和左室生成示例。目标 GPU 验证仍需执行上述命令。
+
 ## 第六步：GPU IB 传递验证
 
 无需安装新依赖，使用已有 afsi-torch 环境：
