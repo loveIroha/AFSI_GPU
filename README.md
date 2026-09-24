@@ -6,9 +6,23 @@
 
 0.6.0 增加四点 Peskin IB 速度插值和固体力散布，保持已有固体有限元模块。目标算例明确为**程序生成椭球左心室网格与纤维场**，不依赖已有心室网格文件。见 [IB 数学与接口](docs/IB.md) 和 [理想左室开发路线](docs/ROADMAP_LV.md)。当前没有流体求解和耦合时间推进。
 
+## 第九步：GPU 流体三步求解
+
+当前版本 **0.9.0** 增加 Jacobi-PCG、非零速度边界提升、单点压力基准及完整 Chorin 三步法。现在可求解流体速度和压力，但尚未接入固体运动。详见 [求解器、边界条件与验证限制](docs/CHORIN.md)。无需新增依赖。
+
+```bash
+git pull --ff-only
+conda activate afsi-torch
+python -m pip install -e ".[test,geometry]"
+CUDA_VISIBLE_DEVICES=0 python examples/chorin_box.py --device cuda --cells 4 --steps 5 --output results/chorin_box.json
+CUDA_VISIBLE_DEVICES=0 python -m pytest -q
+```
+
+本地 CPU **100 passed, 74 CUDA skipped**，目标 GPU 环境应为 **174 passed**。上一版 0.8.0 已由用户反馈 **155 passed**。此版本尚待目标 GPU 验证。三步分别检查真实残量，并报告校正前后散度；方程收敛不表示严格无散或完整耦合稳定。
+
 ## 第八步：Q2/Q1 流体算子
 
-当前版本 **0.8.0** 增加规则六面体流体网格、一致质量、黏性、压力 Laplacian、梯度、散度和非线性对流的 PyTorch 算子。支持 CUDA 和自动微分，详见 [流体数学、IB 载荷接口及独立验证](docs/FLUID.md)。此阶段尚未求解流体方程或推进时间。
+0.8.0 增加规则六面体流体网格、一致质量、黏性、压力 Laplacian、梯度、散度和非线性对流的 PyTorch 算子。支持 CUDA 和自动微分，详见 [流体数学、IB 载荷接口及独立验证](docs/FLUID.md)。此阶段尚未求解流体方程或推进时间。
 
 ```bash
 git pull --ff-only
@@ -71,7 +85,7 @@ CUDA_VISIBLE_DEVICES=0 python validation/compare_dolfinx.py --device cuda --outp
 CUDA_VISIBLE_DEVICES=0 python -m pytest -q
 ```
 
-比较应输出 `status: passed`。0.5.0 pytest 为 92 项，0.6.0 为 113 项，0.7.0（含 geometry）为 131 项，当前 0.8.0 为 **155 项**。已经创建过 `afsi-reference` 时跳过环境创建。原有 CUDA 环境保持独立。加密网格对照、误差解释及从 Actions 下载参考数据的方法见 [详细说明](docs/DOLFINX.md)。
+比较应输出 `status: passed`。0.5.0 pytest 为 92 项，0.6.0 为 113 项，0.7.0（含 geometry）为 131 项，0.8.0 为 155 项，当前 0.9.0 为 **174 项**。已经创建过 `afsi-reference` 时跳过环境创建。原有 CUDA 环境保持独立。加密网格对照、误差解释及从 Actions 下载参考数据的方法见 [详细说明](docs/DOLFINX.md)。
 
 ## GitHub 协作
 
@@ -110,7 +124,7 @@ CUDA_VISIBLE_DEVICES=0 python examples/boundary_patch.py --device cuda
 CUDA_VISIBLE_DEVICES=0 python -m pytest -q
 ```
 
-0.4.0 的完整测试为 **81 项**，0.5.0 为 92 项，0.6.0 为 113 项，0.7.0（含 geometry）为 131 项，当前 0.8.0 为 **155 项**。若出现 skipped，请先运行环境检查，不能将跳过项当作 GPU 验证成功。
+0.4.0 的完整测试为 **81 项**，0.5.0 为 92 项，0.6.0 为 113 项，0.7.0（含 geometry）为 131 项，0.8.0 为 155 项，当前 0.9.0 为 **174 项**。若出现 skipped，请先运行环境检查，不能将跳过项当作 GPU 验证成功。
 
 可选的 Basix 独立对照（只需轻量的 Basix，无需安装完整 FEniCSx）：
 
@@ -183,7 +197,8 @@ torchcor 的完整依赖还包含 pandas、wfdb、seaborn、scikit-learn。当�
 ## 当前代码结构与下一步
 
 ```text
-src/afsi_torch/fluid/            规则六面体 Q2/Q1 网格、基函数与流体算子
+src/afsi_torch/fluid/            Q2/Q1 算子、PCG 及 Chorin 三步法
+examples/chorin_box.py          短程流体求解与残量/散度诊断
 examples/fluid_patch.py         制造场算子检查
 src/afsi_torch/geometry/         椭球壳、纤维、腔体积及结果输出
 src/afsi_torch/units.py          CGS 单位与 mmHg 换算

@@ -34,6 +34,8 @@ jobs:
           python validation/export_dolfinx.py --subdivisions 2 --output validation/results/fine.npz
           python validation/export_fluid_dolfinx.py --output validation/results/fluid_coarse.npz
           python validation/export_fluid_dolfinx.py --subdivisions 2 --output validation/results/fluid_fine.npz
+          python validation/export_chorin_dolfinx.py --output validation/results/chorin_coarse.npz
+          python validation/export_chorin_dolfinx.py --subdivisions 2 --output validation/results/chorin_fine.npz
       - name: Install separate CPU PyTorch environment
         run: |
           sudo apt-get update -qq
@@ -50,6 +52,9 @@ jobs:
           .venv-torch/bin/python validation/compare_fluid_dolfinx.py --reference validation/results/fluid_coarse.npz --output validation/results/fluid_coarse.json
           .venv-torch/bin/python validation/compare_fluid_dolfinx.py --reference validation/results/fluid_fine.npz --output validation/results/fluid_fine.json
           .venv-torch/bin/python examples/fluid_patch.py --device cpu
+          .venv-torch/bin/python validation/compare_chorin_dolfinx.py --reference validation/results/chorin_coarse.npz --output validation/results/chorin_coarse.json
+          .venv-torch/bin/python validation/compare_chorin_dolfinx.py --reference validation/results/chorin_fine.npz --output validation/results/chorin_fine.json
+          .venv-torch/bin/python examples/chorin_box.py --device cpu --output validation/results/chorin_box.json
           .venv-torch/bin/python examples/ib_patch.py --device cpu
           .venv-torch/bin/python examples/ideal_lv.py --device cpu --output validation/results/ideal_lv
           .venv-torch/bin/python scripts/preview_lv.py --source validation/results/ideal_lv/generated.npz --output validation/results/ideal_lv/preview.png

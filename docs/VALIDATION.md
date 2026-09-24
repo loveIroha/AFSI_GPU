@@ -1,6 +1,12 @@
 # 验证记录
 
+## 0.9.0：Chorin 三步求解
+
+本地 Windows CPU **100 passed, 74 CUDA skipped**，共 174 项；新增 12 passed、7 skipped。验证非零边界提升、真实残量、压力基准、时变解析剪切、载荷接口、失败检测和短程流动。每轴 2/4/8 单元三步测试中压力迭代数约 7–9/24/42–44。Jacobi 尚无网格无关性能保证，粗网格校正后散度并非每步下降，详见 [CHORIN](CHORIN.md)。Linux 实际 DOLFINx/PETSc LU 比较单独记录；本版 GPU 待执行。
+
 ## 0.8.0：Q2/Q1 流体有限元算子
+
+用户随后反馈目标 GPU 环境 **155 passed**，本版完整 pytest 验证通过；不代表完整心室耦合或外部参考 CUDA 对照已执行。
 
 [Linux 自动验证 36021971483](https://github.com/loveIroha/AFSI_GPU/actions/runs/36021971483) 已全部通过，代码提交 `e8542cf37c63b693abaefff29a2f9f9da7bfe133`。Linux 完整回归 **88 passed、67 CUDA skipped**。新增真实 DOLFINx 流体对照在 2/16 单元网格、两种场上共比较 40 组向量；最大绝对差分别为 **2.43e-15 / 1.60e-15**。原固体 DOLFINx 对照、IB 对照和左室示例也通过。[完整流体误差报告及参考数据 SHA-256](fluid-reference-results-0.8.0.json)。本结果仅为 CPU；目标 GPU 本版尚待执行。
 
