@@ -1,10 +1,16 @@
 # 验证记录
 
+## 0.8.0：Q2/Q1 流体有限元算子
+
+本地 Windows CPU 回归 **88 passed, 67 CUDA skipped**，共 155 项。新增流体测试为 14 passed、10 CUDA skipped。覆盖解析张量积质量/刚度矩阵、多单元组装、制造场、边界通量与负转置关系、非线性对流积分和切线、IB 两种载荷路径区别。CPU 制造场示例通过；目标 GPU 本版尚待执行。实际 DOLFINx 对照由 Linux Actions 执行并单独记录。
+
 ## 0.7.0：厘米制生成左心室
+
+用户随后反馈目标 Linux RTX 4090 环境完整回归 **131 passed、无跳过，8.18 秒**。保留一次 PyTorch 内部 TorchScript 弃用警告。该反馈确认 pytest 的 CPU/CUDA 测试，不等于完整耦合算例或 GPU 上的 DOLFINx 外部参考对照。
 
 [Linux 自动验证 36018932241](https://github.com/loveIroha/AFSI_GPU/actions/runs/36018932241) 已通过，代码提交 `a16b378afa75f360e8d6884a2acc51ef9c68d30c`。Linux 回归 74 passed、57 CUDA skipped；两个网格的实际 DOLFINx 对照、IB 独立对照、左室生成/固体力示例和预览均成功。Linux 默认腔体体积同为 82.75809228453295 mL，保守力/能量梯度最大差 3.27e-11 dyn。运行附件包含左室 VTU、NPZ、报告及预览。
 
-本地 Windows CPU 完整回归 **74 passed, 57 skipped**，跳过项全部依赖 CUDA；安装 geometry 依赖且 GPU 可用时应执行 **131 项**。Gmsh 4.15.2，meshio 5.3.5。保留一次 PyTorch JVP 弃用警告。当前未验证目标 GPU。
+本地 Windows CPU 完整回归 **74 passed, 57 skipped**，跳过项全部依赖 CUDA；安装 geometry 依赖且 GPU 可用时应执行 **131 项**。Gmsh 4.15.2，meshio 5.3.5。保留一次 PyTorch JVP 弃用警告。此处为本地记录；目标 GPU 后续反馈见本节开头。
 
 默认 h=1.2 cm 的本地网格有 616 个四面体、1276 个 P2 节点，最小参考单元体积 0.0533734 cm³；内膜/外膜/基底面数为 149/250/39。解析腔体体积 87.2665 mL，离散值 82.7581 mL（几何误差约 5.17%）；h=0.9 cm 时为 84.4422 mL。给定变形下最小 det(F)=1.029996，保守节点力与能量梯度最大差约 2.00e-11 dyn。网格数量可能随平台变化，不作为跨平台断言。
 
