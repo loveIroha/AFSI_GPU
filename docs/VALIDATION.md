@@ -2,6 +2,8 @@
 
 ## 0.8.0：Q2/Q1 流体有限元算子
 
+[Linux 自动验证 36021971483](https://github.com/loveIroha/AFSI_GPU/actions/runs/36021971483) 已全部通过，代码提交 `e8542cf37c63b693abaefff29a2f9f9da7bfe133`。Linux 完整回归 **88 passed、67 CUDA skipped**。新增真实 DOLFINx 流体对照在 2/16 单元网格、两种场上共比较 40 组向量；最大绝对差分别为 **2.43e-15 / 1.60e-15**。原固体 DOLFINx 对照、IB 对照和左室示例也通过。[完整流体误差报告及参考数据 SHA-256](fluid-reference-results-0.8.0.json)。本结果仅为 CPU；目标 GPU 本版尚待执行。
+
 本地 Windows CPU 回归 **88 passed, 67 CUDA skipped**，共 155 项。新增流体测试为 14 passed、10 CUDA skipped。覆盖解析张量积质量/刚度矩阵、多单元组装、制造场、边界通量与负转置关系、非线性对流积分和切线、IB 两种载荷路径区别。CPU 制造场示例通过；目标 GPU 本版尚待执行。实际 DOLFINx 对照由 Linux Actions 执行并单独记录。
 
 ## 0.7.0：厘米制生成左心室

@@ -49,6 +49,8 @@ CUDA_VISIBLE_DEVICES=0 python -m pytest -q
 
 ## 独立 DOLFINx 对照
 
+[本版 Linux CPU 验证已通过](https://github.com/loveIroha/AFSI_GPU/actions/runs/36021971483)，40 组向量最大绝对差 2.43e-15。目标 CUDA 外部对照仍需下述命令。
+
 `export_fluid_dolfinx.py` 在独立 CPU 环境用 UFL 装配，不导入 PyTorch 或本项目流体模块；在带非零原点、各向异性尺寸的 2/16 单元网格上分别导出仿射和一般节点场。压力、速度顺序通过物理坐标匹配，包含完整边界自由度。每个场比较 9 个算子以及对流项的 UFL 方向导数，共 40 组向量；参考采用更高的 8 次积分精度。
 
 已有 `afsi-reference` 环境时：

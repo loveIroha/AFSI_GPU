@@ -20,6 +20,8 @@ CUDA_VISIBLE_DEVICES=0 python -m pytest -q
 
 本地 CPU 回归 **88 passed, 67 CUDA skipped**；目标 GPU 环境完整测试应为 **155 passed**。新增实际 DOLFINx 对照入口为 `validation/export_fluid_dolfinx.py` 和 `validation/compare_fluid_dolfinx.py`，可复用现有 CPU 参考环境。上一版 0.7.0 已由用户反馈在 RTX 4090 环境完成 **131 passed、无跳过**。
 
+[0.8.0 Linux 自动验证已通过](https://github.com/loveIroha/AFSI_GPU/actions/runs/36021971483)：两种六面体网格上共 40 组实际 DOLFINx 对照通过，最大绝对差 2.43e-15；原固体和 IB 回归仍通过。
+
 ## 第七步：厘米制理想左心室几何
 
 0.7.0 自动生成带基底开口的椭球壳、ENDO/EPI/BASE 标签、P2 网格与规则纤维场，接入已有固体节点力计算。长度采用 **cm**，体积采用 **mL**，压力采用 **dyn/cm²**。详见 [几何说明](docs/GEOMETRY.md)。
