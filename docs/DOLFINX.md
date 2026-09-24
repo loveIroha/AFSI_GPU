@@ -33,7 +33,7 @@ CUDA_VISIBLE_DEVICES=0 python validation/compare_dolfinx.py --device cuda --refe
 CUDA_VISIBLE_DEVICES=0 python -m pytest -q
 ```
 
-两次比较应各输出 `status: passed`；单元测试在 CUDA 可用时应为 **92 passed**。比较失败会明确报出构形、力项及 force/tangent，并以非零状态退出。指定 CUDA 后不会退回 CPU。当前 pytest 本身不运行实际 DOLFINx；只有执行上述导出和比较才能验证两个框架的装配一致性。
+两次比较应各输出 `status: passed`；0.5.0 单元测试为 92 项，当前 0.6.0 在 CUDA 可用时应为 **113 passed**。比较失败会明确报出构形、力项及 force/tangent，并以非零状态退出。指定 CUDA 后不会退回 CPU。当前 pytest 本身不运行实际 DOLFINx；只有执行上述导出和比较才能验证两个框架的装配一致性。
 
 ## 比较范围与排序
 

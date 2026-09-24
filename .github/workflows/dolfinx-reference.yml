@@ -2,9 +2,9 @@ name: DOLFINx reference comparison
 on:
   push:
     branches: [main]
-    paths: ['src/**', 'tests/**', 'validation/**', 'pyproject.toml', '.github/workflows/dolfinx-reference.yml']
+    paths: ['src/**', 'tests/**', 'validation/**', 'examples/**', 'pyproject.toml', '.github/workflows/dolfinx-reference.yml']
   pull_request:
-    paths: ['src/**', 'tests/**', 'validation/**', 'pyproject.toml', '.github/workflows/dolfinx-reference.yml']
+    paths: ['src/**', 'tests/**', 'validation/**', 'examples/**', 'pyproject.toml', '.github/workflows/dolfinx-reference.yml']
   workflow_dispatch:
 permissions:
   contents: read
@@ -38,6 +38,8 @@ jobs:
           .venv-torch/bin/python -m pytest -q
           .venv-torch/bin/python validation/compare_dolfinx.py --reference validation/results/coarse.npz --output validation/results/coarse.json
           .venv-torch/bin/python validation/compare_dolfinx.py --reference validation/results/fine.npz --output validation/results/fine.json
+          .venv-torch/bin/python validation/compare_ib.py --output validation/results/ib.json
+          .venv-torch/bin/python examples/ib_patch.py --device cpu
       - name: Save reference arrays and comparison reports
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
