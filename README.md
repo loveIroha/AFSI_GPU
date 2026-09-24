@@ -6,9 +6,23 @@
 
 0.6.0 增加四点 Peskin IB 速度插值和固体力散布，保持已有固体有限元模块。目标算例明确为**程序生成椭球左心室网格与纤维场**，不依赖已有心室网格文件。见 [IB 数学与接口](docs/IB.md) 和 [理想左室开发路线](docs/ROADMAP_LV.md)。当前没有流体求解和耦合时间推进。
 
+## 第十步：完整显式耦合与生成左室短程运行
+
+当前版本 **0.10.0** 连接固体力、IB 密度散布、流体求解、速度插值与坐标更新。左室位移现在来自耦合计算，默认运行 10 步、共 0.001 s，尚不是完整心动周期。见 [耦合顺序、单位、输出与验收限制](docs/COUPLING.md)。
+
+```bash
+git pull --ff-only
+conda activate afsi-torch
+python -m pip install -e ".[test,geometry]"
+CUDA_VISIBLE_DEVICES=0 python examples/coupled_lv.py --device cuda --steps 10 --dt 1e-4 --output results/coupled_lv
+CUDA_VISIBLE_DEVICES=0 python -m pytest -q
+```
+
+本地 CPU **108 passed、80 CUDA skipped**；目标 GPU 环境应执行 **188 项**。可用 ParaView 打开输出的 `solid.pvd` 和 `fluid.pvd`；数值曲线在 `history.csv`，残量、散度与功率差在 `report.json`。沿用现有依赖。本版 GPU 验证尚待执行。
+
 ## 第九步：GPU 流体三步求解
 
-当前版本 **0.9.0** 增加 Jacobi-PCG、非零速度边界提升、单点压力基准及完整 Chorin 三步法。现在可求解流体速度和压力，但尚未接入固体运动。详见 [求解器、边界条件与验证限制](docs/CHORIN.md)。无需新增依赖。
+0.9.0 增加 Jacobi-PCG、非零速度边界提升、单点压力基准及完整 Chorin 三步法。现在可求解流体速度和压力，但尚未接入固体运动。详见 [求解器、边界条件与验证限制](docs/CHORIN.md)。无需新增依赖。
 
 ```bash
 git pull --ff-only
@@ -87,7 +101,7 @@ CUDA_VISIBLE_DEVICES=0 python validation/compare_dolfinx.py --device cuda --outp
 CUDA_VISIBLE_DEVICES=0 python -m pytest -q
 ```
 
-比较应输出 `status: passed`。0.5.0 pytest 为 92 项，0.6.0 为 113 项，0.7.0（含 geometry）为 131 项，0.8.0 为 155 项，当前 0.9.0 为 **174 项**。已经创建过 `afsi-reference` 时跳过环境创建。原有 CUDA 环境保持独立。加密网格对照、误差解释及从 Actions 下载参考数据的方法见 [详细说明](docs/DOLFINX.md)。
+比较应输出 `status: passed`。0.5.0 pytest 为 92 项，0.6.0 为 113 项，0.7.0（含 geometry）为 131 项，0.8.0 为 155 项，0.9.0 为 174 项，当前 0.10.0 为 **188 项**。已经创建过 `afsi-reference` 时跳过环境创建。原有 CUDA 环境保持独立。加密网格对照、误差解释及从 Actions 下载参考数据的方法见 [详细说明](docs/DOLFINX.md)。
 
 ## GitHub 协作
 
@@ -126,7 +140,7 @@ CUDA_VISIBLE_DEVICES=0 python examples/boundary_patch.py --device cuda
 CUDA_VISIBLE_DEVICES=0 python -m pytest -q
 ```
 
-0.4.0 的完整测试为 **81 项**，0.5.0 为 92 项，0.6.0 为 113 项，0.7.0（含 geometry）为 131 项，0.8.0 为 155 项，当前 0.9.0 为 **174 项**。若出现 skipped，请先运行环境检查，不能将跳过项当作 GPU 验证成功。
+0.4.0 的完整测试为 **81 项**，0.5.0 为 92 项，0.6.0 为 113 项，0.7.0（含 geometry）为 131 项，0.8.0 为 155 项，0.9.0 为 174 项，当前 0.10.0 为 **188 项**。若出现 skipped，请先运行环境检查，不能将跳过项当作 GPU 验证成功。
 
 可选的 Basix 独立对照（只需轻量的 Basix，无需安装完整 FEniCSx）：
 
@@ -199,6 +213,9 @@ torchcor 的完整依赖还包含 pandas、wfdb、seaborn、scikit-learn。当�
 ## 当前代码结构与下一步
 
 ```text
+src/afsi_torch/coupling.py       显式 IB/FEM 耦合状态和时间步
+src/afsi_torch/lv_model.py       左室非线性固体力及载荷斜坡
+examples/coupled_lv.py          程序生成左室的真实耦合短程运行
 src/afsi_torch/fluid/            Q2/Q1 算子、PCG 及 Chorin 三步法
 examples/chorin_box.py          短程流体求解与残量/散度诊断
 examples/fluid_patch.py         制造场算子检查

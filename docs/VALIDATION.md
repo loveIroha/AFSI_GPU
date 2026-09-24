@@ -1,5 +1,9 @@
 # 验证记录
 
+## 0.10.0：显式 IB/FEM 耦合
+
+本地 CPU 完整回归 **108 passed、80 CUDA skipped**，共 188 项。新增测试覆盖零力启动和载荷滞后、旧位置插值/新位置受力、跨格点移动重建支撑、小型非线性弹性体、失败不修改旧状态、CPU/CUDA 对照、生成左室短程推进及 ParaView 输出。默认左室 10 步运行通过，详见 [COUPLING](COUPLING.md)。本版尚待目标 GPU 验证，实际 DOLFINx/NumPy 耦合对照由 Linux CI 执行并单独记录。
+
 ## 0.9.0：Chorin 三步求解
 
 [Linux 自动验证 36024695559](https://github.com/loveIroha/AFSI_GPU/actions/runs/36024695559) 已通过，代码提交 `21695e89619531f5be7f9de3693d4869525a0980`。完整回归 **100 passed、74 CUDA skipped**。实际 DOLFINx/PETSc LU 在 8/64 单元网格、静止/平移边界上连续推进 3 步，共 36 组解场和 12 组散度诊断比较通过；解场最大绝对差分别为 **9.86e-11 / 1.71e-10**。旧固体、IB、流体算子与几何回归也通过。[完整报告和参考数据 SHA-256](chorin-reference-results-0.9.0.json)。目标 GPU 本版尚待执行。
