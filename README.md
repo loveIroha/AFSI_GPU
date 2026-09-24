@@ -21,6 +21,8 @@ CUDA_VISIBLE_DEVICES=0 python -m pytest -q
 
 两个程序应输出 `status: passed`；GPU 可用时当前完整测试应为 **113 passed**。例子使用给定流体速度，验证固体完整节点力通过 IB 的瞬时功率、合力与力矩；不代表已求解 Navier–Stokes。独立参考遍历全部格点计算标量核，未运行原 afsi C++。
 
+0.6.0 的 [Linux 自动验证已通过](https://github.com/loveIroha/AFSI_GPU/actions/runs/35993548123)：61 passed、52 CUDA 项跳过，实际 DOLFINx 回归和新增 IB 独立对照均通过。目标 GPU 验证仍需上述命令。
+
 实际 Linux CPU 对照已经通过：[GitHub Actions 结果](https://github.com/loveIroha/AFSI_GPU/actions/runs/35985614102)。6/48 单元两种网格上共 40 组向量比较通过，所有节点力最大绝对差 5.46e-10、切线作用最大绝对差 1.42e-10。目标 RTX 4090 对照仍待执行。
 
 ## 第五步：实际 DOLFINx 对照

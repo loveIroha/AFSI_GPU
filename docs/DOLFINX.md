@@ -70,4 +70,5 @@ GitHub Actions 的 `DOLFINx reference comparison` 在 Linux 上生成两种网�
 - [DOLFINx 0.10 有限元 API](https://docs.fenicsproject.org/dolfinx/v0.10.0.post0/python/generated/dolfinx.fem.html)
 - [DOLFINx 0.10 网格 API](https://docs.fenicsproject.org/dolfinx/v0.10.0.post0/python/generated/dolfinx.mesh.html)
 - [FEniCS 官方安装说明](https://fenicsproject.org/download/)
+- [UCX 通信方式配置](https://openucx.readthedocs.io/en/master/faq.html)
 - [原 afsi 收缩示例](https://github.com/npuheart/afsi/blob/99df0ffba795fa05043ba874ad00353dcb986466/afsic/demo/demo_337/fsi_paralell_fibers_contraction.py)
