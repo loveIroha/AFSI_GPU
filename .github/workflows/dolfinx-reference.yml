@@ -2,9 +2,9 @@ name: DOLFINx reference comparison
 on:
   push:
     branches: [main]
-    paths: ['src/**', 'tests/**', 'validation/**', 'examples/**', 'pyproject.toml', '.github/workflows/dolfinx-reference.yml']
+    paths: ['src/**', 'tests/**', 'validation/**', 'examples/**', 'scripts/**', 'pyproject.toml', '.github/workflows/dolfinx-reference.yml']
   pull_request:
-    paths: ['src/**', 'tests/**', 'validation/**', 'examples/**', 'pyproject.toml', '.github/workflows/dolfinx-reference.yml']
+    paths: ['src/**', 'tests/**', 'validation/**', 'examples/**', 'scripts/**', 'pyproject.toml', '.github/workflows/dolfinx-reference.yml']
   workflow_dispatch:
 permissions:
   contents: read
@@ -34,9 +34,11 @@ jobs:
           python validation/export_dolfinx.py --subdivisions 2 --output validation/results/fine.npz
       - name: Install separate CPU PyTorch environment
         run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y libglu1-mesa
           python -m venv .venv-torch
           .venv-torch/bin/python -m pip install torch==2.14.0 --index-url https://download.pytorch.org/whl/cpu
-          .venv-torch/bin/python -m pip install -e '.[test]'
+          .venv-torch/bin/python -m pip install -e '.[test,geometry,io]'
       - name: Regressions and independent force/tangent comparisons
         run: |
           .venv-torch/bin/python -m pytest -q
@@ -44,6 +46,8 @@ jobs:
           .venv-torch/bin/python validation/compare_dolfinx.py --reference validation/results/fine.npz --output validation/results/fine.json
           .venv-torch/bin/python validation/compare_ib.py --output validation/results/ib.json
           .venv-torch/bin/python examples/ib_patch.py --device cpu
+          .venv-torch/bin/python examples/ideal_lv.py --device cpu --output validation/results/ideal_lv
+          .venv-torch/bin/python scripts/preview_lv.py --source validation/results/ideal_lv/generated.npz --output validation/results/ideal_lv/preview.png
       - name: Save reference arrays and comparison reports
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

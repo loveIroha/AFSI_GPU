@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "afsi-torch"
-version = "0.6.0"
+version = "0.7.0"
 description = "PyTorch finite-element mechanics verification for an IB/FEM port"
 requires-python = ">=3.10"
 dependencies = ["torch>=2.2", "numpy>=1.26"]
@@ -13,6 +13,7 @@ dependencies = ["torch>=2.2", "numpy>=1.26"]
 test = ["pytest>=8"]
 io = ["meshio>=5", "matplotlib>=3.8"]
 reference = ["fenics-basix==0.10.0"]
+geometry = ["gmsh==4.15.2", "meshio==5.3.5"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

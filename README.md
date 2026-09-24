@@ -4,7 +4,21 @@
 
 0.5.0 增加实际 DOLFINx/UFL 装配参考导出、CPU/CUDA PyTorch 逐项比较和 Linux 自动验证。详见 [DOLFINx 对照说明](docs/DOLFINX.md)。它比较两种构形下的五项节点力及切线作用，尚未运行原 afsi 完整算例。
 
-当前版本 **0.6.0** 增加四点 Peskin IB 速度插值和固体力散布，保持已有固体有限元模块。目标算例明确为**程序生成椭球左心室网格与纤维场**，不依赖已有心室网格文件。见 [IB 数学与接口](docs/IB.md) 和 [理想左室开发路线](docs/ROADMAP_LV.md)。当前没有流体求解和耦合时间推进。
+0.6.0 增加四点 Peskin IB 速度插值和固体力散布，保持已有固体有限元模块。目标算例明确为**程序生成椭球左心室网格与纤维场**，不依赖已有心室网格文件。见 [IB 数学与接口](docs/IB.md) 和 [理想左室开发路线](docs/ROADMAP_LV.md)。当前没有流体求解和耦合时间推进。
+
+## 第七步：厘米制理想左心室几何
+
+当前版本 **0.7.0** 自动生成带基底开口的椭球壳、ENDO/EPI/BASE 标签、P2 网格与规则纤维场，接入已有固体节点力计算。长度采用 **cm**，体积采用 **mL**，压力采用 **dyn/cm²**。详见 [几何说明](docs/GEOMETRY.md)。
+
+```bash
+git pull --ff-only
+conda activate afsi-torch
+python -m pip install -e ".[test,geometry]"
+CUDA_VISIBLE_DEVICES=0 python examples/ideal_lv.py --device cuda --mesh-size 1.2 --output results/ideal_lv
+CUDA_VISIBLE_DEVICES=0 python -m pytest -q
+```
+
+Gmsh 在 CPU 生成网格，后续张量计算可运行于 CUDA。结果包含可用 ParaView 打开的网格、表面标签和给定位移/节点力。本地 CPU **74 passed, 57 skipped**；安装 geometry 且 CUDA 可用时应执行 **131 项**。当前示例验证给定变形下的力，尚未求解平衡或流固耦合时间步。
 
 ## 第六步：GPU IB 传递验证
 
@@ -19,7 +33,7 @@ CUDA_VISIBLE_DEVICES=0 python validation/compare_ib.py --device cuda
 CUDA_VISIBLE_DEVICES=0 python -m pytest -q
 ```
 
-两个程序应输出 `status: passed`；GPU 可用时当前完整测试应为 **113 passed**。例子使用给定流体速度，验证固体完整节点力通过 IB 的瞬时功率、合力与力矩；不代表已求解 Navier–Stokes。独立参考遍历全部格点计算标量核，未运行原 afsi C++。
+两个程序应输出 `status: passed`；0.6.0 在 GPU 可用时完整测试为 **113 passed**。例子使用给定流体速度，验证固体完整节点力通过 IB 的瞬时功率、合力与力矩；不代表已求解 Navier–Stokes。独立参考遍历全部格点计算标量核，未运行原 afsi C++。
 
 0.6.0 的 [Linux 自动验证已通过](https://github.com/loveIroha/AFSI_GPU/actions/runs/35993548123)：61 passed、52 CUDA 项跳过，实际 DOLFINx 回归和新增 IB 独立对照均通过。目标 GPU 验证仍需上述命令。
 
@@ -39,7 +53,7 @@ CUDA_VISIBLE_DEVICES=0 python validation/compare_dolfinx.py --device cuda --outp
 CUDA_VISIBLE_DEVICES=0 python -m pytest -q
 ```
 
-比较应输出 `status: passed`。0.5.0 pytest 为 92 项，当前 0.6.0 为 **113 项**。已经创建过 `afsi-reference` 时跳过环境创建。原有 CUDA 环境保持独立。加密网格对照、误差解释及从 Actions 下载参考数据的方法见 [详细说明](docs/DOLFINX.md)。
+比较应输出 `status: passed`。0.5.0 pytest 为 92 项，0.6.0 为 113 项，当前 0.7.0（含 geometry）为 **131 项**。已经创建过 `afsi-reference` 时跳过环境创建。原有 CUDA 环境保持独立。加密网格对照、误差解释及从 Actions 下载参考数据的方法见 [详细说明](docs/DOLFINX.md)。
 
 ## GitHub 协作
 
@@ -78,7 +92,7 @@ CUDA_VISIBLE_DEVICES=0 python examples/boundary_patch.py --device cuda
 CUDA_VISIBLE_DEVICES=0 python -m pytest -q
 ```
 
-0.4.0 的完整测试为 **81 项**，0.5.0 为 92 项，当前 0.6.0 为 **113 项**。若出现 skipped，请先运行环境检查，不能将跳过项当作 GPU 验证成功。
+0.4.0 的完整测试为 **81 项**，0.5.0 为 92 项，0.6.0 为 113 项，当前 0.7.0（含 geometry）为 **131 项**。若出现 skipped，请先运行环境检查，不能将跳过项当作 GPU 验证成功。
 
 可选的 Basix 独立对照（只需轻量的 Basix，无需安装完整 FEniCSx）：
 
@@ -151,6 +165,10 @@ torchcor 的完整依赖还包含 pandas、wfdb、seaborn、scikit-learn。当�
 ## 当前代码结构与下一步
 
 ```text
+src/afsi_torch/geometry/         椭球壳、纤维、腔体积及结果输出
+src/afsi_torch/units.py          CGS 单位与 mmHg 换算
+examples/ideal_lv.py            程序生成左室与给定变形固体力验证
+scripts/preview_lv.py           网格表面与剖视预览
 src/afsi_torch/mechanics.py      P1 几何、变形梯度、能量、PK1 节点力
 src/afsi_torch/tetrahedron.py    P2 形函数、参考节点、共享边自由度
 src/afsi_torch/quadrature.py     四面体积分点与权重（预处理）
@@ -180,7 +198,7 @@ requirements-test.txt          已验证的 NumPy/pytest 版本
 
 首个数值链路为 X -> 单元形函数梯度/体积 -> F=grad_X(x) -> W(F) -> E -> g=-dE/dx。解析 PK1 组装独立核对自动求导，torch.func.jvp 核对切线矩阵与向量乘积。使用 float64 建立精度基线。
 
-0.5.0 的对照入口为 `validation/export_dolfinx.py` 和 `validation/compare_dolfinx.py`，环境定义为 `validation/environment-dolfinx.yml`。0.6.0 本地回归 **61 passed, 52 skipped**，其中 CUDA 项尚待目标机器验证；见 [VALIDATION](docs/VALIDATION.md)。本轮完成 IB 传递后，后续五个里程碑是生成左室网格与纤维、流体 FEM 算子、GPU 流体求解、耦合时间推进和完整算例验收。afsi 当前选定示例以显式更新固体坐标为主，因此不把完整 Newton 求解器设为首阶段必需项。
+0.5.0 的对照入口为 `validation/export_dolfinx.py` 和 `validation/compare_dolfinx.py`，环境定义为 `validation/environment-dolfinx.yml`。0.6.0 本地回归 **61 passed, 52 skipped**，其中 CUDA 项尚待目标机器验证；见 [VALIDATION](docs/VALIDATION.md)。0.7.0 已完成生成左室网格与纤维，本地回归 74 passed、57 CUDA skipped。后续四个里程碑是流体 FEM 算子、GPU 流体求解、耦合时间推进和完整算例验收。afsi 当前选定示例以显式更新固体坐标为主，因此不把完整 Newton 求解器设为首阶段必需项。
 
 ## 来源
 
