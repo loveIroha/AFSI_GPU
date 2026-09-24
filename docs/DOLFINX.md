@@ -23,6 +23,8 @@ conda run --no-capture-output -n afsi-reference python validation/export_dolfinx
 
 第一次运行会编译 UFL 形式。输出 `status: exported` 仅表示参考数据导出成功，不代表 PyTorch 对照通过。
 
+若某些云主机在 `MPI_Init_thread` 阶段出现 UCX/RDMA 设备初始化错误，可在导出命令前设置 `UCX_TLS=tcp,self,sm`。这里是单 MPI 进程参考计算，不需要 RDMA。GitHub Actions 已明确配置此变量，避免云端可见但不可用的网络设备被自动选中；不修改用户机器的全局 MPI 设置。
+
 在已有 GPU 环境比较：
 
 ```bash

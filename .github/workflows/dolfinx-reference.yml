@@ -12,6 +12,10 @@ jobs:
   reference:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    env:
+      # This reference runs on one MPI rank. Cloud RDMA devices may be visible
+      # but unusable; avoid UCX selecting an unsupported verbs transport.
+      UCX_TLS: tcp,self,sm
     defaults:
       run:
         shell: bash -el {0}
