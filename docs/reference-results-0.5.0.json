@@ -1,0 +1,202 @@
+{
+  "code_commit": "1228f0d1185181dded4679538eef4f1a90ed5d4d",
+  "workflow": "https://github.com/loveIroha/AFSI_GPU/actions/runs/35985614102",
+  "reports": [
+    {
+      "status": "passed",
+      "device": "cpu",
+      "torch": "2.14.0+cpu",
+      "reference_sha256": "254d7b8f38b420e8f9589e75b4a1a918eb53ef515469166053fcccce58df8a66",
+      "reference": {
+        "schema": 1,
+        "producer": "dolfinx-ufl",
+        "dolfinx": "0.10.0",
+        "basix": "0.10.0",
+        "ufl": "2025.2.1",
+        "numpy": "2.5.3",
+        "cases": [
+          "reference",
+          "quadratic_deformation"
+        ],
+        "parameters": {
+          "C": 20000,
+          "bf": 8,
+          "bt": 2,
+          "bfs": 4,
+          "kappa": 500000
+        },
+        "mpi_size": 1,
+        "subdivisions": 1,
+        "volume_quadrature": "explicit Basix degree 6",
+        "surface_quadrature": "Basix default degree 6",
+        "tangent": "derivative of nodal force"
+      },
+      "nodes": 27,
+      "cells": 6,
+      "comparisons": {
+        "reference": {
+          "passive": {
+            "force_max_abs": 3.11349162867197e-10,
+            "force_scaled_l2": 1.1721714485046543e-9,
+            "tangent_max_abs": 1.0186340659856796e-10,
+            "tangent_scaled_l2": 3.423229428348851e-15
+          },
+          "active": {
+            "force_max_abs": 4.547473508864641e-13,
+            "force_scaled_l2": 1.448853278974854e-15,
+            "tangent_max_abs": 1.1136136058384012e-13,
+            "tangent_scaled_l2": 1.975397209537698e-15
+          },
+          "pressure": {
+            "force_max_abs": 3.562544400358051e-13,
+            "force_scaled_l2": 1.1645349912160672e-15,
+            "tangent_max_abs": 1.7053025658242404e-13,
+            "tangent_scaled_l2": 1.8356336605003216e-15
+          },
+          "spring": {
+            "force_max_abs": 1.555312879812955e-13,
+            "force_scaled_l2": 2.3358734553718904e-13,
+            "tangent_max_abs": 1.1368683772161603e-13,
+            "tangent_scaled_l2": 3.4824254928376163e-16
+          },
+          "total": {
+            "force_max_abs": 3.1161562219494954e-10,
+            "force_scaled_l2": 9.227381110604815e-13,
+            "tangent_max_abs": 1.000444171950221e-10,
+            "tangent_scaled_l2": 3.3854374711440488e-15
+          }
+        },
+        "quadratic_deformation": {
+          "passive": {
+            "force_max_abs": 5.456968210637569e-10,
+            "force_scaled_l2": 8.758098760773127e-15,
+            "tangent_max_abs": 1.418811734765768e-10,
+            "tangent_scaled_l2": 2.9807118995452547e-15
+          },
+          "active": {
+            "force_max_abs": 4.547473508864641e-13,
+            "force_scaled_l2": 1.5750457094321416e-15,
+            "tangent_max_abs": 1.1136136058384012e-13,
+            "tangent_scaled_l2": 1.975397209537698e-15
+          },
+          "pressure": {
+            "force_max_abs": 4.4198357829560544e-13,
+            "force_scaled_l2": 1.3544908038880821e-15,
+            "tangent_max_abs": 1.7763568394002505e-13,
+            "tangent_scaled_l2": 1.8714120701443412e-15
+          },
+          "spring": {
+            "force_max_abs": 1.5987211554602254e-13,
+            "force_scaled_l2": 4.595424359757909e-15,
+            "tangent_max_abs": 1.1368683772161603e-13,
+            "tangent_scaled_l2": 3.4824254928376163e-16
+          },
+          "total": {
+            "force_max_abs": 5.384208634495735e-10,
+            "force_scaled_l2": 8.841231866755083e-15,
+            "tangent_max_abs": 1.3460521586239338e-10,
+            "tangent_scaled_l2": 2.993616773013026e-15
+          }
+        }
+      }
+    },
+    {
+      "status": "passed",
+      "device": "cpu",
+      "torch": "2.14.0+cpu",
+      "reference_sha256": "6c014de282d2eff5e0bc4a27e1d119d35e93231f6ef717e60e6406bf381dcaee",
+      "reference": {
+        "schema": 1,
+        "producer": "dolfinx-ufl",
+        "dolfinx": "0.10.0",
+        "basix": "0.10.0",
+        "ufl": "2025.2.1",
+        "numpy": "2.5.3",
+        "cases": [
+          "reference",
+          "quadratic_deformation"
+        ],
+        "parameters": {
+          "C": 20000,
+          "bf": 8,
+          "bt": 2,
+          "bfs": 4,
+          "kappa": 500000
+        },
+        "mpi_size": 1,
+        "subdivisions": 2,
+        "volume_quadrature": "explicit Basix degree 6",
+        "surface_quadrature": "Basix default degree 6",
+        "tangent": "derivative of nodal force"
+      },
+      "nodes": 125,
+      "cells": 48,
+      "comparisons": {
+        "reference": {
+          "passive": {
+            "force_max_abs": 3.057770474494152e-10,
+            "force_scaled_l2": 1.3579638175912242e-9,
+            "tangent_max_abs": 9.868017514236271e-11,
+            "tangent_scaled_l2": 7.605816380774358e-15
+          },
+          "active": {
+            "force_max_abs": 3.623767952376511e-13,
+            "force_scaled_l2": 3.743196369547602e-15,
+            "tangent_max_abs": 7.727756811539856e-14,
+            "tangent_scaled_l2": 5.231850516507947e-15
+          },
+          "pressure": {
+            "force_max_abs": 2.892333946144546e-13,
+            "force_scaled_l2": 2.361391735705706e-15,
+            "tangent_max_abs": 1.0125233984581428e-13,
+            "tangent_scaled_l2": 3.5194807365578926e-15
+          },
+          "spring": {
+            "force_max_abs": 2.3444297437371558e-14,
+            "force_scaled_l2": 6.680630639339922e-14,
+            "tangent_max_abs": 4.263256414560601e-14,
+            "tangent_scaled_l2": 3.170996916475413e-16
+          },
+          "total": {
+            "force_max_abs": 3.0617197666060747e-10,
+            "force_scaled_l2": 1.9300992742230654e-12,
+            "tangent_max_abs": 9.708855941426009e-11,
+            "tangent_scaled_l2": 7.623043198522327e-15
+          }
+        },
+        "quadratic_deformation": {
+          "passive": {
+            "force_max_abs": 3.7471181713044643e-10,
+            "force_scaled_l2": 1.7033201498366814e-14,
+            "tangent_max_abs": 1.291482476517558e-10,
+            "tangent_scaled_l2": 6.715232012567996e-15
+          },
+          "active": {
+            "force_max_abs": 3.1086244689504383e-13,
+            "force_scaled_l2": 3.553533478245831e-15,
+            "tangent_max_abs": 7.727756811539856e-14,
+            "tangent_scaled_l2": 5.231850516507947e-15
+          },
+          "pressure": {
+            "force_max_abs": 2.950240466285833e-13,
+            "force_scaled_l2": 2.1763484092624555e-15,
+            "tangent_max_abs": 1.0835776720341528e-13,
+            "tangent_scaled_l2": 3.5448702744114702e-15
+          },
+          "spring": {
+            "force_max_abs": 3.108624468950438e-14,
+            "force_scaled_l2": 2.1950149832816208e-15,
+            "tangent_max_abs": 4.263256414560601e-14,
+            "tangent_scaled_l2": 3.170996916475413e-16
+          },
+          "total": {
+            "force_max_abs": 3.7562131183221936e-10,
+            "force_scaled_l2": 1.694640433448222e-14,
+            "tangent_max_abs": 1.375610736431554e-10,
+            "tangent_scaled_l2": 6.7284539391259705e-15
+          }
+        }
+      }
+    }
+  ]
+}

@@ -4,7 +4,14 @@
 
 本地 Windows CPU 回归：**48 passed, 44 skipped**；跳过项全部依赖 CUDA。语法编译检查通过。新增外部积分规则、全局自由度置换、坐标歧义拒绝和边界标记传递测试。CUDA 可用时应执行 **92 项**。
 
-本地没有 DOLFINx/Linux 运行环境，以上回归不等于实际 DOLFINx 装配验证。仓库增加 Linux Actions，运行真实 UFL/DOLFINx 导出与两种网格的 CPU PyTorch 对照；其结果以对应提交的 Actions 日志为准。本版目标 GPU 对照仍需用户运行。[运行说明](DOLFINX.md)。
+本地没有 DOLFINx/Linux 运行环境，以上回归不等于实际 DOLFINx 装配验证。随后在 GitHub Linux Actions **实际执行并通过**真实 UFL/DOLFINx 导出与两种网格的 CPU PyTorch 对照：[运行 35985614102](https://github.com/loveIroha/AFSI_GPU/actions/runs/35985614102)，代码提交 `1228f0d1185181dded4679538eef4f1a90ed5d4d`。
+
+| 网格 | 节点 | 所有力项/构形中节点力最大绝对差 | 切线作用最大绝对差 |
+| --- | --- | --- | --- |
+| 6 个四面体 | 27 | 5.456968210637569e-10 | 1.418811734765768e-10 |
+| 48 个四面体 | 125 | 3.7562131183221936e-10 | 1.375610736431554e-10 |
+
+每种网格比较两种构形、五个力项及其方向导数，共 40 组向量比较通过。Linux 回归同为 **48 passed, 44 skipped**；跳过项全部依赖 CUDA。环境：Ubuntu 24.04、DOLFINx 0.10.0、Basix 0.10.0、UFL 2025.2.1、PyTorch 2.14.0+cpu、NumPy 2.5.3。[完整误差报告](reference-results-0.5.0.json) 从该运行日志提取，包含参考数据 SHA-256 和版本。本版目标 GPU 对照仍需用户运行。[运行说明](DOLFINX.md)。
 
 ## 0.4.0：随动压力与基底弹簧
 

@@ -4,6 +4,8 @@
 
 当前版本 **0.5.0** 增加实际 DOLFINx/UFL 装配参考导出、CPU/CUDA PyTorch 逐项比较和 Linux 自动验证。详见 [DOLFINx 对照说明](docs/DOLFINX.md)。它比较两种构形下的五项节点力及切线作用，尚未运行原 afsi 完整算例。
 
+实际 Linux CPU 对照已经通过：[GitHub Actions 结果](https://github.com/loveIroha/AFSI_GPU/actions/runs/35985614102)。6/48 单元两种网格上共 40 组向量比较通过，所有节点力最大绝对差 5.46e-10、切线作用最大绝对差 1.42e-10。目标 RTX 4090 对照仍待执行。
+
 ## 第五步：实际 DOLFINx 对照
 
 更新代码后，首次创建独立 CPU 参考环境并导出数据：

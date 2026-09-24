@@ -59,6 +59,8 @@ CUDA_VISIBLE_DEVICES=0 python -m pytest -q
 
 GitHub Actions 的 `DOLFINx reference comparison` 在 Linux 上生成两种网格的实际参考数据，再在独立 CPU PyTorch 环境运行比较和回归测试。它不执行 CUDA。参考 NPZ 和 JSON 报告作为 `dolfinx-reference` artifact 保留 14 天；可下载相同 NPZ，在本地 GPU 环境执行比较。
 
+0.5.0 已完成 [首次实际 Linux CPU 对照](https://github.com/loveIroha/AFSI_GPU/actions/runs/35985614102)，两种网格全部通过。[参考数据下载](https://github.com/loveIroha/AFSI_GPU/actions/runs/35985614102/artifacts/10801408461) 需要登录 GitHub，受上述保留期限限制。解压后将 `coarse.npz`、`fine.npz` 放入 `validation/results/`，即可在 `afsi-torch` 中分别指定 `--reference validation/results/coarse.npz` 和 `--reference validation/results/fine.npz` 比较；这条路径无需在本地安装 DOLFINx。永久误差记录见 [验证记录](VALIDATION.md) 和 [JSON](reference-results-0.5.0.json)。
+
 支持单 MPI 进程、实数 FP64、直边四面体和固定参考材料场。拒绝多进程导出，以免把局部分区误当完整全局装配。尚未验证分布式幽灵节点、多 GPU、曲参考几何、真实心室网格或积分收敛；两个网格对照是离散一致性检查，不是物理解的收敛证明。
 
 ## API 依据
