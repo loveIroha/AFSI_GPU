@@ -1,10 +1,6 @@
-# AFSI_GPU：PyTorch P1/P2 非线性有限元验证
+# AFSI_GPU：PyTorch IB/FEM 流固耦合
 
-目标是逐步把 afsi 的 IB/FEM 计算移到 PyTorch。0.4.0 在 P1/P2、Neo-Hookean、Guccione 和给定主动张力基础上加入随动压力与参考表面基底弹簧，覆盖选定 afsi 示例的固体体积分和两个边界项。支持给定变形下的节点力及切线作用；尚未实现未知位移求解、流体求解和 IB 耦合。参考网格仍限于直边四面体。详见 [P2 数学说明](docs/P2.md)、[Guccione/主动应力](docs/GUCCIONE.md) 与 [表面压力和基底约束](docs/BOUNDARY.md)。
-
-0.5.0 增加实际 DOLFINx/UFL 装配参考导出、CPU/CUDA PyTorch 逐项比较和 Linux 自动验证。详见 [DOLFINx 对照说明](docs/DOLFINX.md)。它比较两种构形下的五项节点力及切线作用，尚未运行原 afsi 完整算例。
-
-0.6.0 增加四点 Peskin IB 速度插值和固体力散布，保持已有固体有限元模块。目标算例明确为**程序生成椭球左心室网格与纤维场**，不依赖已有心室网格文件。见 [IB 数学与接口](docs/IB.md) 和 [理想左室开发路线](docs/ROADMAP_LV.md)。当前没有流体求解和耦合时间推进。
+目标是在 GPU 上实现 AFSI 的非线性固体、背景流体与 IB 耦合，算例采用程序生成的厘米制理想左心室。当前已具备 P2 固体、Q2/Q1 流体、Chorin 求解及显式耦合时间步，并通过独立 DOLFINx/NumPy 对照；完整心动周期、收敛和长期稳定性仍待验收。
 
 ## 第十步：完整显式耦合与生成左室短程运行
 
@@ -19,6 +15,8 @@ CUDA_VISIBLE_DEVICES=0 python -m pytest -q
 ```
 
 本地 CPU **108 passed、80 CUDA skipped**；目标 GPU 环境应执行 **188 项**。可用 ParaView 打开输出的 `solid.pvd` 和 `fluid.pvd`；数值曲线在 `history.csv`，残量、散度与功率差在 `report.json`。沿用现有依赖。本版 GPU 验证尚待执行。
+
+[0.10.0 Linux 自动验证已通过](https://github.com/loveIroha/AFSI_GPU/actions/runs/36027419539)：三步完整耦合的 15 组数组与独立参考一致，生成左室的 10 步运行也通过。
 
 ## 第九步：GPU 流体三步求解
 

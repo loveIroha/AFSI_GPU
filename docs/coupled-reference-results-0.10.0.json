@@ -1,0 +1,816 @@
+{
+  "code_commit": "b6381ac9edb866233a82ce66269b2b93ca134b2b",
+  "workflow_url": "https://github.com/loveIroha/AFSI_GPU/actions/runs/36027419539",
+  "validation_device": "Linux CPU",
+  "pytest": {
+    "passed": 108,
+    "skipped_cuda": 80
+  },
+  "coupled_reference": {
+    "status": "passed",
+    "device": "cpu",
+    "torch": "2.14.0+cpu",
+    "reference": {
+      "schema": 1,
+      "producer": "dolfinx-numpy-ib-coupled",
+      "dolfinx": "0.10.0",
+      "basix": "0.10.0",
+      "counts": [
+        3,
+        3,
+        3
+      ],
+      "origin": [
+        -1.5,
+        -1.5,
+        -1.5
+      ],
+      "lengths": [
+        4,
+        4,
+        4
+      ],
+      "dt": 0.002,
+      "rho": 1,
+      "mu": 0.1,
+      "solid_mu": 3,
+      "solid_lam": 5,
+      "beta": 2,
+      "steps": 3,
+      "pressure_gauge": [
+        -1.5,
+        -1.5,
+        -1.5
+      ],
+      "pressure_formula": ".2+2*t",
+      "tension_formula": ".1+t",
+      "force_bootstrap": "zero",
+      "update": "flow, interpolate at old x, update x, assemble force at new x and old t, spread at new x",
+      "reference_solver": "DOLFINx/PETSc LU + scalar NumPy full-grid Peskin kernel"
+    },
+    "reference_sha256": "e8b996c0bb5188169d2e0b38cfcaf0d285aece1fdfdb1a6a29c59a3da98f286a",
+    "comparisons": [
+      {
+        "max_abs": {
+          "x": 0,
+          "force": 4.288236432614667e-15,
+          "velocity": 0,
+          "pressure": 0,
+          "applied_density": 0
+        },
+        "fluid": {
+          "solves": {
+            "tentative": {
+              "iterations": 0,
+              "residual_norm": 0,
+              "rhs_norm": 0,
+              "tolerance": 1e-12
+            },
+            "pressure": {
+              "iterations": 0,
+              "residual_norm": 0,
+              "rhs_norm": 0,
+              "tolerance": 1e-12
+            },
+            "correction": {
+              "iterations": 0,
+              "residual_norm": 0,
+              "rhs_norm": 0,
+              "tolerance": 1e-12
+            }
+          },
+          "pressure_full_residual_norm": 0,
+          "tentative_divergence_dual_norm": 0,
+          "corrected_divergence_dual_norm": 0,
+          "tentative_divergence_l2": 0,
+          "corrected_divergence_l2": 0,
+          "net_flux": 0,
+          "kinetic_energy": 0
+        },
+        "time_s": 0.002,
+        "used_force_time_s": null,
+        "next_force_time_s": 0,
+        "applied_force_norm_dyn": 0,
+        "next_force_norm_dyn": 0.3711551877243102,
+        "max_displacement_cm": 0,
+        "max_grid_displacement": 0,
+        "solid_power_erg_per_s": 0,
+        "lattice_power_erg_per_s": 0,
+        "lattice_power_error": 0,
+        "fe_power_erg_per_s": 0,
+        "fe_minus_solid_power": 0,
+        "spread_force_balance_max_abs": 0
+      },
+      {
+        "max_abs": {
+          "x": 1.1102230246251565e-16,
+          "force": 4.08006961549745e-15,
+          "velocity": 3.79260479358573e-13,
+          "pressure": 1.2736931735007895e-12,
+          "applied_density": 1.9845236565174673e-15
+        },
+        "fluid": {
+          "solves": {
+            "tentative": {
+              "iterations": 20,
+              "residual_norm": 1.234450007011102e-12,
+              "rhs_norm": 0.1048580165501992,
+              "tolerance": 1.048580165501992e-11
+            },
+            "pressure": {
+              "iterations": 20,
+              "residual_norm": 2.8086029456063563e-12,
+              "rhs_norm": 0.17386820060829006,
+              "tolerance": 1.7386820060829008e-11
+            },
+            "correction": {
+              "iterations": 15,
+              "residual_norm": 2.505202502698138e-13,
+              "rhs_norm": 0.00015465123607694806,
+              "tolerance": 1e-12
+            }
+          },
+          "pressure_full_residual_norm": 2.8090274457960972e-12,
+          "tentative_divergence_dual_norm": 0.0003477364511668922,
+          "corrected_divergence_dual_norm": 0.00006397206221525807,
+          "tentative_divergence_l2": 0.0009598154097516721,
+          "corrected_divergence_l2": 0.000982036709355158,
+          "net_flux": 0,
+          "kinetic_energy": 4.920978792306955e-8
+        },
+        "time_s": 0.004,
+        "used_force_time_s": 0,
+        "next_force_time_s": 0.002,
+        "applied_force_norm_dyn": 0.3711551877243102,
+        "next_force_norm_dyn": 0.3735403618533479,
+        "max_displacement_cm": 1.9339815836648695e-7,
+        "max_grid_displacement": 2.899246013774995e-7,
+        "solid_power_erg_per_s": 0.00007394784118336774,
+        "lattice_power_erg_per_s": 0.00007394784118336775,
+        "lattice_power_error": 1.3552527156068805e-20,
+        "fe_power_erg_per_s": 0.00005325678344208156,
+        "fe_minus_solid_power": -0.00002069105774128618,
+        "spread_force_balance_max_abs": 8.326672684688674e-17
+      },
+      {
+        "max_abs": {
+          "x": 2.220446049250313e-16,
+          "force": 5.93275428784068e-15,
+          "velocity": 8.494577654130642e-13,
+          "pressure": 2.965466934512495e-11,
+          "applied_density": 1.762479051592436e-15
+        },
+        "fluid": {
+          "solves": {
+            "tentative": {
+              "iterations": 20,
+              "residual_norm": 1.2354237632843267e-12,
+              "rhs_norm": 0.1770160585540824,
+              "tolerance": 1.770160585540824e-11
+            },
+            "pressure": {
+              "iterations": 19,
+              "residual_norm": 3.228312389192803e-12,
+              "rhs_norm": 0.20485787251641766,
+              "tolerance": 2.0485787251641767e-11
+            },
+            "correction": {
+              "iterations": 15,
+              "residual_norm": 3.3200054477524797e-13,
+              "rhs_norm": 0.00030461840290877285,
+              "tolerance": 1e-12
+            }
+          },
+          "pressure_full_residual_norm": 3.2288725011777876e-12,
+          "tentative_divergence_dual_norm": 0.0004097166681173804,
+          "corrected_divergence_dual_norm": 0.00008247611634673807,
+          "tentative_divergence_l2": 0.0018964616091835273,
+          "corrected_divergence_l2": 0.0019839911271272454,
+          "net_flux": -1.6263032587282567e-19,
+          "kinetic_energy": 1.9464070739851616e-7
+        },
+        "time_s": 0.006,
+        "used_force_time_s": 0.002,
+        "next_force_time_s": 0.004,
+        "applied_force_norm_dyn": 0.3735403618533479,
+        "next_force_norm_dyn": 0.3759316930578575,
+        "max_displacement_cm": 3.804541661599058e-7,
+        "max_grid_displacement": 5.704138377835139e-7,
+        "solid_power_erg_per_s": 0.0001453047822268282,
+        "lattice_power_erg_per_s": 0.00014530478222682817,
+        "lattice_power_error": 2.710505431213761e-20,
+        "fe_power_erg_per_s": 0.00010372696759667984,
+        "fe_minus_solid_power": -0.00004157781463014836,
+        "spread_force_balance_max_abs": 2.7755575615628914e-17
+      }
+    ]
+  },
+  "generated_lv": {
+    "status": "passed",
+    "device": "cpu",
+    "torch": "2.14.0+cpu",
+    "units": {
+      "length": "cm",
+      "volume": "cm^3 (mL)",
+      "time": "s",
+      "mass": "g",
+      "force": "dyn",
+      "stress": "dyn/cm^2",
+      "pressure": "dyn/cm^2",
+      "energy": "erg",
+      "spring_coefficient": "dyn/cm^3"
+    },
+    "solid_config": {
+      "inner_axes": [
+        2.5,
+        2.5,
+        4.5
+      ],
+      "outer_axes": [
+        3.5,
+        3.5,
+        5.5
+      ],
+      "base_height": 1.5,
+      "mesh_size": 1.2,
+      "center": [
+        0,
+        0,
+        0
+      ]
+    },
+    "loads": {
+      "pressure_mmhg": 8,
+      "tension": 1000,
+      "ramp_time": 0.01
+    },
+    "material": {
+      "C": 20000,
+      "bf": 8,
+      "bt": 2,
+      "bfs": 4,
+      "kappa": 500000
+    },
+    "beta": 500000,
+    "fluid_counts": [
+      6,
+      6,
+      6
+    ],
+    "fluid_lengths_cm": [
+      12,
+      12,
+      12
+    ],
+    "fluid_origin_cm": [
+      -6,
+      -6,
+      -8
+    ],
+    "dt_s": 0.0001,
+    "steps": 10,
+    "simulated_time_s": 0.001,
+    "solid_nodes": 1276,
+    "solid_cells": 616,
+    "fluid_velocity_nodes": 2197,
+    "fluid_pressure_nodes": 343,
+    "force_path": "IB density followed by consistent fluid mass",
+    "ordering": "zero bootstrap; flow; x += dt H(x_old) u_new; force(x_new,t_old)",
+    "initial": {
+      "step": 0,
+      "time_s": 0,
+      "cavity_volume_ml": 82.75809228453295,
+      "wall_volume_cm3": 108.92394775377977,
+      "minimum_detF": 0.9999999999999869,
+      "maximum_detF": 1.0000000000000135,
+      "passive_energy_erg": 8.930363520177045e-23,
+      "spring_energy_erg": 0,
+      "max_total_displacement_cm": 0
+    },
+    "history": [
+      {
+        "step": 1,
+        "fluid": {
+          "solves": {
+            "tentative": {
+              "iterations": 0,
+              "residual_norm": 0,
+              "rhs_norm": 0,
+              "tolerance": 1e-12
+            },
+            "pressure": {
+              "iterations": 0,
+              "residual_norm": 0,
+              "rhs_norm": 0,
+              "tolerance": 1e-12
+            },
+            "correction": {
+              "iterations": 0,
+              "residual_norm": 0,
+              "rhs_norm": 0,
+              "tolerance": 1e-12
+            }
+          },
+          "pressure_full_residual_norm": 0,
+          "tentative_divergence_dual_norm": 0,
+          "corrected_divergence_dual_norm": 0,
+          "tentative_divergence_l2": 0,
+          "corrected_divergence_l2": 0,
+          "net_flux": 0,
+          "kinetic_energy": 0
+        },
+        "time_s": 0.0001,
+        "used_force_time_s": null,
+        "next_force_time_s": 0,
+        "applied_force_norm_dyn": 0,
+        "next_force_norm_dyn": 1.0856368669402935e-8,
+        "max_displacement_cm": 0,
+        "max_grid_displacement": 0,
+        "solid_power_erg_per_s": 0,
+        "lattice_power_erg_per_s": 0,
+        "lattice_power_error": 0,
+        "fe_power_erg_per_s": 0,
+        "fe_minus_solid_power": 0,
+        "spread_force_balance_max_abs": 0,
+        "cavity_volume_ml": 82.75809228453295,
+        "wall_volume_cm3": 108.92394775377977,
+        "minimum_detF": 0.9999999999999869,
+        "maximum_detF": 1.0000000000000135,
+        "passive_energy_erg": 8.930363520177045e-23,
+        "spring_energy_erg": 0,
+        "max_total_displacement_cm": 0
+      },
+      {
+        "step": 2,
+        "fluid": {
+          "solves": {
+            "tentative": {
+              "iterations": 5,
+              "residual_norm": 4.891789324989863e-13,
+              "rhs_norm": 9.062178085288042e-10,
+              "tolerance": 1e-12
+            },
+            "pressure": {
+              "iterations": 10,
+              "residual_norm": 9.327235930870207e-13,
+              "rhs_norm": 1.4164350972529671e-9,
+              "tolerance": 1e-12
+            },
+            "correction": {
+              "iterations": 0,
+              "residual_norm": 6.299921175312799e-14,
+              "rhs_norm": 5.180179762285865e-14,
+              "tolerance": 1e-12
+            }
+          },
+          "pressure_full_residual_norm": 3.645665719677197e-12,
+          "tentative_divergence_dual_norm": 1.4164350972591264e-13,
+          "corrected_divergence_dual_norm": 1.4164350972591264e-13,
+          "tentative_divergence_l2": 1.5327643781298577e-13,
+          "corrected_divergence_l2": 1.5327643781298577e-13,
+          "net_flux": 6.310887241768095e-30,
+          "kinetic_energy": 3.71867349716393e-27
+        },
+        "time_s": 0.0002,
+        "used_force_time_s": 0,
+        "next_force_time_s": 0.0001,
+        "applied_force_norm_dyn": 1.0856368669402935e-8,
+        "next_force_norm_dyn": 579.696741535077,
+        "max_displacement_cm": 4.596772828614206e-19,
+        "max_grid_displacement": 4.592065568068399e-19,
+        "solid_power_erg_per_s": 8.661777015733233e-23,
+        "lattice_power_erg_per_s": 8.661777015733234e-23,
+        "lattice_power_error": 1.1754943508222875e-38,
+        "fe_power_erg_per_s": 7.439853115525724e-23,
+        "fe_minus_solid_power": -1.2219239002075085e-23,
+        "spread_force_balance_max_abs": 1.0339757656912846e-24,
+        "cavity_volume_ml": 82.75809228453295,
+        "wall_volume_cm3": 108.92394775377977,
+        "minimum_detF": 0.9999999999999869,
+        "maximum_detF": 1.0000000000000135,
+        "passive_energy_erg": 8.930242967149896e-23,
+        "spring_energy_erg": 0,
+        "max_total_displacement_cm": 3.2526065174565133e-19
+      },
+      {
+        "step": 3,
+        "fluid": {
+          "solves": {
+            "tentative": {
+              "iterations": 24,
+              "residual_norm": 4.038997799373183e-8,
+              "rhs_norm": 555.8733038670691,
+              "tolerance": 5.5587330386706916e-8
+            },
+            "pressure": {
+              "iterations": 36,
+              "residual_norm": 4.4013621007660534e-8,
+              "rhs_norm": 866.3723004221648,
+              "tolerance": 8.663723004221649e-8
+            },
+            "correction": {
+              "iterations": 23,
+              "residual_norm": 1.6150564034515867e-12,
+              "rhs_norm": 0.022032182222150493,
+              "tolerance": 2.2032182222150494e-12
+            }
+          },
+          "pressure_full_residual_norm": 4.401473595993483e-8,
+          "tentative_divergence_dual_norm": 0.08663723004221649,
+          "corrected_divergence_dual_norm": 0.009319997788633568,
+          "tentative_divergence_l2": 0.052355213995112254,
+          "corrected_divergence_l2": 0.04257120411788113,
+          "net_flux": 3.469446951953614e-18,
+          "kinetic_energy": 0.0002644032965372954
+        },
+        "time_s": 0.00030000000000000003,
+        "used_force_time_s": 0.0001,
+        "next_force_time_s": 0.0002,
+        "applied_force_norm_dyn": 579.696741535077,
+        "next_force_norm_dyn": 1159.2919745587476,
+        "max_displacement_cm": 1.396320835683109e-7,
+        "max_grid_displacement": 1.3566705704100904e-7,
+        "solid_power_erg_per_s": 9.33889510039,
+        "lattice_power_erg_per_s": 9.338895100390001,
+        "lattice_power_error": 1.7763568394002505e-15,
+        "fe_power_erg_per_s": 6.9709587016886925,
+        "fe_minus_solid_power": -2.367936398701307,
+        "spread_force_balance_max_abs": 2.2737367544323206e-13,
+        "cavity_volume_ml": 82.75810061455961,
+        "wall_volume_cm3": 108.92394305275619,
+        "minimum_detF": 0.9999998163486886,
+        "maximum_detF": 1.0000001158973495,
+        "passive_energy_erg": 2.880476743172051e-7,
+        "spring_energy_erg": 9.27781446120018e-9,
+        "max_total_displacement_cm": 1.3963208371865917e-7
+      },
+      {
+        "step": 4,
+        "fluid": {
+          "solves": {
+            "tentative": {
+              "iterations": 24,
+              "residual_norm": 8.094005192845176e-8,
+              "rhs_norm": 1254.5310458581307,
+              "tolerance": 1.2545310458581308e-7
+            },
+            "pressure": {
+              "iterations": 36,
+              "residual_norm": 5.018299247241441e-8,
+              "rhs_norm": 1822.2817836161967,
+              "tolerance": 1.8222817836161967e-7
+            },
+            "correction": {
+              "iterations": 23,
+              "residual_norm": 3.3067882310251465e-12,
+              "rhs_norm": 0.06505619777991516,
+              "tolerance": 6.505619777991516e-12
+            }
+          },
+          "pressure_full_residual_norm": 5.0184152757677036e-8,
+          "tentative_divergence_dual_norm": 0.18222817836173563,
+          "corrected_divergence_dual_norm": 0.019792329071524346,
+          "tentative_divergence_l2": 0.13244071275906447,
+          "corrected_divergence_l2": 0.1292605165738696,
+          "net_flux": -5.551115123125783e-17,
+          "kinetic_energy": 0.002332791025460183
+        },
+        "time_s": 0.0004,
+        "used_force_time_s": 0.0002,
+        "next_force_time_s": 0.00030000000000000003,
+        "applied_force_norm_dyn": 1159.2919745587476,
+        "next_force_norm_dyn": 1738.6870837367392,
+        "max_displacement_cm": 4.0066485588965816e-7,
+        "max_grid_displacement": 3.892607706229376e-7,
+        "solid_power_erg_per_s": 52.754767027578524,
+        "lattice_power_erg_per_s": 52.754767027578524,
+        "lattice_power_error": 0,
+        "fe_power_erg_per_s": 38.439559910065164,
+        "fe_minus_solid_power": -14.31520711751336,
+        "spread_force_balance_max_abs": 4.547473508864641e-13,
+        "cavity_volume_ml": 82.75812397618776,
+        "wall_volume_cm3": 108.92392923055563,
+        "minimum_detF": 0.9999992639082075,
+        "maximum_detF": 1.0000004662000586,
+        "passive_energy_erg": 0.000004611375276325986,
+        "spring_energy_erg": 1.370571261861395e-7,
+        "max_total_displacement_cm": 5.402814302735018e-7
+      },
+      {
+        "step": 5,
+        "fluid": {
+          "solves": {
+            "tentative": {
+              "iterations": 24,
+              "residual_norm": 1.2164413869570823e-7,
+              "rhs_norm": 2091.375272396464,
+              "tolerance": 2.091375272396464e-7
+            },
+            "pressure": {
+              "iterations": 35,
+              "residual_norm": 2.230677255175518e-7,
+              "rhs_norm": 2788.6058529781453,
+              "tolerance": 2.7886058529781456e-7
+            },
+            "correction": {
+              "iterations": 23,
+              "residual_norm": 5.0546004196650115e-12,
+              "rhs_norm": 0.12916451935882456,
+              "tolerance": 1.2916451935882456e-11
+            }
+          },
+          "pressure_full_residual_norm": 2.2309438596720113e-7,
+          "tentative_divergence_dual_norm": 0.2788605852982229,
+          "corrected_divergence_dual_norm": 0.0304247745118646,
+          "tentative_divergence_l2": 0.24843221665373091,
+          "corrected_divergence_l2": 0.2603179790191931,
+          "net_flux": -2.7755575615628914e-17,
+          "kinetic_energy": 0.009247950929884279
+        },
+        "time_s": 0.0005,
+        "used_force_time_s": 0.00030000000000000003,
+        "next_force_time_s": 0.0004,
+        "applied_force_norm_dyn": 1738.6870837367392,
+        "next_force_norm_dyn": 2317.7903042378393,
+        "max_displacement_cm": 7.811947597460367e-7,
+        "max_grid_displacement": 7.602852605274425e-7,
+        "solid_power_erg_per_s": 152.72997790583935,
+        "lattice_power_erg_per_s": 152.72997790583935,
+        "lattice_power_error": 0,
+        "fe_power_erg_per_s": 109.6434920859453,
+        "fe_minus_solid_power": -43.08648581989405,
+        "spread_force_balance_max_abs": 8.526512829121202e-13,
+        "cavity_volume_ml": 82.75816889167655,
+        "wall_volume_cm3": 108.92390195385076,
+        "minimum_detF": 0.9999981571698959,
+        "maximum_detF": 1.0000011698308455,
+        "passive_energy_erg": 0.00002883085398957796,
+        "spring_energy_erg": 8.135987445598221e-7,
+        "max_total_displacement_cm": 0.0000013214405816283967
+      },
+      {
+        "step": 6,
+        "fluid": {
+          "solves": {
+            "tentative": {
+              "iterations": 24,
+              "residual_norm": 1.6248819994743814e-7,
+              "rhs_norm": 3087.8768967385545,
+              "tolerance": 3.0878768967385546e-7
+            },
+            "pressure": {
+              "iterations": 35,
+              "residual_norm": 2.241828671270796e-7,
+              "rhs_norm": 3756.3206303287175,
+              "tolerance": 3.7563206303287176e-7
+            },
+            "correction": {
+              "iterations": 22,
+              "residual_norm": 1.7677755824061942e-11,
+              "rhs_norm": 0.21437943458418038,
+              "tolerance": 2.143794345841804e-11
+            }
+          },
+          "pressure_full_residual_norm": 2.2420819217281632e-7,
+          "tentative_divergence_dual_norm": 0.3756320630337255,
+          "corrected_divergence_dual_norm": 0.04108276382454243,
+          "tentative_divergence_l2": 0.40511637019971625,
+          "corrected_divergence_l2": 0.43566592568602514,
+          "net_flux": 1.3877787807814457e-17,
+          "kinetic_energy": 0.025554888980956026
+        },
+        "time_s": 0.0006000000000000001,
+        "used_force_time_s": 0.0004,
+        "next_force_time_s": 0.0005,
+        "applied_force_norm_dyn": 2317.7903042378393,
+        "next_force_norm_dyn": 2896.5172789028265,
+        "max_displacement_cm": 0.0000012807578748092595,
+        "max_grid_displacement": 0.0000012478163825241127,
+        "solid_power_erg_per_s": 331.45082875977255,
+        "lattice_power_erg_per_s": 331.45082875977255,
+        "lattice_power_error": 0,
+        "fe_power_erg_per_s": 235.60287928723065,
+        "fe_minus_solid_power": -95.8479494725419,
+        "spread_force_balance_max_abs": 9.094947017729282e-13,
+        "cavity_volume_ml": 82.75824184488319,
+        "wall_volume_cm3": 108.92385692586363,
+        "minimum_detF": 0.999996312077894,
+        "maximum_detF": 1.000002345379737,
+        "passive_energy_erg": 0.00011530775631229765,
+        "spring_energy_erg": 0.0000031392392253987584,
+        "max_total_displacement_cm": 0.0000026021439578141784
+      },
+      {
+        "step": 7,
+        "fluid": {
+          "solves": {
+            "tentative": {
+              "iterations": 23,
+              "residual_norm": 4.0875486988451816e-7,
+              "rhs_norm": 4260.300259845506,
+              "tolerance": 4.260300259845506e-7
+            },
+            "pressure": {
+              "iterations": 35,
+              "residual_norm": 2.2477853564271514e-7,
+              "rhs_norm": 4724.29064720247,
+              "tolerance": 4.72429064720247e-7
+            },
+            "correction": {
+              "iterations": 22,
+              "residual_norm": 2.2272632941183e-11,
+              "rhs_norm": 0.32067179394038037,
+              "tolerance": 3.2067179394038037e-11
+            }
+          },
+          "pressure_full_residual_norm": 2.2480297073791118e-7,
+          "tentative_divergence_dual_norm": 0.47242906472166957,
+          "corrected_divergence_dual_norm": 0.051745852510485524,
+          "tentative_divergence_l2": 0.604307181298478,
+          "corrected_divergence_l2": 0.6551234123845604,
+          "net_flux": -5.551115123125783e-17,
+          "kinetic_energy": 0.05728346506660452
+        },
+        "time_s": 0.0007,
+        "used_force_time_s": 0.0005,
+        "next_force_time_s": 0.0006000000000000001,
+        "applied_force_norm_dyn": 2896.5172789028265,
+        "next_force_norm_dyn": 3474.7928908718072,
+        "max_displacement_cm": 0.0000018989522493094578,
+        "max_grid_displacement": 0.000001851394882559054,
+        "solid_power_erg_per_s": 610.805962035135,
+        "lattice_power_erg_per_s": 610.8059620351352,
+        "lattice_power_error": 1.1368683772161603e-13,
+        "fe_power_erg_per_s": 431.15652353676495,
+        "fe_minus_solid_power": -179.6494384983701,
+        "spread_force_balance_max_abs": 8.384404281969182e-13,
+        "cavity_volume_ml": 82.75834929235904,
+        "wall_volume_cm3": 108.92378988294148,
+        "minimum_detF": 0.9999935456832935,
+        "maximum_detF": 1.0000041108613775,
+        "passive_energy_erg": 0.0003529051536684795,
+        "spring_energy_erg": 0.000009359842352628508,
+        "max_total_displacement_cm": 0.000004501025775751749
+      },
+      {
+        "step": 8,
+        "fluid": {
+          "solves": {
+            "tentative": {
+              "iterations": 23,
+              "residual_norm": 4.91739358397263e-7,
+              "rhs_norm": 5619.145412503127,
+              "tolerance": 5.619145412503127e-7
+            },
+            "pressure": {
+              "iterations": 35,
+              "residual_norm": 2.2534814713051178e-7,
+              "rhs_norm": 5692.364787145941,
+              "tolerance": 5.692364787145941e-7
+            },
+            "correction": {
+              "iterations": 22,
+              "residual_norm": 2.6884987324467352e-11,
+              "rhs_norm": 0.44798462929851196,
+              "tolerance": 4.4798462929851195e-11
+            }
+          },
+          "pressure_full_residual_norm": 2.2537184609193758e-7,
+          "tentative_divergence_dual_norm": 0.569236478716668,
+          "corrected_divergence_dual_norm": 0.06241054025242833,
+          "tentative_divergence_l2": 0.8465873930505387,
+          "corrected_divergence_l2": 0.9184503432442531,
+          "net_flux": -1.1102230246251565e-16,
+          "kinetic_energy": 0.11192435195634581
+        },
+        "time_s": 0.0008,
+        "used_force_time_s": 0.0006000000000000001,
+        "next_force_time_s": 0.0007,
+        "applied_force_norm_dyn": 3474.7928908718072,
+        "next_force_norm_dyn": 4052.5533635642837,
+        "max_displacement_cm": 0.0000026353037895547906,
+        "max_grid_displacement": 0.0000025704831995800252,
+        "solid_power_erg_per_s": 1012.2969871522081,
+        "lattice_power_erg_per_s": 1012.2969871522081,
+        "lattice_power_error": 0,
+        "fe_power_erg_per_s": 710.905359781649,
+        "fe_minus_solid_power": -301.39162737055904,
+        "spread_force_balance_max_abs": 8.668621376273222e-13,
+        "cavity_volume_ml": 82.75849766013292,
+        "wall_volume_cm3": 108.9236965996917,
+        "minimum_detF": 0.9999896765328471,
+        "maximum_detF": 1.0000065835667242,
+        "passive_energy_erg": 0.0009024329427810969,
+        "spring_energy_erg": 0.000023465715127777904,
+        "max_total_displacement_cm": 0.000007136246436034476
+      },
+      {
+        "step": 9,
+        "fluid": {
+          "solves": {
+            "tentative": {
+              "iterations": 23,
+              "residual_norm": 5.751450228269002e-7,
+              "rhs_norm": 7170.9150954477345,
+              "tolerance": 7.170915095447735e-7
+            },
+            "pressure": {
+              "iterations": 35,
+              "residual_norm": 2.2598763366278474e-7,
+              "rhs_norm": 6660.53159414273,
+              "tolerance": 6.66053159414273e-7
+            },
+            "correction": {
+              "iterations": 22,
+              "residual_norm": 3.150823127433633e-11,
+              "rhs_norm": 0.5962423634506733,
+              "tolerance": 5.962423634506734e-11
+            }
+          },
+          "pressure_full_residual_norm": 2.260107043853116e-7,
+          "tentative_divergence_dual_norm": 0.6660531594170455,
+          "corrected_divergence_dual_norm": 0.07307624467995931,
+          "tentative_divergence_l2": 1.1320385451190187,
+          "corrected_divergence_l2": 1.2253582466236081,
+          "net_flux": -1.942890293094024e-16,
+          "kinetic_energy": 0.19839980160699167
+        },
+        "time_s": 0.0009000000000000001,
+        "used_force_time_s": 0.0007,
+        "next_force_time_s": 0.0008,
+        "applied_force_norm_dyn": 4052.5533635642837,
+        "next_force_norm_dyn": 4629.748362709818,
+        "max_displacement_cm": 0.000003489254493789417,
+        "max_grid_displacement": 0.00000340445288922247,
+        "solid_power_erg_per_s": 1556.9531810495512,
+        "lattice_power_erg_per_s": 1556.953181049551,
+        "lattice_power_error": 2.2737367544323206e-13,
+        "fe_power_erg_per_s": 1089.158908120794,
+        "fe_minus_solid_power": -467.7942729287572,
+        "spread_force_balance_max_abs": 9.308109838457312e-13,
+        "cavity_volume_ml": 82.75869333877688,
+        "wall_volume_cm3": 108.92357289548599,
+        "minimum_detF": 0.9999845249296442,
+        "maximum_detF": 1.000009879930961,
+        "passive_energy_erg": 0.0020273220136297677,
+        "spring_energy_erg": 0.00005191025208035252,
+        "max_total_displacement_cm": 0.000010625408185034436
+      },
+      {
+        "step": 10,
+        "fluid": {
+          "solves": {
+            "tentative": {
+              "iterations": 23,
+              "residual_norm": 6.589606292289415e-7,
+              "rhs_norm": 8919.503184937459,
+              "tolerance": 8.91950318493746e-7
+            },
+            "pressure": {
+              "iterations": 34,
+              "residual_norm": 7.586077800455636e-7,
+              "rhs_norm": 7628.805221520198,
+              "tolerance": 7.628805221520199e-7
+            },
+            "correction": {
+              "iterations": 22,
+              "residual_norm": 3.6131304777509437e-11,
+              "rhs_norm": 0.7653545264582265,
+              "tolerance": 7.653545264582266e-11
+            }
+          },
+          "pressure_full_residual_norm": 7.586637951434201e-7,
+          "tentative_divergence_dual_norm": 0.7628805221555122,
+          "corrected_divergence_dual_norm": 0.08374302482308334,
+          "tentative_divergence_l2": 1.4605102108160473,
+          "corrected_divergence_l2": 1.5755139242389549,
+          "net_flux": -7.771561172376096e-16,
+          "kinetic_energy": 0.3270294561199785
+        },
+        "time_s": 0.001,
+        "used_force_time_s": 0.0008,
+        "next_force_time_s": 0.0009000000000000001,
+        "applied_force_norm_dyn": 4629.748362709818,
+        "next_force_norm_dyn": 5206.343045650595,
+        "max_displacement_cm": 0.000004460162980452299,
+        "max_grid_displacement": 0.0000043525838400843944,
+        "solid_power_erg_per_s": 2265.2506757790075,
+        "lattice_power_erg_per_s": 2265.2506757790075,
+        "lattice_power_error": 0,
+        "fe_power_erg_per_s": 1579.8852064898547,
+        "fe_minus_solid_power": -685.3654692891528,
+        "spread_force_balance_max_abs": 2.4300561562995426e-12,
+        "cavity_volume_ml": 82.75894267828261,
+        "wall_volume_cm3": 108.92341464113328,
+        "minimum_detF": 0.9999779131937808,
+        "maximum_detF": 1.0000141154051465,
+        "passive_energy_erg": 0.004129271621142614,
+        "spring_energy_erg": 0.00010444387669024347,
+        "max_total_displacement_cm": 0.000015085471639183553
+      }
+    ],
+    "coupled_time_stepping": true,
+    "physiological_cycle": false,
+    "convergence_study_completed": false
+  }
+}

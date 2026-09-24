@@ -63,6 +63,8 @@ CUDA_VISIBLE_DEVICES=0 python -m pytest -q
 
 ## 独立耦合参考
 
+[本版 Linux CPU 验证已通过](https://github.com/loveIroha/AFSI_GPU/actions/runs/36027419539)：15 组数组全部通过，位置最大差 2.22e-16 cm、速度 8.49e-13 cm/s、压力 2.97e-11 dyn/cm²。完整回归 108 passed、80 CUDA skipped。目标 CUDA 验证仍需下述命令。
+
 `export_coupled_dolfinx.py` 在独立 CPU 环境执行小型弹性体：UFL 装配 Neo-Hookean 被动力、给定主动张力、压力及基底项；纯 NumPy 逐格点计算 Peskin 核；DOLFINx/PETSc LU 求解流体；按同一滞后顺序推进三步。参考不导入 PyTorch，不复用生产 IB 索引/散布，也不执行原 afsi C++ 二进制。它验证整条耦合链；左室 Guccione 单项由已有独立固体对照覆盖。
 
 ```bash

@@ -2,6 +2,8 @@
 
 ## 0.10.0：显式 IB/FEM 耦合
 
+[Linux 自动验证 36027419539](https://github.com/loveIroha/AFSI_GPU/actions/runs/36027419539) 已全部通过，代码提交 `b6381ac9edb866233a82ce66269b2b93ca134b2b`。完整回归 **108 passed、80 CUDA skipped**。独立 UFL 固体 + NumPy 全格点 IB + PETSc LU 耦合参考连续推进 3 步，15 组数组全部通过；最大绝对差：位置 2.22e-16 cm、节点力 5.93e-15 dyn、速度 8.49e-13 cm/s、压力 2.97e-11 dyn/cm²、力密度 1.98e-15 dyn/cm³。默认生成左室 10 步、体积/位移输出也通过；[完整报告](coupled-reference-results-0.10.0.json)。本版目标 GPU 尚待执行。
+
 本地 CPU 完整回归 **108 passed、80 CUDA skipped**，共 188 项。新增测试覆盖零力启动和载荷滞后、旧位置插值/新位置受力、跨格点移动重建支撑、小型非线性弹性体、失败不修改旧状态、CPU/CUDA 对照、生成左室短程推进及 ParaView 输出。默认左室 10 步运行通过，详见 [COUPLING](COUPLING.md)。本版尚待目标 GPU 验证，实际 DOLFINx/NumPy 耦合对照由 Linux CI 执行并单独记录。
 
 ## 0.9.0：Chorin 三步求解
