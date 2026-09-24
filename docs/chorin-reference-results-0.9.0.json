@@ -1,0 +1,519 @@
+{
+  "code_commit": "21695e89619531f5be7f9de3693d4869525a0980",
+  "workflow_url": "https://github.com/loveIroha/AFSI_GPU/actions/runs/36024695559",
+  "validation_device": "Linux CPU",
+  "pytest": {
+    "passed": 100,
+    "skipped_cuda": 74
+  },
+  "reports": [
+    {
+      "status": "passed",
+      "device": "cpu",
+      "torch": "2.14.0+cpu",
+      "reference": {
+        "schema": 1,
+        "producer": "dolfinx-ufl-chorin",
+        "dolfinx": "0.10.0",
+        "basix": "0.10.0",
+        "ufl": "2025.2.1",
+        "counts": [
+          2,
+          2,
+          2
+        ],
+        "origin": [
+          -0.3,
+          0.2,
+          -0.5
+        ],
+        "lengths": [
+          1.4,
+          1.1,
+          0.9
+        ],
+        "dt": 0.025,
+        "rho": 1.1,
+        "mu": 0.15,
+        "pressure_value": 0.7,
+        "gauge_coordinate": [
+          -0.3,
+          0.2,
+          -0.5
+        ],
+        "steps": 3,
+        "cases": [
+          "stationary_boundary",
+          "translating_boundary"
+        ],
+        "quadrature_degree": 8,
+        "linear_solver": "PETSc LU"
+      },
+      "reference_sha256": "80e06cce62f3253c7d36e5bbed9b7d34cbc6c45e2f1add95725acd2895af29ec",
+      "comparisons": {
+        "stationary_boundary": [
+          {
+            "max_abs": {
+              "tentative_velocity": 2.6287028109805988e-12,
+              "pressure": 9.859824068314538e-11,
+              "velocity": 4.1068329292848205e-12
+            },
+            "solves": {
+              "tentative": {
+                "iterations": 13,
+                "residual_norm": 6.145142291773931e-12,
+                "rhs_norm": 0.2507198597968656,
+                "tolerance": 2.5071985979686564e-11
+              },
+              "pressure": {
+                "iterations": 18,
+                "residual_norm": 5.162174401824063e-11,
+                "rhs_norm": 0.5575674643920694,
+                "tolerance": 5.575674643920694e-11
+              },
+              "correction": {
+                "iterations": 10,
+                "residual_norm": 1.4182903400535132e-18,
+                "rhs_norm": 0.0017213048982662414,
+                "tolerance": 1e-12
+              }
+            },
+            "pressure_full_residual_norm": 5.1626105762594493e-11,
+            "tentative_divergence_dual_norm": 0.013423590757550376,
+            "corrected_divergence_dual_norm": 0.0033166275881568834,
+            "tentative_divergence_l2": 0.07760652620562775,
+            "corrected_divergence_l2": 0.03349392571766654,
+            "net_flux": 3.469446951953614e-18,
+            "kinetic_energy": 0.00007654192127279087
+          },
+          {
+            "max_abs": {
+              "tentative_velocity": 1.8172206794897505e-11,
+              "pressure": 3.274203130843034e-11,
+              "velocity": 1.654539005802036e-11
+            },
+            "solves": {
+              "tentative": {
+                "iterations": 12,
+                "residual_norm": 2.053100848760993e-11,
+                "rhs_norm": 0.21891530606349843,
+                "tolerance": 2.1891530606349845e-11
+              },
+              "pressure": {
+                "iterations": 19,
+                "residual_norm": 3.870247999499808e-12,
+                "rhs_norm": 0.43572426254658975,
+                "tolerance": 4.357242625465897e-11
+              },
+              "correction": {
+                "iterations": 10,
+                "residual_norm": 1.3237184722353355e-18,
+                "rhs_norm": 0.0017175207722083846,
+                "tolerance": 1e-12
+              }
+            },
+            "pressure_full_residual_norm": 3.871113284247705e-12,
+            "tentative_divergence_dual_norm": 0.010700280913758086,
+            "corrected_divergence_dual_norm": 0.002695994321884154,
+            "tentative_divergence_l2": 0.06444560378687797,
+            "corrected_divergence_l2": 0.03704258529404785,
+            "net_flux": 1.5178830414797062e-18,
+            "kinetic_energy": 0.00007959275252150964
+          },
+          {
+            "max_abs": {
+              "tentative_velocity": 2.6895610738542075e-11,
+              "pressure": 5.0083714953075287e-11,
+              "velocity": 2.4117496194575594e-11
+            },
+            "solves": {
+              "tentative": {
+                "iterations": 12,
+                "residual_norm": 1.7270027201003146e-11,
+                "rhs_norm": 0.2165811093968317,
+                "tolerance": 2.165811093968317e-11
+              },
+              "pressure": {
+                "iterations": 18,
+                "residual_norm": 8.379602145029248e-12,
+                "rhs_norm": 0.4219348872457447,
+                "tolerance": 4.219348872457447e-11
+              },
+              "correction": {
+                "iterations": 10,
+                "residual_norm": 7.805812180070762e-19,
+                "rhs_norm": 0.001815569508468185,
+                "tolerance": 1e-12
+              }
+            },
+            "pressure_full_residual_norm": 8.379617040449978e-12,
+            "tentative_divergence_dual_norm": 0.010370523253399202,
+            "corrected_divergence_dual_norm": 0.0026364832621848513,
+            "tentative_divergence_l2": 0.06272355813158749,
+            "corrected_divergence_l2": 0.03931198566958694,
+            "net_flux": -4.336808689942018e-19,
+            "kinetic_energy": 0.00008961072788059974
+          }
+        ],
+        "translating_boundary": [
+          {
+            "max_abs": {
+              "tentative_velocity": 2.2604335070397497e-11,
+              "pressure": 9.745071416489282e-11,
+              "velocity": 2.1292537177863835e-11
+            },
+            "solves": {
+              "tentative": {
+                "iterations": 12,
+                "residual_norm": 2.7718879217641098e-11,
+                "rhs_norm": 0.6643453430255984,
+                "tolerance": 6.643453430255985e-11
+              },
+              "pressure": {
+                "iterations": 18,
+                "residual_norm": 4.933088717352125e-11,
+                "rhs_norm": 0.5576566060162275,
+                "tolerance": 5.576566060162275e-11
+              },
+              "correction": {
+                "iterations": 10,
+                "residual_norm": 4.837853574555663e-18,
+                "rhs_norm": 0.010198322926110334,
+                "tolerance": 1.0198322926110333e-12
+              }
+            },
+            "pressure_full_residual_norm": 4.93342732459497e-11,
+            "tentative_divergence_dual_norm": 0.013427265991322374,
+            "corrected_divergence_dual_norm": 0.003317207874900852,
+            "tentative_divergence_l2": 0.07762681713753118,
+            "corrected_divergence_l2": 0.03349527674198677,
+            "net_flux": 8.673617379884035e-18,
+            "kinetic_energy": 0.0034535104128522254
+          },
+          {
+            "max_abs": {
+              "tentative_velocity": 3.1887631424254437e-11,
+              "pressure": 7.04207803181589e-11,
+              "velocity": 2.8883409552982187e-11
+            },
+            "solves": {
+              "tentative": {
+                "iterations": 12,
+                "residual_norm": 2.0876815275363388e-11,
+                "rhs_norm": 0.6091094123644936,
+                "tolerance": 6.091094123644936e-11
+              },
+              "pressure": {
+                "iterations": 18,
+                "residual_norm": 4.355809612625881e-11,
+                "rhs_norm": 0.4358966542961786,
+                "tolerance": 4.3589665429617857e-11
+              },
+              "correction": {
+                "iterations": 10,
+                "residual_norm": 3.5337548621231514e-18,
+                "rhs_norm": 0.009916930131947601,
+                "tolerance": 1e-12
+              }
+            },
+            "pressure_full_residual_norm": 4.356659017027133e-11,
+            "tentative_divergence_dual_norm": 0.01070528009313618,
+            "corrected_divergence_dual_norm": 0.0026970982482297733,
+            "tentative_divergence_l2": 0.06447499434567507,
+            "corrected_divergence_l2": 0.03703251827358354,
+            "net_flux": 7.806255641895632e-18,
+            "kinetic_energy": 0.0033320604910802676
+          },
+          {
+            "max_abs": {
+              "tentative_velocity": 3.4406047455526334e-11,
+              "pressure": 5.3002935374024673e-11,
+              "velocity": 3.223088462789292e-11
+            },
+            "solves": {
+              "tentative": {
+                "iterations": 12,
+                "residual_norm": 1.7421772408388263e-11,
+                "rhs_norm": 0.5980787534506834,
+                "tolerance": 5.980787534506834e-11
+              },
+              "pressure": {
+                "iterations": 18,
+                "residual_norm": 8.363215058358168e-12,
+                "rhs_norm": 0.4221637372780498,
+                "tolerance": 4.221637372780498e-11
+              },
+              "correction": {
+                "iterations": 10,
+                "residual_norm": 4.115775538014486e-18,
+                "rhs_norm": 0.009871015971033419,
+                "tolerance": 1e-12
+              }
+            },
+            "pressure_full_residual_norm": 8.363217505386583e-12,
+            "tentative_divergence_dual_norm": 0.010376265247798937,
+            "corrected_divergence_dual_norm": 0.0026379465748110637,
+            "tentative_divergence_l2": 0.06275640125671407,
+            "corrected_divergence_l2": 0.03928864899643791,
+            "net_flux": 1.1275702593849246e-17,
+            "kinetic_energy": 0.0033141121048893226
+          }
+        ]
+      }
+    },
+    {
+      "status": "passed",
+      "device": "cpu",
+      "torch": "2.14.0+cpu",
+      "reference": {
+        "schema": 1,
+        "producer": "dolfinx-ufl-chorin",
+        "dolfinx": "0.10.0",
+        "basix": "0.10.0",
+        "ufl": "2025.2.1",
+        "counts": [
+          4,
+          4,
+          4
+        ],
+        "origin": [
+          -0.3,
+          0.2,
+          -0.5
+        ],
+        "lengths": [
+          1.4,
+          1.1,
+          0.9
+        ],
+        "dt": 0.025,
+        "rho": 1.1,
+        "mu": 0.15,
+        "pressure_value": 0.7,
+        "gauge_coordinate": [
+          -0.3,
+          0.2,
+          -0.5
+        ],
+        "steps": 3,
+        "cases": [
+          "stationary_boundary",
+          "translating_boundary"
+        ],
+        "quadrature_degree": 8,
+        "linear_solver": "PETSc LU"
+      },
+      "reference_sha256": "ff71edfc4919002b689b0f0afc101d48be549f1a4c25e8179bd3e57620fbc79b",
+      "comparisons": {
+        "stationary_boundary": [
+          {
+            "max_abs": {
+              "tentative_velocity": 3.73975156398032e-12,
+              "pressure": 1.747335609536549e-11,
+              "velocity": 1.332713768986346e-10
+            },
+            "solves": {
+              "tentative": {
+                "iterations": 15,
+                "residual_norm": 2.4560515148702177e-12,
+                "rhs_norm": 0.09227743793642541,
+                "tolerance": 9.227743793642542e-12
+              },
+              "pressure": {
+                "iterations": 35,
+                "residual_norm": 1.3190100230993803e-11,
+                "rhs_norm": 0.3306726309915583,
+                "tolerance": 3.306726309915583e-11
+              },
+              "correction": {
+                "iterations": 19,
+                "residual_norm": 7.916075313649029e-13,
+                "rhs_norm": 0.0005923663872909837,
+                "tolerance": 1e-12
+              }
+            },
+            "pressure_full_residual_norm": 1.3197917876307966e-11,
+            "tentative_divergence_dual_norm": 0.007627851811232038,
+            "corrected_divergence_dual_norm": 0.0010248166487404542,
+            "tentative_divergence_l2": 0.08437634804107824,
+            "corrected_divergence_l2": 0.043577060675675065,
+            "net_flux": 4.9873299934333204e-18,
+            "kinetic_energy": 0.00006110225150455599
+          },
+          {
+            "max_abs": {
+              "tentative_velocity": 2.6225335271468087e-11,
+              "pressure": 1.5665735375591794e-10,
+              "velocity": 1.4992034523542141e-10
+            },
+            "solves": {
+              "tentative": {
+                "iterations": 15,
+                "residual_norm": 3.3910870757815728e-12,
+                "rhs_norm": 0.07364311717172098,
+                "tolerance": 7.364311717172099e-12
+              },
+              "pressure": {
+                "iterations": 34,
+                "residual_norm": 2.0819186807537103e-11,
+                "rhs_norm": 0.24094882013103033,
+                "tolerance": 2.4094882013103034e-11
+              },
+              "correction": {
+                "iterations": 19,
+                "residual_norm": 7.268869249598298e-13,
+                "rhs_norm": 0.000607509584614917,
+                "tolerance": 1e-12
+              }
+            },
+            "pressure_full_residual_norm": 2.0825224935504082e-11,
+            "tentative_divergence_dual_norm": 0.00555363968434139,
+            "corrected_divergence_dual_norm": 0.00088247282260619,
+            "tentative_divergence_l2": 0.07144868558554034,
+            "corrected_divergence_l2": 0.04069353887903264,
+            "net_flux": 6.776263578034403e-19,
+            "kinetic_energy": 0.00006344937209770825
+          },
+          {
+            "max_abs": {
+              "tentative_velocity": 3.140721623745568e-11,
+              "pressure": 1.6863821450385785e-10,
+              "velocity": 1.6457336795422384e-10
+            },
+            "solves": {
+              "tentative": {
+                "iterations": 15,
+                "residual_norm": 3.381808649957637e-12,
+                "rhs_norm": 0.07289206204268205,
+                "tolerance": 7.289206204268206e-12
+              },
+              "pressure": {
+                "iterations": 33,
+                "residual_norm": 1.227304251068876e-11,
+                "rhs_norm": 0.23759820455477854,
+                "tolerance": 2.3759820455477854e-11
+              },
+              "correction": {
+                "iterations": 19,
+                "residual_norm": 7.33717740429607e-13,
+                "rhs_norm": 0.0006385481772154348,
+                "tolerance": 1e-12
+              }
+            },
+            "pressure_full_residual_norm": 1.2277707781840314e-11,
+            "tentative_divergence_dual_norm": 0.005468947910741602,
+            "corrected_divergence_dual_norm": 0.0008782390042918335,
+            "tentative_divergence_l2": 0.0704392322022561,
+            "corrected_divergence_l2": 0.04063547888655444,
+            "net_flux": 8.131516293641283e-19,
+            "kinetic_energy": 0.00006950766312875926
+          }
+        ],
+        "translating_boundary": [
+          {
+            "max_abs": {
+              "tentative_velocity": 1.5460036029146806e-11,
+              "pressure": 3.2190028420586714e-11,
+              "velocity": 1.337051129535194e-10
+            },
+            "solves": {
+              "tentative": {
+                "iterations": 14,
+                "residual_norm": 9.653296754508946e-12,
+                "rhs_norm": 0.2810261479084599,
+                "tolerance": 2.8102614790845992e-11
+              },
+              "pressure": {
+                "iterations": 35,
+                "residual_norm": 1.3186186332042872e-11,
+                "rhs_norm": 0.33078874126783053,
+                "tolerance": 3.307887412678305e-11
+              },
+              "correction": {
+                "iterations": 19,
+                "residual_norm": 7.921068373321146e-13,
+                "rhs_norm": 0.0040151132915583355,
+                "tolerance": 1e-12
+              }
+            },
+            "pressure_full_residual_norm": 1.3194123898796233e-11,
+            "tentative_divergence_dual_norm": 0.007630393615145177,
+            "corrected_divergence_dual_norm": 0.00102518013614,
+            "tentative_divergence_l2": 0.0844127812198738,
+            "corrected_divergence_l2": 0.043581947205704706,
+            "net_flux": 1.951563910473908e-17,
+            "kinetic_energy": 0.003221224441378126
+          },
+          {
+            "max_abs": {
+              "tentative_velocity": 3.3076957839384136e-11,
+              "pressure": 1.566755614135218e-10,
+              "velocity": 1.3981339003210635e-10
+            },
+            "solves": {
+              "tentative": {
+                "iterations": 14,
+                "residual_norm": 1.2791748782336085e-11,
+                "rhs_norm": 0.2531885341702895,
+                "tolerance": 2.5318853417028954e-11
+              },
+              "pressure": {
+                "iterations": 34,
+                "residual_norm": 2.0783241629020777e-11,
+                "rhs_norm": 0.2410406366179961,
+                "tolerance": 2.410406366179961e-11
+              },
+              "correction": {
+                "iterations": 19,
+                "residual_norm": 7.272452283517838e-13,
+                "rhs_norm": 0.0039506403047255825,
+                "tolerance": 1e-12
+              }
+            },
+            "pressure_full_residual_norm": 2.0789751924454847e-11,
+            "tentative_divergence_dual_norm": 0.005555697600329086,
+            "corrected_divergence_dual_norm": 0.0008828460358673519,
+            "tentative_divergence_l2": 0.07149100130782897,
+            "corrected_divergence_l2": 0.04068809895508464,
+            "net_flux": 1.8241701552068612e-17,
+            "kinetic_energy": 0.0031371284749385224
+          },
+          {
+            "max_abs": {
+              "tentative_velocity": 4.1586449561759053e-11,
+              "pressure": 1.7070878044478377e-10,
+              "velocity": 1.5592496738214834e-10
+            },
+            "solves": {
+              "tentative": {
+                "iterations": 14,
+                "residual_norm": 1.2244065717164792e-11,
+                "rhs_norm": 0.25058973485926306,
+                "tolerance": 2.5058973485926308e-11
+              },
+              "pressure": {
+                "iterations": 33,
+                "residual_norm": 1.256316902335322e-11,
+                "rhs_norm": 0.23769095619892402,
+                "tolerance": 2.3769095619892405e-11
+              },
+              "correction": {
+                "iterations": 19,
+                "residual_norm": 7.340601091334386e-13,
+                "rhs_norm": 0.003948075812430205,
+                "tolerance": 1e-12
+              }
+            },
+            "pressure_full_residual_norm": 1.2567763481669758e-11,
+            "tentative_divergence_dual_norm": 0.005471077879518458,
+            "corrected_divergence_dual_norm": 0.00087866294452639,
+            "tentative_divergence_l2": 0.07048910506316972,
+            "corrected_divergence_l2": 0.04062296705823264,
+            "net_flux": 1.9081958235744878e-17,
+            "kinetic_energy": 0.003132703162769772
+          }
+        ]
+      }
+    }
+  ]
+}

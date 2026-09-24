@@ -2,6 +2,8 @@
 
 ## 0.9.0：Chorin 三步求解
 
+[Linux 自动验证 36024695559](https://github.com/loveIroha/AFSI_GPU/actions/runs/36024695559) 已通过，代码提交 `21695e89619531f5be7f9de3693d4869525a0980`。完整回归 **100 passed、74 CUDA skipped**。实际 DOLFINx/PETSc LU 在 8/64 单元网格、静止/平移边界上连续推进 3 步，共 36 组解场和 12 组散度诊断比较通过；解场最大绝对差分别为 **9.86e-11 / 1.71e-10**。旧固体、IB、流体算子与几何回归也通过。[完整报告和参考数据 SHA-256](chorin-reference-results-0.9.0.json)。目标 GPU 本版尚待执行。
+
 本地 Windows CPU **100 passed, 74 CUDA skipped**，共 174 项；新增 12 passed、7 skipped。验证非零边界提升、真实残量、压力基准、时变解析剪切、载荷接口、失败检测和短程流动。每轴 2/4/8 单元三步测试中压力迭代数约 7–9/24/42–44。Jacobi 尚无网格无关性能保证，粗网格校正后散度并非每步下降，详见 [CHORIN](CHORIN.md)。Linux 实际 DOLFINx/PETSc LU 比较单独记录；本版 GPU 待执行。
 
 ## 0.8.0：Q2/Q1 流体有限元算子

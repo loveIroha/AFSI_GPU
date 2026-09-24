@@ -20,6 +20,8 @@ CUDA_VISIBLE_DEVICES=0 python -m pytest -q
 
 本地 CPU **100 passed, 74 CUDA skipped**，目标 GPU 环境应为 **174 passed**。上一版 0.8.0 已由用户反馈 **155 passed**。此版本尚待目标 GPU 验证。三步分别检查真实残量，并报告校正前后散度；方程收敛不表示严格无散或完整耦合稳定。
 
+[0.9.0 Linux 自动验证已通过](https://github.com/loveIroha/AFSI_GPU/actions/runs/36024695559)：36 组实际 DOLFINx/PETSc 三步解场对照通过，最大绝对差 1.71e-10，散度诊断同样通过。目标 GPU 本版仍需执行上述命令。
+
 ## 第八步：Q2/Q1 流体算子
 
 0.8.0 增加规则六面体流体网格、一致质量、黏性、压力 Laplacian、梯度、散度和非线性对流的 PyTorch 算子。支持 CUDA 和自动微分，详见 [流体数学、IB 载荷接口及独立验证](docs/FLUID.md)。此阶段尚未求解流体方程或推进时间。
