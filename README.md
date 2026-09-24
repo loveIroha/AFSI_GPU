@@ -2,6 +2,24 @@
 
 目标是逐步把 afsi 的 IB/FEM 计算移到 PyTorch。0.4.0 在 P1/P2、Neo-Hookean、Guccione 和给定主动张力基础上加入随动压力与参考表面基底弹簧，覆盖选定 afsi 示例的固体体积分和两个边界项。支持给定变形下的节点力及切线作用；尚未实现未知位移求解、流体求解和 IB 耦合。参考网格仍限于直边四面体。详见 [P2 数学说明](docs/P2.md)、[Guccione/主动应力](docs/GUCCIONE.md) 与 [表面压力和基底约束](docs/BOUNDARY.md)。
 
+当前版本 **0.5.0** 增加实际 DOLFINx/UFL 装配参考导出、CPU/CUDA PyTorch 逐项比较和 Linux 自动验证。详见 [DOLFINx 对照说明](docs/DOLFINX.md)。它比较两种构形下的五项节点力及切线作用，尚未运行原 afsi 完整算例。
+
+## 第五步：实际 DOLFINx 对照
+
+更新代码后，首次创建独立 CPU 参考环境并导出数据：
+
+```bash
+git pull --ff-only
+conda env create -f validation/environment-dolfinx.yml
+conda run --no-capture-output -n afsi-reference python validation/export_dolfinx.py
+conda activate afsi-torch
+python -m pip install -e ".[test]"
+CUDA_VISIBLE_DEVICES=0 python validation/compare_dolfinx.py --device cuda --output validation/results/gpu.json
+CUDA_VISIBLE_DEVICES=0 python -m pytest -q
+```
+
+比较应输出 `status: passed`，CUDA 可用时 pytest 应为 **92 passed**。已经创建过 `afsi-reference` 时跳过环境创建。原有 CUDA 环境保持独立。加密网格对照、误差解释及从 Actions 下载参考数据的方法见 [详细说明](docs/DOLFINX.md)。
+
 ## GitHub 协作
 
 仓库为 [loveIroha/AFSI_GPU](https://github.com/loveIroha/AFSI_GPU)。仓库名称为 AFSI_GPU，Python 包名仍为 afsi_torch，Conda 环境名仍为 afsi-torch。
@@ -39,7 +57,7 @@ CUDA_VISIBLE_DEVICES=0 python examples/boundary_patch.py --device cuda
 CUDA_VISIBLE_DEVICES=0 python -m pytest -q
 ```
 
-GPU 可用时，本版完整测试应为 **81 passed**。若出现 skipped，请先运行环境检查，不能将跳过项当作 GPU 验证成功。
+0.4.0 的完整测试为 **81 项**；当前 0.5.0 为 **92 项**。若出现 skipped，请先运行环境检查，不能将跳过项当作 GPU 验证成功。
 
 可选的 Basix 独立对照（只需轻量的 Basix，无需安装完整 FEniCSx）：
 
@@ -137,7 +155,7 @@ requirements-test.txt          已验证的 NumPy/pytest 版本
 
 首个数值链路为 X -> 单元形函数梯度/体积 -> F=grad_X(x) -> W(F) -> E -> g=-dE/dx。解析 PK1 组装独立核对自动求导，torch.func.jvp 核对切线矩阵与向量乘积。使用 float64 建立精度基线。
 
-下一步使用相同网格、自由度映射、积分点、材料场和边界标记与 DOLFINx 完整固体节点力逐项比较；随后加入 IB 插值/散布，最后连接流体时间步。afsi 当前选定示例以显式更新固体坐标为主，因此不把完整 Newton 求解器设为首阶段必需项。
+0.5.0 的对照入口为 `validation/export_dolfinx.py` 和 `validation/compare_dolfinx.py`，环境定义为 `validation/environment-dolfinx.yml`。本地回归 **48 passed, 44 skipped** 不代表实际 DOLFINx 或 CUDA 对照通过；验证记录见 [VALIDATION](docs/VALIDATION.md)。完成两框架对照后加入 IB 插值/散布，最后连接流体时间步。afsi 当前选定示例以显式更新固体坐标为主，因此不把完整 Newton 求解器设为首阶段必需项。
 
 ## 来源
 

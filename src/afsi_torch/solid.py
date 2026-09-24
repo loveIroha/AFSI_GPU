@@ -11,7 +11,7 @@ from .materials import (neo_hookean_energy, neo_hookean_pk1,
                         guccione_energy as guccione_density, guccione_pk1,
                         active_potential, active_pk1)
 from .mechanics import determinant3
-from .quadrature import tetrahedron_rule
+from .quadrature import tetrahedron_rule, prepare_rule
 from .tetrahedron import EDGES, tabulate, validate_mesh
 
 
@@ -24,8 +24,8 @@ class P2Geometry:
     node_count: int
 
 
-def prepare_p2(X: Tensor, cells: Tensor, degree=4) -> P2Geometry:
-    """Precompute immutable reference data once, on X.device with X.dtype."""
+def prepare_p2(X: Tensor, cells: Tensor, degree=4, *, quadrature=None) -> P2Geometry:
+    """Precompute reference data; optional (points, weights) overrides degree."""
     validate_mesh(X, cells, 10)
     nodes = X[cells]
     vertices = nodes[:, :4]
@@ -40,7 +40,8 @@ def prepare_p2(X: Tensor, cells: Tensor, degree=4) -> P2Geometry:
     scale = singular[:, 0, None, None]
     if ((nodes[:, 4:] - expected).abs() > tol * scale).any():
         raise ValueError("P2 reference edge nodes must be midpoints in the documented ordering")
-    points, weights = tetrahedron_rule(degree, dtype=X.dtype, device=X.device)
+    points, weights = (tetrahedron_rule(degree, dtype=X.dtype, device=X.device)
+                       if quadrature is None else prepare_rule(quadrature, 3, X))
     N, dN = tabulate(points)
     gradients = torch.einsum("qaj,ejk->eqak", dN, torch.linalg.inv(D))
     physical_weights = determinant3(D).abs()[:, None] * weights

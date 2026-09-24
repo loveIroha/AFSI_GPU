@@ -1,0 +1,13 @@
+name: afsi-reference
+channels:
+  - conda-forge
+  - nodefaults
+dependencies:
+  - python=3.12
+  - fenics-dolfinx=0.10.*
+  - fenics-basix=0.10.*
+  - petsc=*=real*
+  - mpich
+  - numpy
+  - pip
+  - c-compiler

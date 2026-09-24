@@ -1,0 +1,48 @@
+name: DOLFINx reference comparison
+on:
+  push:
+    branches: [main]
+    paths: ['src/**', 'tests/**', 'validation/**', 'pyproject.toml', '.github/workflows/dolfinx-reference.yml']
+  pull_request:
+    paths: ['src/**', 'tests/**', 'validation/**', 'pyproject.toml', '.github/workflows/dolfinx-reference.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  reference:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash -el {0}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: conda-incubator/setup-miniconda@fc2d68f6413eb2d87b895e92f8584b5b94a10167 # v3
+        with:
+          miniforge-version: latest
+          environment-file: validation/environment-dolfinx.yml
+          activate-environment: afsi-reference
+      - name: Assemble actual DOLFINx references on two meshes
+        run: |
+          python validation/export_dolfinx.py --output validation/results/coarse.npz
+          python validation/export_dolfinx.py --subdivisions 2 --output validation/results/fine.npz
+      - name: Install separate CPU PyTorch environment
+        run: |
+          python -m venv .venv-torch
+          .venv-torch/bin/python -m pip install torch==2.14.0 --index-url https://download.pytorch.org/whl/cpu
+          .venv-torch/bin/python -m pip install -e '.[test]'
+      - name: Regressions and independent force/tangent comparisons
+        run: |
+          .venv-torch/bin/python -m pytest -q
+          .venv-torch/bin/python validation/compare_dolfinx.py --reference validation/results/coarse.npz --output validation/results/coarse.json
+          .venv-torch/bin/python validation/compare_dolfinx.py --reference validation/results/fine.npz --output validation/results/fine.json
+      - name: Save reference arrays and comparison reports
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: dolfinx-reference
+          path: validation/results/
+          if-no-files-found: ignore
+          retention-days: 14

@@ -1,5 +1,11 @@
 # 验证记录
 
+## 0.5.0：实际 DOLFINx 装配对照程序
+
+本地 Windows CPU 回归：**48 passed, 44 skipped**；跳过项全部依赖 CUDA。语法编译检查通过。新增外部积分规则、全局自由度置换、坐标歧义拒绝和边界标记传递测试。CUDA 可用时应执行 **92 项**。
+
+本地没有 DOLFINx/Linux 运行环境，以上回归不等于实际 DOLFINx 装配验证。仓库增加 Linux Actions，运行真实 UFL/DOLFINx 导出与两种网格的 CPU PyTorch 对照；其结果以对应提交的 Actions 日志为准。本版目标 GPU 对照仍需用户运行。[运行说明](DOLFINX.md)。
+
 ## 0.4.0：随动压力与基底弹簧
 
 本地环境为 Windows CPU，版本与下述基线一致。完整 pytest 为 **39 passed, 42 skipped**，跳过项全部依赖 CUDA；目标 GPU 可用时应执行 **81 项**。本版尚未在目标 Linux GPU 上验证。

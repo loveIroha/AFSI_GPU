@@ -9,6 +9,7 @@ import torch
 from torch import Tensor
 from . import triangle
 from .tetrahedron import EDGES, validate_mesh
+from .quadrature import prepare_rule
 
 
 def extract_boundary(X: Tensor, cells: Tensor) -> Tensor:
@@ -63,7 +64,7 @@ class SurfaceGeometry:
     node_count: int
 
 
-def prepare_surface(X: Tensor, faces: Tensor, degree=4) -> SurfaceGeometry:
+def prepare_surface(X: Tensor, faces: Tensor, degree=4, *, quadrature=None) -> SurfaceGeometry:
     """Prepare selected outward faces from extract_boundary; no empty region.
 
     Caller retains facet tags by selecting rows. Only straight reference
@@ -82,7 +83,8 @@ def prepare_surface(X: Tensor, faces: Tensor, degree=4) -> SurfaceGeometry:
     expected = nodes[:, edge_ids].mean(2)
     if ((nodes[:, 3:]-expected).abs() > tol*singular[:, 0, None, None]).any():
         raise ValueError("reference triangle edge nodes must be midpoints in documented order")
-    q, w = triangle.quadrature(degree, dtype=X.dtype, device=X.device)
+    q, w = (triangle.quadrature(degree, dtype=X.dtype, device=X.device)
+            if quadrature is None else prepare_rule(quadrature, 2, X))
     N, dN = triangle.tabulate(q)
     area = torch.linalg.cross(edges[:, 0], edges[:, 1])
     physical_weights = torch.linalg.vector_norm(area, dim=-1)[:, None]*w
