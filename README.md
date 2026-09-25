@@ -17,6 +17,8 @@ CUDA_VISIBLE_DEVICES=0 python examples/lv_equilibrium.py --device cuda --mesh-si
 
 本地 CPU **138 passed、94 CUDA skipped**，完整测试共 **232 项**；本版目标 GPU 尚待执行。左室示例是 0.2 mmHg 小载荷数值验证，不是已验收的生理预加载或完整周期。
 
+[0.13.0 Linux 自动验证已通过](https://github.com/loveIroha/AFSI_GPU/actions/runs/36147461337)：独立 UFL/DOLFINx 平衡解坐标差约 1.77e-15 cm，左室两级加载均收敛；[完整结果](docs/nonlinear-results-0.13.0.json)。
+
 ## 第十二步：定位流体/IB 网格敏感性
 
 版本 **0.12.0** 增加冻结左室的核宽度、载荷路径与压力投影对照，生产耦合算法保持不变。已发现多项离散选择共同影响响应，不能只缩小时间步或只换投影。详见 [实验设置、实测结果与限制](docs/IB_DIAGNOSIS.md)。

@@ -2,6 +2,8 @@
 
 ## 0.13.0：Newton–GMRES 非线性固体平衡
 
+[Linux 自动验证 36147461337](https://github.com/loveIroha/AFSI_GPU/actions/runs/36147461337) 全部通过，代码提交 `26d1c532f0d6476a45143cb55fe01db7c1f46911`：**138 passed、94 CUDA skipped**。随动压力平衡解与独立 UFL/DOLFINx 残量及完整 Jacobian 的直接 Newton 解最大坐标差 **1.77e-15 cm**。小块解析和随动载荷例分别 6/3 次 Newton，左室 0.1/0.2 mmHg 各 4 次收敛；原参考回归全部通过。见 [完整数值记录](nonlinear-results-0.13.0.json)。本版 GPU 尚待执行。
+
 本地 CPU **138 passed、94 CUDA skipped**，共 232 项。新增非对称 GMRES、重启与失败、非零边界提升、非法试探拒绝、块对角切线、P2 解析平衡与完整切线 Newton 对照。生成左室 0.1/0.2 mmHg 两级平衡均收敛；这不是生理预加载验收。独立 UFL/DOLFINx 非线性参考由 Linux CI 运行并另行记录。本版 GPU 尚待执行，见 [NONLINEAR](NONLINEAR.md)。
 
 ## 0.12.0：冻结左室的 IB/流体因素对照

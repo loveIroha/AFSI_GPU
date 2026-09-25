@@ -1,0 +1,466 @@
+{
+  "code_commit": "26d1c532f0d6476a45143cb55fe01db7c1f46911",
+  "workflow_url": "https://github.com/loveIroha/AFSI_GPU/actions/runs/36147461337",
+  "validation_platform": "Linux GitHub Actions CPU; new nonlinear CUDA tests not executed",
+  "pytest": {
+    "passed": 138,
+    "skipped": 94,
+    "warnings": 1
+  },
+  "independent_equilibrium": {
+    "status": "passed",
+    "device": "cpu",
+    "torch": "2.14.0+cpu",
+    "reference": {
+      "producer": "UFL/DOLFINx residual and full Jacobian, NumPy direct Newton",
+      "dolfinx": "0.10.0",
+      "basix": "0.10.0",
+      "ufl": "2025.2.1",
+      "history": [
+        471.4045207911775,
+        21.065590372664193,
+        0.0010012388771552933,
+        3.5522764734066505e-10
+      ],
+      "pressure_dyn_per_cm2": 1000,
+      "parameters": {
+        "C": 20000,
+        "bf": 8,
+        "bt": 2,
+        "bfs": 4,
+        "kappa": 500000
+      }
+    },
+    "reference_sha256": "8813dcb2a167d80175c36a6619ad18ec4e76a72735a4cb5c6832e1e52e755999",
+    "position_max_abs_cm": 1.7650811368064012e-15,
+    "residual_norm": 2.686877090412842e-10,
+    "tolerance": 4.714045207914143e-8,
+    "history": [
+      {
+        "iteration": 0,
+        "residual_norm": 471.40452079141426
+      },
+      {
+        "iteration": 1,
+        "residual_norm": 21.0655903726092,
+        "alpha": 1,
+        "backtracks": 0,
+        "linear": {
+          "iterations": 40,
+          "residual_norm": 1.1964392558787253e-7,
+          "tolerance": 0.0047140452079141425
+        }
+      },
+      {
+        "iteration": 2,
+        "residual_norm": 0.0009995249787646862,
+        "alpha": 1,
+        "backtracks": 0,
+        "linear": {
+          "iterations": 40,
+          "residual_norm": 0.000055508644136614217,
+          "tolerance": 0.00021065590372609203
+        }
+      },
+      {
+        "iteration": 3,
+        "residual_norm": 2.686877090412842e-10,
+        "alpha": 1,
+        "backtracks": 0,
+        "linear": {
+          "iterations": 45,
+          "residual_norm": 4.922018813563217e-13,
+          "tolerance": 9.995249787646863e-9
+        }
+      }
+    ]
+  },
+  "patch": {
+    "device": "cpu",
+    "torch": "2.14.0+cpu",
+    "units": {
+      "length": "cm",
+      "volume": "cm^3 (mL)",
+      "time": "s",
+      "mass": "g",
+      "force": "dyn",
+      "stress": "dyn/cm^2",
+      "pressure": "dyn/cm^2",
+      "energy": "erg",
+      "spring_coefficient": "dyn/cm^3"
+    },
+    "options": {
+      "rtol": 1e-9,
+      "atol": 1e-7,
+      "max_iterations": 25,
+      "max_backtracks": 20,
+      "armijo": 0.0001,
+      "linear": {
+        "rtol": 0.00001,
+        "atol": 1e-12,
+        "restart": 70,
+        "max_iterations": 700,
+        "check_every": 5
+      }
+    },
+    "nodes": 27,
+    "cells": 6,
+    "material": {
+      "C": 20000,
+      "bf": 8,
+      "bt": 2,
+      "bfs": 4,
+      "kappa": 500000
+    },
+    "cases": {
+      "affine": {
+        "converged": true,
+        "iterations": 6,
+        "residual_norm": 3.7858268457883196e-10,
+        "tolerance": 0.00008846413047306113,
+        "history": [
+          {
+            "iteration": 0,
+            "residual_norm": 88464.13047306113
+          },
+          {
+            "iteration": 1,
+            "residual_norm": 11318.916814992312,
+            "alpha": 1,
+            "backtracks": 0,
+            "linear": {
+              "iterations": 50,
+              "residual_norm": 0.005813062235059367,
+              "tolerance": 0.8846413047306114
+            }
+          },
+          {
+            "iteration": 2,
+            "residual_norm": 2184.9251295864156,
+            "alpha": 1,
+            "backtracks": 0,
+            "linear": {
+              "iterations": 54,
+              "residual_norm": 1.0338574176986132e-10,
+              "tolerance": 0.11318916814992312
+            }
+          },
+          {
+            "iteration": 3,
+            "residual_norm": 84.22035876976885,
+            "alpha": 1,
+            "backtracks": 0,
+            "linear": {
+              "iterations": 54,
+              "residual_norm": 1.159189241087266e-11,
+              "tolerance": 0.021849251295864156
+            }
+          },
+          {
+            "iteration": 4,
+            "residual_norm": 1.0058361081388356,
+            "alpha": 1,
+            "backtracks": 0,
+            "linear": {
+              "iterations": 54,
+              "residual_norm": 1.92940371460067e-12,
+              "tolerance": 0.0008422035876976886
+            }
+          },
+          {
+            "iteration": 5,
+            "residual_norm": 0.0001264979794561527,
+            "alpha": 1,
+            "backtracks": 0,
+            "linear": {
+              "iterations": 54,
+              "residual_norm": 1.2292743220971344e-14,
+              "tolerance": 0.000010058361081388357
+            }
+          },
+          {
+            "iteration": 6,
+            "residual_norm": 3.7858268457883196e-10,
+            "alpha": 1,
+            "backtracks": 0,
+            "linear": {
+              "iterations": 54,
+              "residual_norm": 3.4683772683710693e-18,
+              "tolerance": 1.2649797945615272e-9
+            }
+          }
+        ],
+        "minimum_detF": 1.079999999999998,
+        "max_displacement_cm": 0.08381527307120197,
+        "analytic_position_max_error_cm": 2.60797221702572e-15
+      },
+      "follower": {
+        "converged": true,
+        "iterations": 3,
+        "residual_norm": 3.4398569163640727e-10,
+        "tolerance": 4.7140452079100414e-7,
+        "history": [
+          {
+            "iteration": 0,
+            "residual_norm": 471.40452079100413
+          },
+          {
+            "iteration": 1,
+            "residual_norm": 21.06559037245899,
+            "alpha": 1,
+            "backtracks": 0,
+            "linear": {
+              "iterations": 40,
+              "residual_norm": 1.82404843165162e-7,
+              "tolerance": 0.004714045207910042
+            }
+          },
+          {
+            "iteration": 2,
+            "residual_norm": 0.001000635775724413,
+            "alpha": 1,
+            "backtracks": 0,
+            "linear": {
+              "iterations": 40,
+              "residual_norm": 0.000017450262988546668,
+              "tolerance": 0.0002106559037245899
+            }
+          },
+          {
+            "iteration": 3,
+            "residual_norm": 3.4398569163640727e-10,
+            "alpha": 1,
+            "backtracks": 0,
+            "linear": {
+              "iterations": 45,
+              "residual_norm": 2.8906601543909325e-13,
+              "tolerance": 1.0006357757244131e-8
+            }
+          }
+        ],
+        "minimum_detF": 0.9989821624289538,
+        "max_displacement_cm": 0.00631828494620341
+      }
+    },
+    "converged": true,
+    "production_ib_changed": false,
+    "full_cycle_ready": false
+  },
+  "lv_equilibrium": {
+    "device": "cpu",
+    "torch": "2.14.0+cpu",
+    "units": {
+      "length": "cm",
+      "volume": "cm^3 (mL)",
+      "time": "s",
+      "mass": "g",
+      "force": "dyn",
+      "stress": "dyn/cm^2",
+      "pressure": "dyn/cm^2",
+      "energy": "erg",
+      "spring_coefficient": "dyn/cm^3"
+    },
+    "gpu": null,
+    "solid_config": {
+      "inner_axes": [
+        2.5,
+        2.5,
+        4.5
+      ],
+      "outer_axes": [
+        3.5,
+        3.5,
+        5.5
+      ],
+      "base_height": 1.5,
+      "mesh_size": 1.8,
+      "center": [
+        0,
+        0,
+        0
+      ]
+    },
+    "nodes": 554,
+    "cells": 260,
+    "gmsh": "4.15.2",
+    "target_pressure_mmhg": 0.2,
+    "target_tension_dyn_per_cm2": 0,
+    "material": {
+      "C": 20000,
+      "bf": 8,
+      "bt": 2,
+      "bfs": 4,
+      "kappa": 500000
+    },
+    "beta": 500000,
+    "options": {
+      "rtol": 1e-8,
+      "atol": 0.00001,
+      "max_iterations": 25,
+      "max_backtracks": 20,
+      "armijo": 0.0001,
+      "linear": {
+        "rtol": 0.001,
+        "atol": 1e-12,
+        "restart": 80,
+        "max_iterations": 2400,
+        "check_every": 5
+      }
+    },
+    "load_steps": 2,
+    "history": [
+      {
+        "load_fraction": 0.5,
+        "pressure_mmhg": 0.1,
+        "tension_dyn_per_cm2": 0,
+        "iterations": 4,
+        "residual_norm": 6.712147550274107e-8,
+        "tolerance": 0.000010395098278641086,
+        "newton_history": [
+          {
+            "iteration": 0,
+            "residual_norm": 1039.5098278641085
+          },
+          {
+            "iteration": 1,
+            "residual_norm": 62.3044335476952,
+            "alpha": 1,
+            "backtracks": 0,
+            "linear": {
+              "iterations": 305,
+              "residual_norm": 1.0194418499499507,
+              "tolerance": 1.0395098278641086
+            }
+          },
+          {
+            "iteration": 2,
+            "residual_norm": 0.06260319175896759,
+            "alpha": 1,
+            "backtracks": 0,
+            "linear": {
+              "iterations": 315,
+              "residual_norm": 0.06185656985277022,
+              "tolerance": 0.0623044335476952
+            }
+          },
+          {
+            "iteration": 3,
+            "residual_norm": 0.00006628850616802782,
+            "alpha": 1,
+            "backtracks": 0,
+            "linear": {
+              "iterations": 685,
+              "residual_norm": 0.00006106884601326599,
+              "tolerance": 0.00006260319175896759
+            }
+          },
+          {
+            "iteration": 4,
+            "residual_norm": 6.712147550274107e-8,
+            "alpha": 1,
+            "backtracks": 0,
+            "linear": {
+              "iterations": 775,
+              "residual_norm": 6.574910821446045e-8,
+              "tolerance": 6.628850616802782e-8
+            }
+          }
+        ],
+        "cavity_volume_ml": 77.94464895387213,
+        "wall_volume_cm3": 105.57136316533159,
+        "minimum_detF": 0.9995989289979695,
+        "maximum_detF": 1.0004641349760905,
+        "passive_energy_erg": 28.06800774986396,
+        "spring_energy_erg": 0.8068668476749,
+        "max_total_displacement_cm": 0.008140400535175897
+      },
+      {
+        "load_fraction": 1,
+        "pressure_mmhg": 0.2,
+        "tension_dyn_per_cm2": 0,
+        "iterations": 4,
+        "residual_norm": 6.781684575021802e-8,
+        "tolerance": 0.000010431008380959284,
+        "newton_history": [
+          {
+            "iteration": 0,
+            "residual_norm": 1043.1008380959283
+          },
+          {
+            "iteration": 1,
+            "residual_norm": 63.95203304380966,
+            "alpha": 1,
+            "backtracks": 0,
+            "linear": {
+              "iterations": 305,
+              "residual_norm": 1.0307540877717445,
+              "tolerance": 1.0431008380959284
+            }
+          },
+          {
+            "iteration": 2,
+            "residual_norm": 0.06418576732304457,
+            "alpha": 1,
+            "backtracks": 0,
+            "linear": {
+              "iterations": 315,
+              "residual_norm": 0.0634699647441396,
+              "tolerance": 0.06395203304380966
+            }
+          },
+          {
+            "iteration": 3,
+            "residual_norm": 0.00006907627940989602,
+            "alpha": 1,
+            "backtracks": 0,
+            "linear": {
+              "iterations": 670,
+              "residual_norm": 0.00006363332271882363,
+              "tolerance": 0.00006418576732304456
+            }
+          },
+          {
+            "iteration": 4,
+            "residual_norm": 6.781684575021802e-8,
+            "alpha": 1,
+            "backtracks": 0,
+            "linear": {
+              "iterations": 825,
+              "residual_norm": 6.675053062979755e-8,
+              "tolerance": 6.907627940989602e-8
+            }
+          }
+        ],
+        "cavity_volume_ml": 78.37290679929856,
+        "wall_volume_cm3": 105.57536545774254,
+        "minimum_detF": 0.9991897424748057,
+        "maximum_detF": 1.0009239379204669,
+        "passive_energy_erg": 113.21605121718352,
+        "spring_energy_erg": 3.2360577637894035,
+        "max_total_displacement_cm": 0.01638106856464934
+      }
+    ],
+    "initial": {
+      "cavity_volume_ml": 77.5217913877408,
+      "wall_volume_cm3": 105.56730609102023,
+      "minimum_detF": 0.9999999999999888,
+      "maximum_detF": 1.0000000000000135,
+      "passive_energy_erg": 6.027084746359637e-23,
+      "spring_energy_erg": 0,
+      "max_total_displacement_cm": 0
+    },
+    "converged": true,
+    "production_ib_changed": false,
+    "physiological_preload_validated": false,
+    "full_cycle_ready": false,
+    "final": {
+      "cavity_volume_ml": 78.37290679929856,
+      "wall_volume_cm3": 105.57536545774254,
+      "minimum_detF": 0.9991897424748057,
+      "maximum_detF": 1.0009239379204669,
+      "passive_energy_erg": 113.21605121718352,
+      "spring_energy_erg": 3.2360577637894035,
+      "max_total_displacement_cm": 0.01638106856464934
+    }
+  }
+}

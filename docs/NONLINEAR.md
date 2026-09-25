@@ -29,6 +29,8 @@ CUDA_VISIBLE_DEVICES=0 python examples/lv_equilibrium.py --device cuda --mesh-si
 
 本地 CPU 回归为 138 passed、94 CUDA skipped，共 232 项。目标 GPU 本版尚待执行。无需新增依赖；独立 DOLFINx 参考仅在 CI 专用环境运行。
 
+[Linux 自动验证 36147461337](https://github.com/loveIroha/AFSI_GPU/actions/runs/36147461337) 已全部通过，代码提交 `26d1c532f0d6476a45143cb55fe01db7c1f46911`。回归 138 passed、94 CUDA skipped；与独立 UFL/DOLFINx 平衡解最大坐标差 1.77e-15 cm；两个小块算例和左室两级加载均收敛。见 [完整结果与残量历程](nonlinear-results-0.13.0.json)。原固体、流体、IB 和耦合参考检查也通过。
+
 `nonlinear_patch.py` 使用 6 个 P2 四面体、27 个节点，包含两例：
 
 1. Guccione 仿射平衡：8% 伸长与剪切，外载由解析常量 PK1 牵引的三角形积分给出，没有直接用内部装配力的负值构造右端。解与已知仿射坐标比较。
@@ -39,6 +41,8 @@ CUDA_VISIBLE_DEVICES=0 python examples/lv_equilibrium.py --device cuda --mesh-si
 `lv_equilibrium.py` 默认使用生成的 h=1.8 cm 左室（554 节点、260 单元），Guccione 参数和基底弹簧沿用原模型；压力分两级 0.1→0.2 mmHg，主动张力为零。载荷比例不是时间，不是心动周期。局部收敛状态作为下一级初值；不做自动步长调整。
 
 本地最终最大位移约 0.01638 cm。这个小载荷测试验证迭代流程，**不是生理舒张预加载、无应力几何反演或完整周期初始状态的验收**。改变压力、张力或网格可能需要更强预条件和继续验证。
+
+Linux 复核中两个加载级各需 4 次 Newton；最终最小 det(F)=0.99918974，自由残量约 6.78e-8 dyn，小于 1.04e-5 dyn 的停止阈值。线性迭代为每轮 305–825 次，不能宣称预条件已经适合大规模网格。
 
 ## 输出与下一步
 
