@@ -2,6 +2,20 @@
 
 目标是在 GPU 上实现 AFSI 的非线性固体、背景流体与 IB 耦合，算例采用程序生成的厘米制理想左心室。当前已具备 P2 固体、Q2/Q1 流体、Chorin 求解及显式耦合时间步，并通过独立 DOLFINx/NumPy 对照；完整心动周期、收敛和长期稳定性仍待验收。
 
+## 第十五步：预加载左室的流体/IB 网格研究
+
+版本 **0.15.0** 复用已收敛的 0.2 mmHg 左室预加载，分别运行固定位置单步因素对照和 0.02 mmHg 增压的短时耦合网格研究。生产 IB、Chorin 和力滞后顺序保持一致；诊断替代方法只用于分析。详见 [实验、指标及限制](docs/PRELOADED_IB_STUDY.md)。
+
+```bash
+git pull --ff-only
+conda activate afsi-torch
+python -m pip install -e ".[test,geometry]"
+CUDA_VISIBLE_DEVICES=0 python -m pytest -q
+CUDA_VISIBLE_DEVICES=0 python validation/study_preloaded_ib.py --preload results/lv_equilibrium --device cuda --output results/preloaded_ib_study
+```
+
+本地 CPU **158 passed、96 CUDA skipped**。三档固定位置和 6³/8³/10³ 短时耦合算例完成，但网格敏感性**未通过筛选**：8³→10³ 增量腔体积差 38.6%、最大增量位移差 45.6%。[数值记录](docs/preloaded-ib-results-0.15.0.json)保留完整对照。全部算例完成不表示网格敏感性合格；本版 GPU 待执行，也不构成完整周期验收。
+
 ## 第十四步：预加载接入与保持测试
 
 当前版本 **0.14.0** 可直接读取第十三步的收敛结果，保留原参考网格和预应力，以实际平衡节点力初始化 IB，然后分别执行恒压保持和小幅增压。无需重新求解已有预加载。详见 [运行方法、检查点与压力定义](docs/PRELOAD_STARTUP.md)。

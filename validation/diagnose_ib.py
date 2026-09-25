@@ -5,9 +5,10 @@ Same geometry, force and zero initial fluid velocity in every probe; this is
 not a trajectory, timestep convergence study or a physiological flow solution.
 """
 import argparse
-from dataclasses import asdict
+from dataclasses import asdict,replace
 import hashlib
 import json
+from math import isfinite
 from pathlib import Path
 import platform
 import numpy as np
@@ -17,6 +18,7 @@ from afsi_torch.fluid import create_box, prepare_operators, ChorinSolver
 from afsi_torch.fluid.solvers import pcg, SolverOptions
 from afsi_torch.geometry import LVConfig, generate_lv, cavity_volume
 from afsi_torch.lv_model import LVSolid
+from afsi_torch.preload import load_preload
 from afsi_torch.units import CGS_UNITS
 
 
@@ -108,18 +110,35 @@ def dump(path, value):
 
 
 @torch.no_grad()
-def run(device='cpu', output='results/ib_diagnosis', levels=(6, 12, 18), dt=2.5e-5):
+def run(device='cpu', output='results/ib_diagnosis', levels=(6, 12, 18), dt=2.5e-5,
+        preload=None, pressure_increment=.02):
     if str(device).startswith('cuda') and not torch.cuda.is_available():
         raise RuntimeError('CUDA requested but unavailable')
     if (len(levels) < 2 or levels[0] < 6 or any(not isinstance(n, int) or n % levels[0] for n in levels)
             or list(levels) != sorted(set(levels))):
         raise ValueError('use increasing integer multiples of a base cell count >= 6')
+    if preload is not None and (not isfinite(pressure_increment) or pressure_increment<=0):
+        raise ValueError('positive finite pressure increment required for preload probe')
     # ChorinSolver validates dt before any case is accepted.
     folder = Path(output)
     folder.mkdir(parents=True, exist_ok=True)
-    model = LVSolid(generate_lv(LVConfig(mesh_size=1.2), device=device))
-    x = model.mesh.X
-    force = model.force(x, .001).detach()
+    if preload is None:
+        model = LVSolid(generate_lv(LVConfig(mesh_size=1.2), device=device))
+        x = model.mesh.X
+        force = model.force(x, .001).detach()
+        provenance = None
+        initial_force = None
+    else:
+        model,x,tolerance,provenance = load_preload(preload,device=device)
+        initial_force = model.force(x,0.).detach()
+        original_loads=model.loads
+        try:
+            model.loads=replace(original_loads,pressure_mmhg=original_loads.pressure_mmhg+pressure_increment)
+            force=(model.force(x,0.)-initial_force).detach()
+        finally:
+            model.loads=original_loads
+        if torch.linalg.vector_norm(initial_force).item()>tolerance:
+            raise ValueError('preload is not balanced under its baseline load')
     with torch.enable_grad():
         volume_gradient = torch.func.grad(lambda y: cavity_volume(y, model.cavity))(x).detach()
     root = Path(__file__).resolve().parents[1]
@@ -128,7 +147,8 @@ def run(device='cpu', output='results/ib_diagnosis', levels=(6, 12, 18), dt=2.5e
         code.update(path.relative_to(root).as_posix().encode()+b'\0'+path.read_bytes())
     report = dict(metadata=dict(device=str(device), torch=torch.__version__, python=platform.python_version(),
         gpu=torch.cuda.get_device_name(device) if str(device).startswith('cuda') else None,
-        units=CGS_UNITS, levels=levels, dt_s=dt, load_time_s=.001, solid_mesh_size_cm=1.2,
+        units=CGS_UNITS, levels=levels, dt_s=dt, load_time_s=.001 if preload is None else None,
+        solid_mesh_size_cm=model.mesh.config.mesh_size,
         solid_nodes=len(x), solid_cells=len(model.mesh.cells), gmsh=model.mesh.gmsh_version,
         loads=asdict(model.loads), material=asdict(model.parameters), beta=model.beta,
         rho=1., mu=1., source_sha256=code.hexdigest(), fixed_kernel_epsilon_cm=6/levels[0],
@@ -140,7 +160,16 @@ def run(device='cpu', output='results/ib_diagnosis', levels=(6, 12, 18), dt=2.5e
           'weak Q1 divergence constraint does not imply pointwise incompressibility',
           'nodal norms compare the identical solid mesh; they are not volume-weighted L2 norms',
           'no single-factor attribution of the full trajectory error or convergence proof'])
-    np.savez_compressed(folder/'solid_probe.npz', X=x.cpu().numpy(), cells=model.mesh.cells.cpu().numpy(),
+    if preload is not None:
+        report['metadata']['preload']=dict(provenance=provenance,
+            baseline_pressure_mmhg=original_loads.pressure_mmhg,
+            pressure_increment_mmhg=pressure_increment,
+            initial_force_norm_dyn=torch.linalg.vector_norm(initial_force).item(),
+            incremental_force_norm_dyn=torch.linalg.vector_norm(force).item(),
+            probe_force='target pressure force minus balanced baseline force at fixed preloaded x',
+            reference_rebased=False)
+    np.savez_compressed(folder/'solid_probe.npz', X=model.mesh.X.cpu().numpy(),
+                        x_preload=x.cpu().numpy(),cells=model.mesh.cells.cpu().numpy(),
                         force=force.cpu().numpy(), volume_gradient=volume_gradient.cpu().numpy())
     arrays = {}
     dump(folder/'diagnosis.json', report)
@@ -223,6 +252,8 @@ if __name__ == '__main__':
     parser.add_argument('--output', default='results/ib_diagnosis')
     parser.add_argument('--levels', type=int, nargs='+', default=[6,12,18])
     parser.add_argument('--dt', type=float, default=2.5e-5)
+    parser.add_argument('--preload', default=None)
+    parser.add_argument('--pressure-increment-mmhg', type=float, default=.02)
     args = parser.parse_args()
-    result = run(args.device, args.output, args.levels, args.dt)
+    result = run(args.device, args.output, args.levels, args.dt,args.preload,args.pressure_increment_mmhg)
     print(json.dumps(result, indent=2, allow_nan=False))
