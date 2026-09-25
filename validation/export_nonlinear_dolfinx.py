@@ -6,7 +6,6 @@ import argparse
 import json
 from pathlib import Path
 import numpy as np
-import scipy.sparse
 import basix
 import basix.ufl
 import dolfinx
@@ -63,7 +62,9 @@ def export(output):
         matrix=petsc.assemble_matrix(jacobian_form)
         matrix.assemble()
         indptr,indices,values=matrix.getValuesCSR()
-        J=scipy.sparse.csr_matrix((values,indices,indptr),shape=matrix.getSize()).toarray()
+        J=np.zeros(matrix.getSize(),dtype=values.dtype)
+        rows=np.repeat(np.arange(len(indptr)-1),np.diff(indptr))
+        J[rows,indices]=values
         increment=np.linalg.solve(J[np.ix_(free,free)],-r[free])
         x.x.array[free]+=increment
         x.x.scatter_forward()
