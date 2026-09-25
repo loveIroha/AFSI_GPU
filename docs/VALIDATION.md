@@ -1,6 +1,12 @@
 # 验证记录
 
+## 0.13.0：Newton–GMRES 非线性固体平衡
+
+本地 CPU **138 passed、94 CUDA skipped**，共 232 项。新增非对称 GMRES、重启与失败、非零边界提升、非法试探拒绝、块对角切线、P2 解析平衡与完整切线 Newton 对照。生成左室 0.1/0.2 mmHg 两级平衡均收敛；这不是生理预加载验收。独立 UFL/DOLFINx 非线性参考由 Linux CI 运行并另行记录。本版 GPU 尚待执行，见 [NONLINEAR](NONLINEAR.md)。
+
 ## 0.12.0：冻结左室的 IB/流体因素对照
+
+用户提供 RTX 4090 / torch 2.14.0+cu130 的 `diagnosis.json`，12 组全部完成，代码指纹与 CPU 相同。各组最后两级相对差与 CPU 最大差约 1.60e-12；没有随该文件提供新的 pytest 计数，不把诊断完成写作 214 项 pytest 已通过。见 [GPU 诊断记录](ib-diagnosis-gpu-results-0.12.0.json)。
 
 [Linux 自动验证 36143192861](https://github.com/loveIroha/AFSI_GPU/actions/runs/36143192861) 全部通过，代码提交 `f96a3951c16c5abae24b80a8ad179f42e34cb26b`：**127 passed、87 CUDA skipped**，原 DOLFINx/NumPy/PETSc 对照仍通过，新增 12 组冻结诊断完成。原核 + density 的 12³→18³ Chorin 固体速度差为 55.83%；固定宽度后为 27.82%；固定宽度 + dual 为 3.00%。这些是不同离散的冻结探针结果，不是轨迹误差或全耦合收敛证明。见 [完整 Linux 报告](ib-diagnosis-results-0.12.0.json)。
 

@@ -37,6 +37,7 @@ jobs:
           python validation/export_chorin_dolfinx.py --output validation/results/chorin_coarse.npz
           python validation/export_chorin_dolfinx.py --subdivisions 2 --output validation/results/chorin_fine.npz
           python validation/export_coupled_dolfinx.py --output validation/results/coupled_patch.npz
+          python validation/export_nonlinear_dolfinx.py --output validation/results/nonlinear.npz
       - name: Install separate CPU PyTorch environment
         run: |
           sudo apt-get update -qq
@@ -47,6 +48,9 @@ jobs:
       - name: Regressions and independent force/tangent comparisons
         run: |
           .venv-torch/bin/python -m pytest -q
+          .venv-torch/bin/python validation/compare_nonlinear_dolfinx.py --reference validation/results/nonlinear.npz --output validation/results/nonlinear.json
+          .venv-torch/bin/python examples/nonlinear_patch.py --device cpu --output validation/results/nonlinear_patch
+          .venv-torch/bin/python examples/lv_equilibrium.py --device cpu --output validation/results/lv_equilibrium
           .venv-torch/bin/python validation/compare_dolfinx.py --reference validation/results/coarse.npz --output validation/results/coarse.json
           .venv-torch/bin/python validation/compare_dolfinx.py --reference validation/results/fine.npz --output validation/results/fine.json
           .venv-torch/bin/python validation/compare_ib.py --output validation/results/ib.json

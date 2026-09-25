@@ -2,9 +2,24 @@
 
 目标是在 GPU 上实现 AFSI 的非线性固体、背景流体与 IB 耦合，算例采用程序生成的厘米制理想左心室。当前已具备 P2 固体、Q2/Q1 流体、Chorin 求解及显式耦合时间步，并通过独立 DOLFINx/NumPy 对照；完整心动周期、收敛和长期稳定性仍待验收。
 
+## 第十三步：GPU 非线性固体平衡
+
+当前版本 **0.13.0** 新增 Newton–GMRES、自动微分 JVP、节点块预条件与构形检查/回溯，已完成 P2 仿射平衡、随动压力平衡和生成左室低压预加载的本地验证。现有显式 IB 时间推进保持不变；详见 [非线性算法、运行与限制](docs/NONLINEAR.md)。
+
+```bash
+git pull --ff-only
+conda activate afsi-torch
+python -m pip install -e ".[test,geometry]"
+CUDA_VISIBLE_DEVICES=0 python -m pytest -q
+CUDA_VISIBLE_DEVICES=0 python examples/nonlinear_patch.py --device cuda --output results/nonlinear_patch
+CUDA_VISIBLE_DEVICES=0 python examples/lv_equilibrium.py --device cuda --mesh-size 1.8 --pressure-mmhg 0.2 --load-steps 2 --output results/lv_equilibrium
+```
+
+本地 CPU **138 passed、94 CUDA skipped**，完整测试共 **232 项**；本版目标 GPU 尚待执行。左室示例是 0.2 mmHg 小载荷数值验证，不是已验收的生理预加载或完整周期。
+
 ## 第十二步：定位流体/IB 网格敏感性
 
-当前版本 **0.12.0** 增加冻结左室的核宽度、载荷路径与压力投影对照，生产耦合算法保持不变。已发现多项离散选择共同影响响应，不能只缩小时间步或只换投影。详见 [实验设置、实测结果与限制](docs/IB_DIAGNOSIS.md)。
+版本 **0.12.0** 增加冻结左室的核宽度、载荷路径与压力投影对照，生产耦合算法保持不变。已发现多项离散选择共同影响响应，不能只缩小时间步或只换投影。详见 [实验设置、实测结果与限制](docs/IB_DIAGNOSIS.md)。
 
 ```bash
 git pull --ff-only
