@@ -1,0 +1,228 @@
+{
+  "version": "0.14.0",
+  "code_commit": "65aebbed44335ee665642cf89220ae99141e4cc0",
+  "local_cpu": {
+    "pytest": "155 passed, 96 CUDA skipped, 1 warning",
+    "startup": {
+      "device": "cpu",
+      "torch": "2.14.0+cpu",
+      "gpu": null,
+      "units": {
+        "length": "cm",
+        "volume": "cm^3 (mL)",
+        "time": "s",
+        "mass": "g",
+        "force": "dyn",
+        "stress": "dyn/cm^2",
+        "pressure": "dyn/cm^2",
+        "energy": "erg",
+        "spring_coefficient": "dyn/cm^3"
+      },
+      "provenance": {
+        "checkpoint_sha256": "81ffd2ba26b0aabec58d59c0dc45b70e6179348b77cb41e7568b044ba73a8311",
+        "report_sha256": "97ab99406c07b0d8c5dbc5514bd3c89fe2c44840558408ae96eaee615640b71f",
+        "legacy_tag_reconstruction": true,
+        "recomputed_force_norm_dyn": 6.80833192161239e-8,
+        "force_tolerance_dyn": 0.000010431008380954383,
+        "reference_rebased": false,
+        "equilibrium_resolved": false,
+        "reference_nodes": 554,
+        "reference_cells": 260
+      },
+      "initial": {
+        "cavity_volume_ml": 78.37290679929855,
+        "wall_volume_cm3": 105.57536545774254,
+        "minimum_detF": 0.9991897424748037,
+        "maximum_detF": 1.000923937920468,
+        "passive_energy_erg": 113.21605121718065,
+        "spring_energy_erg": 3.236057763789383,
+        "max_total_displacement_cm": 0.01638106856463717
+      },
+      "dt_s": 0.00005,
+      "steps": 20,
+      "fluid_cells": 6,
+      "source_preload_pressure_mmhg": 0.2,
+      "source_preload_tension_dyn_per_cm2": 0,
+      "initial_pressure_field": "zero background Chorin pressure; prescribed cavity traction remains in solid force",
+      "fluid_pressure_represents_prescribed_lv_pressure": false,
+      "initialization": "actual balanced nodal force at physical time zero",
+      "reference_geometry": "original unloaded X retained",
+      "hold_screen": {
+        "max_displacement_cm": 1e-8,
+        "max_cavity_change_ml": 1e-7,
+        "max_fluid_speed_cm_per_s": 0.000001
+      },
+      "cases": {
+        "hold": {
+          "loads": {
+            "pressure_mmhg": 0.2,
+            "tension": 0,
+            "pressure_increment_mmhg": 0,
+            "hold_time": 0.0005,
+            "ramp_time": 0.00025
+          },
+          "completed": true,
+          "initial_force_norm_dyn": 6.80833192161239e-8,
+          "initial_fluid_free_rhs_norm_dyn": 7.124504753505093e-8,
+          "initial_solid_force_time_s": 0,
+          "accepted_steps": 20,
+          "reached_time_s": 0.001,
+          "summary": {
+            "max_incremental_displacement_cm": 2.569790105496827e-15,
+            "max_abs_cavity_change_ml": 1.4210854715202004e-14,
+            "final_cavity_change_ml": 1.4210854715202004e-14,
+            "max_fluid_speed_cm_per_s": 7.600091083221002e-12,
+            "min_detF": 0.9991897424748001,
+            "max_solver_residual_ratio": 0.9856110711116496
+          }
+        },
+        "pressure_increment": {
+          "loads": {
+            "pressure_mmhg": 0.2,
+            "tension": 0,
+            "pressure_increment_mmhg": 0.02,
+            "hold_time": 0.0005,
+            "ramp_time": 0.00025
+          },
+          "completed": true,
+          "initial_force_norm_dyn": 6.80833192161239e-8,
+          "initial_fluid_free_rhs_norm_dyn": 7.124504753505093e-8,
+          "initial_solid_force_time_s": 0,
+          "accepted_steps": 20,
+          "reached_time_s": 0.001,
+          "summary": {
+            "max_incremental_displacement_cm": 1.7852840542378674e-7,
+            "max_abs_cavity_change_ml": 0.000009463774716778062,
+            "final_cavity_change_ml": 0.000009463774716778062,
+            "max_fluid_speed_cm_per_s": 0.002381963738997588,
+            "min_detF": 0.9991897303082602,
+            "max_solver_residual_ratio": 0.9856110711116496
+          }
+        }
+      },
+      "completed": true,
+      "hold_screen_passed": true,
+      "perturbation_detected": true,
+      "full_cycle_ready": false,
+      "zero_ramp_control": {
+        "force_norm_dyn": 2093.478158709804,
+        "rejected_by_balance_gate": true
+      }
+    }
+  },
+  "linux_ci": {
+    "run_url": "https://github.com/loveIroha/AFSI_GPU/actions/runs/36184599813",
+    "run_id": 36184599813,
+    "job_id": 108234821546,
+    "conclusion": "success",
+    "pytest": "155 passed, 96 CUDA skipped, 1 warning in 6.89s",
+    "startup": {
+      "device": "cpu",
+      "torch": "2.14.0+cpu",
+      "gpu": null,
+      "units": {
+        "length": "cm",
+        "volume": "cm^3 (mL)",
+        "time": "s",
+        "mass": "g",
+        "force": "dyn",
+        "stress": "dyn/cm^2",
+        "pressure": "dyn/cm^2",
+        "energy": "erg",
+        "spring_coefficient": "dyn/cm^3"
+      },
+      "provenance": {
+        "checkpoint_sha256": "24917f58e3fa7a8604d19bce710028a098e742e0e6665d6ef356db11c9f77699",
+        "report_sha256": "cccd4024a089990afe836597748852e5a9fac0eb373f23ba554eace6b1fa6cbf",
+        "legacy_tag_reconstruction": false,
+        "recomputed_force_norm_dyn": 6.781684575021802e-8,
+        "force_tolerance_dyn": 0.000010431008380959284,
+        "reference_rebased": false,
+        "equilibrium_resolved": false,
+        "reference_nodes": 554,
+        "reference_cells": 260
+      },
+      "initial": {
+        "cavity_volume_ml": 78.37290679929856,
+        "wall_volume_cm3": 105.57536545774254,
+        "minimum_detF": 0.9991897424748057,
+        "maximum_detF": 1.0009239379204669,
+        "passive_energy_erg": 113.21605121718352,
+        "spring_energy_erg": 3.2360577637894035,
+        "max_total_displacement_cm": 0.01638106856464934
+      },
+      "dt_s": 0.00005,
+      "steps": 20,
+      "fluid_cells": 6,
+      "source_preload_pressure_mmhg": 0.2,
+      "source_preload_tension_dyn_per_cm2": 0,
+      "initial_pressure_field": "zero background Chorin pressure; prescribed cavity traction remains in solid force",
+      "fluid_pressure_represents_prescribed_lv_pressure": false,
+      "initialization": "actual balanced nodal force at physical time zero",
+      "reference_geometry": "original unloaded X retained",
+      "hold_screen": {
+        "max_displacement_cm": 1e-8,
+        "max_cavity_change_ml": 1e-7,
+        "max_fluid_speed_cm_per_s": 0.000001
+      },
+      "cases": {
+        "hold": {
+          "loads": {
+            "pressure_mmhg": 0.2,
+            "tension": 0,
+            "pressure_increment_mmhg": 0,
+            "hold_time": 0.0005,
+            "ramp_time": 0.00025
+          },
+          "completed": true,
+          "initial_force_norm_dyn": 6.781684575021802e-8,
+          "initial_fluid_free_rhs_norm_dyn": 7.099854586109351e-8,
+          "initial_solid_force_time_s": 0,
+          "accepted_steps": 20,
+          "reached_time_s": 0.001,
+          "summary": {
+            "max_incremental_displacement_cm": 2.569790105496827e-15,
+            "max_abs_cavity_change_ml": 1.4210854715202004e-14,
+            "final_cavity_change_ml": 1.4210854715202004e-14,
+            "max_fluid_speed_cm_per_s": 7.610039963722904e-12,
+            "min_detF": 0.9991897424748032,
+            "max_solver_residual_ratio": 0.977254099879283
+          }
+        },
+        "pressure_increment": {
+          "loads": {
+            "pressure_mmhg": 0.2,
+            "tension": 0,
+            "pressure_increment_mmhg": 0.02,
+            "hold_time": 0.0005,
+            "ramp_time": 0.00025
+          },
+          "completed": true,
+          "initial_force_norm_dyn": 6.781684575021802e-8,
+          "initial_fluid_free_rhs_norm_dyn": 7.099854586109351e-8,
+          "initial_solid_force_time_s": 0,
+          "accepted_steps": 20,
+          "reached_time_s": 0.001,
+          "summary": {
+            "max_incremental_displacement_cm": 1.7852840542378677e-7,
+            "max_abs_cavity_change_ml": 0.000009463774702567207,
+            "final_cavity_change_ml": 0.000009463774702567207,
+            "max_fluid_speed_cm_per_s": 0.0023819637390231573,
+            "min_detF": 0.9991897303082622,
+            "max_solver_residual_ratio": 0.9845092012627256
+          }
+        }
+      },
+      "completed": true,
+      "hold_screen_passed": true,
+      "perturbation_detected": true,
+      "full_cycle_ready": false,
+      "zero_ramp_control": {
+        "force_norm_dyn": 2093.478158709498,
+        "rejected_by_balance_gate": true
+      }
+    }
+  },
+  "gpu_status": "not executed for this version"
+}
+

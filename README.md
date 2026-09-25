@@ -16,9 +16,11 @@ CUDA_VISIBLE_DEVICES=0 python examples/preloaded_lv.py --preload results/lv_equi
 
 本地 CPU **155 passed、96 CUDA skipped**，共 **251 项**；本版 GPU 尚待执行。默认两组各 20 步、dt=5e-5 s，仅验证 1 ms 的启动。腔压仍是固体的给定随动载荷，背景流体压力初值为零；这不是已建立生理腔压的完整流体初场，也不是完整周期验收。
 
+[0.14.0 Linux 自动验证已通过](https://github.com/loveIroha/AFSI_GPU/actions/runs/36184599813)：155 passed、96 CUDA skipped，独立参考对照和预加载启动均通过；[完整结果](docs/preload-startup-results-0.14.0.json)。
+
 ## 第十三步：GPU 非线性固体平衡
 
-当前版本 **0.13.0** 新增 Newton–GMRES、自动微分 JVP、节点块预条件与构形检查/回溯，已完成 P2 仿射平衡、随动压力平衡和生成左室低压预加载的本地验证。现有显式 IB 时间推进保持不变；详见 [非线性算法、运行与限制](docs/NONLINEAR.md)。
+版本 **0.13.0** 新增 Newton–GMRES、自动微分 JVP、节点块预条件与构形检查/回溯，已完成 P2 仿射平衡、随动压力平衡和生成左室低压预加载的本地验证。现有显式 IB 时间推进保持不变；详见 [非线性算法、运行与限制](docs/NONLINEAR.md)。
 
 ```bash
 git pull --ff-only
