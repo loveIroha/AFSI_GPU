@@ -53,6 +53,7 @@ jobs:
           .venv-torch/bin/python examples/lv_equilibrium.py --device cpu --output validation/results/lv_equilibrium
           .venv-torch/bin/python examples/preloaded_lv.py --preload validation/results/lv_equilibrium --device cpu --output validation/results/preloaded_lv
           .venv-torch/bin/python validation/study_preloaded_ib.py --preload validation/results/lv_equilibrium --device cpu --output validation/results/preloaded_ib_study
+          .venv-torch/bin/python validation/phase_power_ib.py --study validation/results/preloaded_ib_study --device cpu --output validation/results/preloaded_ib_phase
           .venv-torch/bin/python validation/compare_dolfinx.py --reference validation/results/coarse.npz --output validation/results/coarse.json
           .venv-torch/bin/python validation/compare_dolfinx.py --reference validation/results/fine.npz --output validation/results/fine.json
           .venv-torch/bin/python validation/compare_ib.py --output validation/results/ib.json

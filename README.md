@@ -2,6 +2,19 @@
 
 目标是在 GPU 上实现 AFSI 的非线性固体、背景流体与 IB 耦合，算例采用程序生成的厘米制理想左心室。当前已具备 P2 固体、Q2/Q1 流体、Chorin 求解及显式耦合时间步，并通过独立 DOLFINx/NumPy 对照；完整心动周期、收敛和长期稳定性仍待验收。
 
+## 第十六步：定位 IB 位置、载荷功率与压力投影差异
+
+版本 **0.16.0** 接续第十五步预加载研究，在固定构形下测量 IB 相互作用点相对背景格点的位置、原密度载荷与流体有限元弱式功率的差异，并汇总已有 Chorin/Schur 投影对照；生产耦合算法未改变。详见 [试验定义及限制](docs/PHASE_POWER_IB.md)。
+
+```bash
+git pull --ff-only
+conda activate afsi-torch
+python -m pip install -e ".[test,geometry]"
+CUDA_VISIBLE_DEVICES=0 python validation/phase_power_ib.py --study results/preloaded_ib_study --device cuda --output results/preloaded_ib_phase
+```
+
+本地 CPU **32 组试验全部完成**：12³ 原核+密度路径在三轴各偏移半格距后，固体速度向量变化 43.6%；固定 1 cm 核约 3.5%。格点功率恒等式仍成立，但原密度载荷进入 Q2 弱式后出现非零功率差；直接弱式载荷为单独的诊断离散。[数值记录](docs/phase-power-results-0.16.0.json)。本版 GPU 与 Linux CI 尚待执行，完整周期仍未验收。
+
 ## 第十五步：预加载左室的流体/IB 网格研究
 
 版本 **0.15.0** 复用已收敛的 0.2 mmHg 左室预加载，分别运行固定位置单步因素对照和 0.02 mmHg 增压的短时耦合网格研究。生产 IB、Chorin 和力滞后顺序保持一致；诊断替代方法只用于分析。详见 [实验、指标及限制](docs/PRELOADED_IB_STUDY.md)。
