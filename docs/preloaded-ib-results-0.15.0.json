@@ -802,6 +802,126 @@
       "full_cycle_ready": false
     }
   },
-  "linux_ci": null,
+  "linux_ci": {
+    "run_url": "https://github.com/loveIroha/AFSI_GPU/actions/runs/36189135178",
+    "code_commit": "bab95e4314bb3b8dc58ac241c04744435ddd741a",
+    "conclusion": "success",
+    "pytest": "158 passed, 96 CUDA skipped, 1 warning in 6.34s",
+    "device": "cpu",
+    "torch": "2.14.0+cpu",
+    "preload": {
+      "checkpoint_sha256": "24917f58e3fa7a8604d19bce710028a098e742e0e6665d6ef356db11c9f77699",
+      "report_sha256": "cccd4024a089990afe836597748852e5a9fac0eb373f23ba554eace6b1fa6cbf",
+      "legacy_tag_reconstruction": false,
+      "recomputed_force_norm_dyn": 6.781684575021802e-8,
+      "force_tolerance_dyn": 0.000010431008380959284,
+      "reference_rebased": false,
+      "equilibrium_resolved": false,
+      "reference_nodes": 554,
+      "reference_cells": 260
+    },
+    "frozen_completed": true,
+    "frozen_production_chorin_comparisons": {
+      "native_density_chorin": [
+        {
+          "coarse": 6,
+          "fine": 12,
+          "solid_velocity_difference_norm_cm_per_s": 0.0012198029046885802,
+          "fine_solid_velocity_norm_cm_per_s": 0.0017025631430812533,
+          "solid_velocity_relative_difference": 0.7164509050049171
+        },
+        {
+          "coarse": 12,
+          "fine": 18,
+          "solid_velocity_difference_norm_cm_per_s": 0.0028501875014074803,
+          "fine_solid_velocity_norm_cm_per_s": 0.003942026370434856,
+          "solid_velocity_relative_difference": 0.7230259855144165
+        }
+      ]
+    },
+    "cases": {
+      "6": {
+        "fluid_cells": 6,
+        "completed": true,
+        "accepted_steps": 20,
+        "summary": {
+          "delta_cavity_ml": 0.000009463774702567207,
+          "max_incremental_displacement_cm": 1.7852840542378677e-7,
+          "max_fluid_speed_cm_per_s": 0.0023819637390231573,
+          "minimum_detF": 0.9991897303082622,
+          "max_absolute_wall_volume_change_cm3": 0.000005475526307918699,
+          "max_corrected_divergence_l2": 0.03287401296675052,
+          "max_solver_residual_ratio": 0.9845092012627256,
+          "accumulated_fe_minus_solid_work_erg": -0.00007722559646521925,
+          "final_applied_pressure_mmhg": 0.22000000000000003
+        }
+      },
+      "8": {
+        "fluid_cells": 8,
+        "completed": true,
+        "accepted_steps": 20,
+        "summary": {
+          "delta_cavity_ml": 0.000009135855933095627,
+          "max_incremental_displacement_cm": 2.062652646786384e-7,
+          "max_fluid_speed_cm_per_s": 0.0029604260873367923,
+          "minimum_detF": 0.9991894145466439,
+          "max_absolute_wall_volume_change_cm3": 0.00000819717335787118,
+          "max_corrected_divergence_l2": 0.04030365704199001,
+          "max_solver_residual_ratio": 0.9971141245380251,
+          "accumulated_fe_minus_solid_work_erg": -0.00005804729235135514,
+          "final_applied_pressure_mmhg": 0.22000000000000003
+        }
+      },
+      "10": {
+        "fluid_cells": 10,
+        "completed": true,
+        "accepted_steps": 20,
+        "summary": {
+          "delta_cavity_ml": 0.000014880657147386955,
+          "max_incremental_displacement_cm": 3.794799024896805e-7,
+          "max_fluid_speed_cm_per_s": 0.004891923348613063,
+          "minimum_detF": 0.9991892764568953,
+          "max_absolute_wall_volume_change_cm3": 0.000016098529442842846,
+          "max_corrected_divergence_l2": 0.06275396959953278,
+          "max_solver_residual_ratio": 0.9082065939039582,
+          "accumulated_fe_minus_solid_work_erg": -0.0001019972867124163,
+          "final_applied_pressure_mmhg": 0.22000000000000003
+        }
+      }
+    },
+    "comparisons": [
+      {
+        "available": true,
+        "coarse_cells": 6,
+        "fine_cells": 8,
+        "absolute_delta_cavity_difference_ml": 3.2791876947158016e-7,
+        "displacement_nodal_l2_difference_cm": 0.000001461654387305585,
+        "fine_displacement_nodal_l2_cm": 0.0000020391902823514073,
+        "relative_metrics": {
+          "delta_cavity_response": 0.035893601198729384,
+          "max_incremental_displacement": 0.13447178950884295,
+          "displacement_nodal_l2": 0.7167817539911672
+        },
+        "screen": "needs_refinement"
+      },
+      {
+        "available": true,
+        "coarse_cells": 8,
+        "fine_cells": 10,
+        "absolute_delta_cavity_difference_ml": 0.0000057448012142913285,
+        "displacement_nodal_l2_difference_cm": 0.0000019424484164176547,
+        "fine_displacement_nodal_l2_cm": 0.0000029783900100226303,
+        "relative_metrics": {
+          "delta_cavity_response": 0.3860583008795493,
+          "max_incremental_displacement": 0.4564527308946288,
+          "displacement_nodal_l2": 0.6521806781116942
+        },
+        "screen": "needs_refinement"
+      }
+    ],
+    "completed": true,
+    "all_refinement_screens_met": false,
+    "full_cycle_ready": false
+  },
   "gpu_status": "not executed for this version"
 }

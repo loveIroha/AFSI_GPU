@@ -25,3 +25,5 @@ CUDA_VISIBLE_DEVICES=0 python validation/study_preloaded_ib.py \
 ## 首次本地结果
 
 本地 CPU 12 组固定位置试验和 3 组耦合轨迹全部完成，线性求解残量满足容差，完整回归 158 passed、96 CUDA skipped。原核+密度+Chorin 的 6³→12³、12³→18³ 固体速度差分别为 71.65% 和 72.30%；固定 1 cm 核+直接弱式载荷+Chorin 分别为 18.01% 和 3.43%，但它改变了离散。生产耦合 8³→10³ 的增量腔体积差 38.61%、最大增量位移差 45.65%、节点增量位移向量差 65.22%；5% 筛选未通过。[完整对照记录](preloaded-ib-results-0.15.0.json)。
+
+[Linux 自动验证](https://github.com/loveIroha/AFSI_GPU/actions/runs/36189135178)也已完成，158 passed、96 CUDA skipped，三档耦合的筛选结论和数值与本地一致；详细结果已并入[同一数值记录](preloaded-ib-results-0.15.0.json)。目标 GPU 仍待运行。

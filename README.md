@@ -14,7 +14,7 @@ CUDA_VISIBLE_DEVICES=0 python -m pytest -q
 CUDA_VISIBLE_DEVICES=0 python validation/study_preloaded_ib.py --preload results/lv_equilibrium --device cuda --output results/preloaded_ib_study
 ```
 
-本地 CPU **158 passed、96 CUDA skipped**。三档固定位置和 6³/8³/10³ 短时耦合算例完成，但网格敏感性**未通过筛选**：8³→10³ 增量腔体积差 38.6%、最大增量位移差 45.6%。[数值记录](docs/preloaded-ib-results-0.15.0.json)保留完整对照。全部算例完成不表示网格敏感性合格；本版 GPU 待执行，也不构成完整周期验收。
+本地 CPU **158 passed、96 CUDA skipped**。三档固定位置和 6³/8³/10³ 短时耦合算例完成，但网格敏感性**未通过筛选**：8³→10³ 增量腔体积差 38.6%、最大增量位移差 45.6%。[数值记录](docs/preloaded-ib-results-0.15.0.json)保留完整对照。[Linux 自动验证](https://github.com/loveIroha/AFSI_GPU/actions/runs/36189135178)同样通过 158 项 CPU 测试并复现该敏感性。全部算例完成不表示网格敏感性合格；本版 GPU 待执行，也不构成完整周期验收。
 
 ## 第十四步：预加载接入与保持测试
 
