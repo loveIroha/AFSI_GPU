@@ -16,6 +16,8 @@ CUDA_VISIBLE_DEVICES=0 python validation/study_lv.py --device cuda --output resu
 
 本地 CPU 测试为 **120 passed、81 CUDA skipped**，完整 GPU 环境应执行 **201 项**。研究的运行完成与响应收敛分别记录；应阅读 `study.json` 的 `assessment`，不能把退出码 0 当作收敛证明。本版目标 GPU 尚待验证。
 
+[0.11.0 Linux 自动验证已完成](https://github.com/loveIroha/AFSI_GPU/actions/runs/36116534841)：120 passed、81 CUDA skipped，独立参考对照通过，11 组研究全部运行完成；时间和流体网格敏感性检查仍未通过。见 [可复核的数值报告](docs/lv-study-results-0.11.0.json)。
+
 ## 第十步：完整显式耦合与生成左室短程运行
 
 0.10.0 连接固体力、IB 密度散布、流体求解、速度插值与坐标更新。左室位移现在来自耦合计算，默认运行 10 步、共 0.001 s，尚不是完整心动周期。见 [耦合顺序、单位、输出与验收限制](docs/COUPLING.md)。

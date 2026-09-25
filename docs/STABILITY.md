@@ -37,7 +37,9 @@ python scripts/plot_lv_study.py --source results/lv_study/study.json --output re
 
 固体加密改变初始曲面几何和自由度，故只比较体积**变化量**、最大位移等标量，不直接相减不同网格的节点数组。体积响应的相对差以较细结果的 ΔV 为分母，而不是以约 83 mL 的初始体积为分母；响应接近零时返回 `inconclusive`，不伪造零误差。
 
-## 初步实测结果（本地 CPU）
+## 初步实测结果（本地和 Linux CI CPU）
+
+[Linux 自动验证 36116534841](https://github.com/loveIroha/AFSI_GPU/actions/runs/36116534841) 已复核以下结论，11 组全部完成，完整回归 120 passed、81 CUDA skipped；[数值报告](lv-study-results-0.11.0.json) 保存实际参数、运行环境、代码指纹和各组比较。完整历程、最后状态和结果图保存在该次 CI 的验证附件中。本版 GPU 尚待执行。
 
 | 检查 | 结果 | 解读 |
 | --- | --- | --- |
