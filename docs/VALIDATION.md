@@ -2,6 +2,8 @@
 
 ## 0.12.0：冻结左室的 IB/流体因素对照
 
+[Linux 自动验证 36143192861](https://github.com/loveIroha/AFSI_GPU/actions/runs/36143192861) 全部通过，代码提交 `f96a3951c16c5abae24b80a8ad179f42e34cb26b`：**127 passed、87 CUDA skipped**，原 DOLFINx/NumPy/PETSc 对照仍通过，新增 12 组冻结诊断完成。原核 + density 的 12³→18³ Chorin 固体速度差为 55.83%；固定宽度后为 27.82%；固定宽度 + dual 为 3.00%。这些是不同离散的冻结探针结果，不是轨迹误差或全耦合收敛证明。见 [完整 Linux 报告](ib-diagnosis-results-0.12.0.json)。
+
 本地 CPU 完整回归 **127 passed、87 CUDA skipped**，共 214 项。新增独立全格点核求和、各向异性质量逆、稠密约束投影、正交性与离散梯度消除测试。三档网格、两种核、两种载荷路径共 12 组冻结探针均完成；结果说明核宽度、载荷路径与投影共同影响网格敏感性，尚未证明全耦合收敛。见 [IB_DIAGNOSIS](IB_DIAGNOSIS.md)。本版目标 GPU 待执行。
 
 ## 0.11.0：时间步、网格与时长研究

@@ -16,6 +16,8 @@ CUDA_VISIBLE_DEVICES=0 python validation/diagnose_ib.py --device cuda --output r
 
 本地 CPU **127 passed、87 CUDA skipped**，完整目标 GPU 测试共 **214 项**；本版 GPU 尚待执行。用户已提供 0.11.0 的 **201 passed** 和 RTX 4090 的完整 11 组研究报告，CPU/GPU 数值结论一致，见 [GPU 记录](docs/lv-study-gpu-results-0.11.0.json)。
 
+[0.12.0 Linux 自动验证已通过](https://github.com/loveIroha/AFSI_GPU/actions/runs/36143192861)：原独立参考对照、完整回归和 12 组新诊断均完成；[数值报告](docs/ib-diagnosis-results-0.12.0.json)。完成诊断不等于全耦合解已经收敛。
+
 ## 第十一步：时间步、网格和时长研究
 
 版本 **0.11.0** 增加 11 组受控研究、失败状态保存和汇总图。**研究发现当前流体网格敏感性仍明显，尚不能宣称完整周期可靠。** 保持已有物理方程和耦合顺序不变，见 [研究设置与实测结论](docs/STABILITY.md)。

@@ -43,7 +43,9 @@ Chorin 用压力 Laplace 算子校正，通常不会严格满足 D u=0。Schur �
 
 Schur 在容差内满足 Q1 弱无散约束，不保证每个积分点 div(u)=0。M_free⁻¹ 利用盒子 Q2 质量矩阵的张量积结构，在当前 CPU/GPU 上做三个小型一维 Cholesky 求解，不组装稠密三维全局矩阵、不回退 CPU 求解。另以小网格独立稠密约束求解、质量逆作用、梯度消除和正交性测试核验。
 
-## 本地 CPU 实测
+## 本地与 Linux CI CPU 实测
+
+[Linux 自动验证 36143192861](https://github.com/loveIroha/AFSI_GPU/actions/runs/36143192861) 已全部通过：127 passed、87 CUDA skipped，12 组诊断完成，结果与本地一致。代码提交 `f96a3951c16c5abae24b80a8ad179f42e34cb26b`；[完整数值报告](ib-diagnosis-results-0.12.0.json) 包含绝对/相对差、求解残量、代码指纹和参数。节点速度数组与结果图在该次 CI 验证附件中。本版 GPU 仍待执行。
 
 下表比较 12³→18³，同一固体节点速度向量差除以较细结果的节点欧氏范数；它不是腔体体积误差，也不是体积加权 L2 误差。
 
