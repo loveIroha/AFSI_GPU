@@ -1,6 +1,12 @@
 # 验证记录
 
+## 0.12.0：冻结左室的 IB/流体因素对照
+
+本地 CPU 完整回归 **127 passed、87 CUDA skipped**，共 214 项。新增独立全格点核求和、各向异性质量逆、稠密约束投影、正交性与离散梯度消除测试。三档网格、两种核、两种载荷路径共 12 组冻结探针均完成；结果说明核宽度、载荷路径与投影共同影响网格敏感性，尚未证明全耦合收敛。见 [IB_DIAGNOSIS](IB_DIAGNOSIS.md)。本版目标 GPU 待执行。
+
 ## 0.11.0：时间步、网格与时长研究
+
+用户已反馈目标 GPU **201 passed、1 warning，61.23 s**，并提供 RTX 4090 / PyTorch 2.14.0+cu130 的完整 11 组研究报告。代码指纹与 Linux CPU 相同，全部运行完成，敏感性结论一致；各组最终腔体体积最大绝对差约 2.84e-14 mL。见 [用户 GPU 报告摘要](lv-study-gpu-results-0.11.0.json)。此前“GPU 待执行”文字为该阶段历史记录。
 
 [Linux 自动验证 36116534841](https://github.com/loveIroha/AFSI_GPU/actions/runs/36116534841) 已完成，代码提交 `c2fd56d335fc4ae9c83e8f7c28a0608b6ed2329b`。完整回归 **120 passed、81 CUDA skipped**，已有 DOLFINx/NumPy/PETSc 独立参考对照通过；11 组研究运行完成，数值结论与本地一致：时间和流体网格敏感性尚未通过筛选。见 [Linux 数值报告及代码指纹](lv-study-results-0.11.0.json)。CI 成功代表研究执行成功，不代表研究证明了收敛。
 

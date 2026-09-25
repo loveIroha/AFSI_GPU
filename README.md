@@ -2,9 +2,23 @@
 
 目标是在 GPU 上实现 AFSI 的非线性固体、背景流体与 IB 耦合，算例采用程序生成的厘米制理想左心室。当前已具备 P2 固体、Q2/Q1 流体、Chorin 求解及显式耦合时间步，并通过独立 DOLFINx/NumPy 对照；完整心动周期、收敛和长期稳定性仍待验收。
 
+## 第十二步：定位流体/IB 网格敏感性
+
+当前版本 **0.12.0** 增加冻结左室的核宽度、载荷路径与压力投影对照，生产耦合算法保持不变。已发现多项离散选择共同影响响应，不能只缩小时间步或只换投影。详见 [实验设置、实测结果与限制](docs/IB_DIAGNOSIS.md)。
+
+```bash
+git pull --ff-only
+conda activate afsi-torch
+python -m pip install -e ".[test,geometry]"
+CUDA_VISIBLE_DEVICES=0 python -m pytest -q
+CUDA_VISIBLE_DEVICES=0 python validation/diagnose_ib.py --device cuda --output results/ib_diagnosis
+```
+
+本地 CPU **127 passed、87 CUDA skipped**，完整目标 GPU 测试共 **214 项**；本版 GPU 尚待执行。用户已提供 0.11.0 的 **201 passed** 和 RTX 4090 的完整 11 组研究报告，CPU/GPU 数值结论一致，见 [GPU 记录](docs/lv-study-gpu-results-0.11.0.json)。
+
 ## 第十一步：时间步、网格和时长研究
 
-当前版本 **0.11.0** 增加 11 组受控研究、失败状态保存和汇总图。**研究发现当前流体网格敏感性仍明显，尚不能宣称完整周期可靠。** 保持已有物理方程和耦合顺序不变，见 [研究设置与实测结论](docs/STABILITY.md)。
+版本 **0.11.0** 增加 11 组受控研究、失败状态保存和汇总图。**研究发现当前流体网格敏感性仍明显，尚不能宣称完整周期可靠。** 保持已有物理方程和耦合顺序不变，见 [研究设置与实测结论](docs/STABILITY.md)。
 
 ```bash
 git pull --ff-only

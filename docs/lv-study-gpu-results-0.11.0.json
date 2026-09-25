@@ -1,0 +1,929 @@
+{
+  "provenance": "User-supplied GPU study.json; pytest result reported by user, not executed by this agent",
+  "pytest_user_report": {
+    "passed": 201,
+    "warnings": 1,
+    "seconds": 61.23
+  },
+  "study": {
+    "metadata": {
+      "profile": "standard",
+      "device": "cuda",
+      "torch": "2.14.0+cu130",
+      "python": "3.12.14",
+      "numpy": "2.5.3",
+      "units": {
+        "length": "cm",
+        "volume": "cm^3 (mL)",
+        "time": "s",
+        "mass": "g",
+        "force": "dyn",
+        "stress": "dyn/cm^2",
+        "pressure": "dyn/cm^2",
+        "energy": "erg",
+        "spring_coefficient": "dyn/cm^3"
+      },
+      "source_sha256": "334de3c723dcdd10d27403ecbc4591f0070bf9015ba2088008e529273acee4ba",
+      "gpu": "NVIDIA GeForce RTX 4090",
+      "loads": {
+        "pressure_mmhg": 8.0,
+        "tension": 1000.0,
+        "ramp_time": 0.01
+      },
+      "fluid_domain": {
+        "lengths_cm": [
+          12.0,
+          12.0,
+          12.0
+        ],
+        "origin_cm": [
+          -6.0,
+          -6.0,
+          -8.0
+        ]
+      },
+      "physics_changed": false,
+      "notes": "CPU timings include setup/output and are not GPU performance claims"
+    },
+    "assessment": {
+      "relative_response_screen_tolerance": 0.05,
+      "axes": {
+        "time": {
+          "screen": "needs_refinement",
+          "finest_pair_relative_metrics": {
+            "delta_cavity_relative_difference": 0.056004277069634664,
+            "max_displacement_relative_difference": 0.0643728047175073,
+            "displacement_nodal_l2_relative_difference": 0.0625401748791687
+          },
+          "pairs": [
+            {
+              "coarse": "baseline",
+              "fine": "time_half",
+              "available": true,
+              "delta_cavity_difference_ml": 0.00011743825911025851,
+              "delta_cavity_relative_difference": 0.12134157379020853,
+              "max_displacement_relative_difference": 0.13564095050412542,
+              "displacement_nodal_l2_difference_cm": 4.3814344756175706e-05,
+              "displacement_nodal_l2_relative_difference": 0.13202374300767575
+            },
+            {
+              "coarse": "time_half",
+              "fine": "time_quarter",
+              "available": true,
+              "delta_cavity_difference_ml": 5.741840843143109e-05,
+              "delta_cavity_relative_difference": 0.056004277069634664,
+              "max_displacement_relative_difference": 0.0643728047175073,
+              "displacement_nodal_l2_difference_cm": 2.211669960199848e-05,
+              "displacement_nodal_l2_relative_difference": 0.0625401748791687
+            }
+          ],
+          "observed_order_nodal_displacement": 0.9862671702539642
+        },
+        "fluid": {
+          "screen": "needs_refinement",
+          "finest_pair_relative_metrics": {
+            "delta_cavity_relative_difference": 0.3825672843533316,
+            "max_displacement_relative_difference": 0.4480443171843624,
+            "displacement_nodal_l2_relative_difference": 0.6628593766607404
+          },
+          "pairs": [
+            {
+              "coarse": "baseline",
+              "fine": "fluid_8",
+              "available": true,
+              "delta_cavity_difference_ml": 5.381163614970319e-05,
+              "delta_cavity_relative_difference": 0.06755315646207043,
+              "max_displacement_relative_difference": 0.11791828920119471,
+              "displacement_nodal_l2_difference_cm": 0.00018921513441805366,
+              "displacement_nodal_l2_relative_difference": 0.7106015611529332
+            },
+            {
+              "coarse": "fluid_8",
+              "fine": "fluid_10",
+              "available": true,
+              "delta_cavity_difference_ml": 0.0004935699845702857,
+              "delta_cavity_relative_difference": 0.3825672843533316,
+              "max_displacement_relative_difference": 0.4480443171843624,
+              "displacement_nodal_l2_difference_cm": 0.0002604685061880645,
+              "displacement_nodal_l2_relative_difference": 0.6628593766607404
+            }
+          ]
+        },
+        "solid": {
+          "screen": "within_screen",
+          "finest_pair_relative_metrics": {
+            "delta_cavity_relative_difference": 0.015328270083510237,
+            "max_displacement_relative_difference": 0.006450109211762312
+          },
+          "pairs": [
+            {
+              "coarse": "solid_coarse",
+              "fine": "baseline",
+              "available": true,
+              "delta_cavity_difference_ml": 6.95891441182539e-06,
+              "delta_cavity_relative_difference": 0.008183167402752019,
+              "max_displacement_relative_difference": 0.008271795323291696
+            },
+            {
+              "coarse": "baseline",
+              "fine": "solid_fine",
+              "available": true,
+              "delta_cavity_difference_ml": 1.3237980411417993e-05,
+              "delta_cavity_relative_difference": 0.015328270083510237,
+              "max_displacement_relative_difference": 0.006450109211762312
+            }
+          ]
+        },
+        "fluid_small_dt": {
+          "screen": "needs_refinement",
+          "finest_pair_relative_metrics": {
+            "delta_cavity_relative_difference": 0.403635268827253,
+            "max_displacement_relative_difference": 0.46113761795436553,
+            "displacement_nodal_l2_relative_difference": 0.7036180679611364
+          },
+          "pairs": [
+            {
+              "coarse": "time_quarter",
+              "fine": "fluid_8_small_dt",
+              "available": true,
+              "delta_cavity_difference_ml": 0.00010133729210792808,
+              "delta_cavity_relative_difference": 0.10968270647335511,
+              "max_displacement_relative_difference": 0.11262741736649787,
+              "displacement_nodal_l2_difference_cm": 0.00025050748621208396,
+              "displacement_nodal_l2_relative_difference": 0.7762410446050909
+            },
+            {
+              "coarse": "fluid_8_small_dt",
+              "fine": "fluid_10_small_dt",
+              "available": true,
+              "delta_cavity_difference_ml": 0.0006253286003214953,
+              "delta_cavity_relative_difference": 0.403635268827253,
+              "max_displacement_relative_difference": 0.46113761795436553,
+              "displacement_nodal_l2_difference_cm": 0.0003415854527453618,
+              "displacement_nodal_l2_relative_difference": 0.7036180679611364
+            }
+          ]
+        }
+      },
+      "all_requested_runs_completed": true,
+      "all_refinement_screens_met": false,
+      "full_cycle_ready": false,
+      "limitations": [
+        "short prescribed-load ramp, no preloaded state or valve/circulation model",
+        "wall-volume drift is not by itself a cavity leakage measure",
+        "fluid refinement also changes Peskin support width",
+        "separate refinements are sensitivity screens, not joint/asymptotic convergence proof"
+      ]
+    },
+    "cases": {
+      "baseline": {
+        "case": {
+          "name": "baseline",
+          "dt": 0.0001,
+          "final_time": 0.001,
+          "fluid_cells": 6,
+          "mesh_size": 1.2
+        },
+        "completed": true,
+        "accepted_steps": 10,
+        "reached_time_s": 0.001,
+        "failure": null,
+        "initial": {
+          "cavity_volume_ml": 82.75809228453294,
+          "wall_volume_cm3": 108.9239477537798,
+          "minimum_detF": 0.9999999999999902,
+          "maximum_detF": 1.000000000000015,
+          "passive_energy_erg": 7.397264829303499e-23,
+          "spring_energy_erg": 0.0,
+          "max_total_displacement_cm": 0.0
+        },
+        "final": {
+          "cavity_volume_ml": 82.75894267828261,
+          "wall_volume_cm3": 108.92341464113329,
+          "minimum_detF": 0.9999779131937784,
+          "maximum_detF": 1.0000141154051454,
+          "passive_energy_erg": 0.004129271621119477,
+          "spring_energy_erg": 0.00010444387669047399,
+          "max_total_displacement_cm": 1.5085471639183553e-05
+        },
+        "summary": {
+          "delta_cavity_ml": 0.0008503937496726621,
+          "relative_wall_volume_change": -4.894356635976038e-06,
+          "maximum_abs_relative_wall_volume_change": 4.894356635976038e-06,
+          "min_detF": 0.9999779131937784,
+          "max_detF": 1.0000141154051454,
+          "max_displacement_cm": 1.5085471639183553e-05,
+          "max_divergence_l2": 1.5755139242384855,
+          "max_net_flux_abs": 3.885780586188048e-16,
+          "max_courant": 6.602796040552825e-06,
+          "max_solver_residual_ratio": 0.9943996611934679,
+          "max_pressure_iterations": 36,
+          "max_lattice_power_error": 1.7763568394002505e-15,
+          "accumulated_fe_minus_solid_work_erg": -0.17898183868933415,
+          "accumulated_absolute_power_gap_erg": 0.17898183868933415
+        },
+        "solid_nodes": 1276,
+        "solid_cells": 616,
+        "gmsh": "4.15.2",
+        "physical_parameters": {
+          "material": {
+            "C": 20000.0,
+            "bf": 8.0,
+            "bt": 2.0,
+            "bfs": 4.0,
+            "kappa": 500000.0
+          },
+          "beta": 500000.0,
+          "rho": 1.0,
+          "mu": 1.0,
+          "solver_options": {
+            "rtol": 1e-10,
+            "atol": 1e-12,
+            "max_iterations": 1000,
+            "recompute_every": 40
+          }
+        }
+      },
+      "time_half": {
+        "case": {
+          "name": "time_half",
+          "dt": 5e-05,
+          "final_time": 0.001,
+          "fluid_cells": 6,
+          "mesh_size": 1.2
+        },
+        "completed": true,
+        "accepted_steps": 20,
+        "reached_time_s": 0.001,
+        "failure": null,
+        "initial": {
+          "cavity_volume_ml": 82.75809228453294,
+          "wall_volume_cm3": 108.9239477537798,
+          "minimum_detF": 0.9999999999999902,
+          "maximum_detF": 1.000000000000015,
+          "passive_energy_erg": 7.397264829303499e-23,
+          "spring_energy_erg": 0.0,
+          "max_total_displacement_cm": 0.0
+        },
+        "final": {
+          "cavity_volume_ml": 82.75906011654172,
+          "wall_volume_cm3": 108.92332416191067,
+          "minimum_detF": 0.99997373528889,
+          "maximum_detF": 1.000016840390364,
+          "passive_energy_erg": 0.0058364156710588,
+          "spring_energy_erg": 0.0001391421282813373,
+          "max_total_displacement_cm": 1.7452783826329978e-05
+        },
+        "summary": {
+          "delta_cavity_ml": 0.0009678320087829206,
+          "relative_wall_volume_change": -5.725020824076665e-06,
+          "maximum_abs_relative_wall_volume_change": 5.725020824076665e-06,
+          "min_detF": 0.99997373528889,
+          "max_detF": 1.000016840390364,
+          "max_displacement_cm": 1.7452783826329978e-05,
+          "max_divergence_l2": 1.88128755811237,
+          "max_net_flux_abs": 2.3592239273284576e-16,
+          "max_courant": 3.924233275853232e-06,
+          "max_solver_residual_ratio": 0.9848032004797442,
+          "max_pressure_iterations": 36,
+          "max_lattice_power_error": 4.547473508864641e-13,
+          "accumulated_fe_minus_solid_work_erg": -0.23425632013595293,
+          "accumulated_absolute_power_gap_erg": 0.23425632013595293
+        },
+        "solid_nodes": 1276,
+        "solid_cells": 616,
+        "gmsh": "4.15.2",
+        "physical_parameters": {
+          "material": {
+            "C": 20000.0,
+            "bf": 8.0,
+            "bt": 2.0,
+            "bfs": 4.0,
+            "kappa": 500000.0
+          },
+          "beta": 500000.0,
+          "rho": 1.0,
+          "mu": 1.0,
+          "solver_options": {
+            "rtol": 1e-10,
+            "atol": 1e-12,
+            "max_iterations": 1000,
+            "recompute_every": 40
+          }
+        }
+      },
+      "time_quarter": {
+        "case": {
+          "name": "time_quarter",
+          "dt": 2.5e-05,
+          "final_time": 0.001,
+          "fluid_cells": 6,
+          "mesh_size": 1.2
+        },
+        "completed": true,
+        "accepted_steps": 40,
+        "reached_time_s": 0.001,
+        "failure": null,
+        "initial": {
+          "cavity_volume_ml": 82.75809228453294,
+          "wall_volume_cm3": 108.9239477537798,
+          "minimum_detF": 0.9999999999999902,
+          "maximum_detF": 1.000000000000015,
+          "passive_energy_erg": 7.397264829303499e-23,
+          "spring_energy_erg": 0.0,
+          "max_total_displacement_cm": 0.0
+        },
+        "final": {
+          "cavity_volume_ml": 82.75911753495015,
+          "wall_volume_cm3": 108.9232775405232,
+          "minimum_detF": 0.9999715247181884,
+          "maximum_detF": 1.0000182892452405,
+          "passive_energy_erg": 0.006861022875970665,
+          "spring_energy_erg": 0.00015869164993455347,
+          "max_total_displacement_cm": 1.8653566200649482e-05
+        },
+        "summary": {
+          "delta_cavity_ml": 0.0010252504172143517,
+          "relative_wall_volume_change": -6.1530386147312655e-06,
+          "maximum_abs_relative_wall_volume_change": 6.1530386147312655e-06,
+          "min_detF": 0.9999715247181884,
+          "max_detF": 1.0000182892452405,
+          "max_displacement_cm": 1.8653566200649482e-05,
+          "max_divergence_l2": 2.0434296899515356,
+          "max_net_flux_abs": 3.608224830031759e-16,
+          "max_courant": 2.126585983336862e-06,
+          "max_solver_residual_ratio": 0.9823822569396384,
+          "max_pressure_iterations": 36,
+          "max_lattice_power_error": 4.547473508864641e-13,
+          "accumulated_fe_minus_solid_work_erg": -0.26558067308175864,
+          "accumulated_absolute_power_gap_erg": 0.26558067308175864
+        },
+        "solid_nodes": 1276,
+        "solid_cells": 616,
+        "gmsh": "4.15.2",
+        "physical_parameters": {
+          "material": {
+            "C": 20000.0,
+            "bf": 8.0,
+            "bt": 2.0,
+            "bfs": 4.0,
+            "kappa": 500000.0
+          },
+          "beta": 500000.0,
+          "rho": 1.0,
+          "mu": 1.0,
+          "solver_options": {
+            "rtol": 1e-10,
+            "atol": 1e-12,
+            "max_iterations": 1000,
+            "recompute_every": 40
+          }
+        }
+      },
+      "fluid_8": {
+        "case": {
+          "name": "fluid_8",
+          "dt": 0.0001,
+          "final_time": 0.001,
+          "fluid_cells": 8,
+          "mesh_size": 1.2
+        },
+        "completed": true,
+        "accepted_steps": 10,
+        "reached_time_s": 0.001,
+        "failure": null,
+        "initial": {
+          "cavity_volume_ml": 82.75809228453294,
+          "wall_volume_cm3": 108.9239477537798,
+          "minimum_detF": 0.9999999999999902,
+          "maximum_detF": 1.000000000000015,
+          "passive_energy_erg": 7.397264829303499e-23,
+          "spring_energy_erg": 0.0,
+          "max_total_displacement_cm": 0.0
+        },
+        "final": {
+          "cavity_volume_ml": 82.75888886664646,
+          "wall_volume_cm3": 108.9232422712931,
+          "minimum_detF": 0.999969345489096,
+          "maximum_detF": 1.0000231452398882,
+          "passive_energy_erg": 0.00653786224343862,
+          "spring_energy_erg": 6.403787916723353e-05,
+          "max_total_displacement_cm": 1.7102124955660043e-05
+        },
+        "summary": {
+          "delta_cavity_ml": 0.0007965821135229589,
+          "relative_wall_volume_change": -6.47683545484945e-06,
+          "maximum_abs_relative_wall_volume_change": 6.47683545484945e-06,
+          "min_detF": 0.999969345489096,
+          "max_detF": 1.0000231452398882,
+          "max_displacement_cm": 1.7102124955660043e-05,
+          "max_divergence_l2": 1.8974718468002711,
+          "max_net_flux_abs": 3.3306690738754696e-16,
+          "max_courant": 1.4701279414399985e-05,
+          "max_solver_residual_ratio": 0.9916045566614391,
+          "max_pressure_iterations": 52,
+          "max_lattice_power_error": 2.2737367544323206e-13,
+          "accumulated_fe_minus_solid_work_erg": -0.13229714797979525,
+          "accumulated_absolute_power_gap_erg": 0.13229714797979525
+        },
+        "solid_nodes": 1276,
+        "solid_cells": 616,
+        "gmsh": "4.15.2",
+        "physical_parameters": {
+          "material": {
+            "C": 20000.0,
+            "bf": 8.0,
+            "bt": 2.0,
+            "bfs": 4.0,
+            "kappa": 500000.0
+          },
+          "beta": 500000.0,
+          "rho": 1.0,
+          "mu": 1.0,
+          "solver_options": {
+            "rtol": 1e-10,
+            "atol": 1e-12,
+            "max_iterations": 1000,
+            "recompute_every": 40
+          }
+        }
+      },
+      "fluid_10": {
+        "case": {
+          "name": "fluid_10",
+          "dt": 0.0001,
+          "final_time": 0.001,
+          "fluid_cells": 10,
+          "mesh_size": 1.2
+        },
+        "completed": true,
+        "accepted_steps": 10,
+        "reached_time_s": 0.001,
+        "failure": null,
+        "initial": {
+          "cavity_volume_ml": 82.75809228453294,
+          "wall_volume_cm3": 108.9239477537798,
+          "minimum_detF": 0.9999999999999902,
+          "maximum_detF": 1.000000000000015,
+          "passive_energy_erg": 7.397264829303499e-23,
+          "spring_energy_erg": 0.0,
+          "max_total_displacement_cm": 0.0
+        },
+        "final": {
+          "cavity_volume_ml": 82.75938243663103,
+          "wall_volume_cm3": 108.92247591680757,
+          "minimum_detF": 0.9999393086957825,
+          "maximum_detF": 1.000032532436525,
+          "passive_energy_erg": 0.021193765392612036,
+          "spring_energy_erg": 0.00017477482586067414,
+          "max_total_displacement_cm": 3.098459801775868e-05
+        },
+        "summary": {
+          "delta_cavity_ml": 0.0012901520980932446,
+          "relative_wall_volume_change": -1.3512519538405598e-05,
+          "maximum_abs_relative_wall_volume_change": 1.3512519538405598e-05,
+          "min_detF": 0.9999393086957825,
+          "max_detF": 1.000032532436525,
+          "max_displacement_cm": 3.098459801775868e-05,
+          "max_divergence_l2": 3.0169854240100964,
+          "max_net_flux_abs": 2.220446049250313e-16,
+          "max_courant": 2.0335731263227015e-05,
+          "max_solver_residual_ratio": 0.9603006041731578,
+          "max_pressure_iterations": 91,
+          "max_lattice_power_error": 4.547473508864641e-13,
+          "accumulated_fe_minus_solid_work_erg": -0.22316854206447703,
+          "accumulated_absolute_power_gap_erg": 0.22316854206447703
+        },
+        "solid_nodes": 1276,
+        "solid_cells": 616,
+        "gmsh": "4.15.2",
+        "physical_parameters": {
+          "material": {
+            "C": 20000.0,
+            "bf": 8.0,
+            "bt": 2.0,
+            "bfs": 4.0,
+            "kappa": 500000.0
+          },
+          "beta": 500000.0,
+          "rho": 1.0,
+          "mu": 1.0,
+          "solver_options": {
+            "rtol": 1e-10,
+            "atol": 1e-12,
+            "max_iterations": 1000,
+            "recompute_every": 40
+          }
+        }
+      },
+      "solid_coarse": {
+        "case": {
+          "name": "solid_coarse",
+          "dt": 0.0001,
+          "final_time": 0.001,
+          "fluid_cells": 6,
+          "mesh_size": 1.4
+        },
+        "completed": true,
+        "accepted_steps": 10,
+        "reached_time_s": 0.001,
+        "failure": null,
+        "initial": {
+          "cavity_volume_ml": 81.62193943996996,
+          "wall_volume_cm3": 108.48733625560686,
+          "minimum_detF": 0.9999999999999842,
+          "maximum_detF": 1.0000000000000098,
+          "passive_energy_erg": 6.243731752881647e-23,
+          "spring_energy_erg": 0.0,
+          "max_total_displacement_cm": 0.0
+        },
+        "final": {
+          "cavity_volume_ml": 81.62278287480522,
+          "wall_volume_cm3": 108.48681256234875,
+          "minimum_detF": 0.9999785939759955,
+          "maximum_detF": 1.0000139343908636,
+          "passive_energy_erg": 0.004077438192419996,
+          "spring_energy_erg": 0.00010525738443403228,
+          "max_total_displacement_cm": 1.5210255572938201e-05
+        },
+        "summary": {
+          "delta_cavity_ml": 0.0008434348352608367,
+          "relative_wall_volume_change": -4.8272293908802055e-06,
+          "maximum_abs_relative_wall_volume_change": 4.8272293908802055e-06,
+          "min_detF": 0.9999785939759955,
+          "max_detF": 1.0000139343908636,
+          "max_displacement_cm": 1.5210255572938201e-05,
+          "max_divergence_l2": 1.5698603883027251,
+          "max_net_flux_abs": 3.0531133177191805e-16,
+          "max_courant": 6.577623665662668e-06,
+          "max_solver_residual_ratio": 0.9856208518156273,
+          "max_pressure_iterations": 36,
+          "max_lattice_power_error": 1.1368683772161603e-13,
+          "accumulated_fe_minus_solid_work_erg": -0.17772072987379206,
+          "accumulated_absolute_power_gap_erg": 0.17772072987379206
+        },
+        "solid_nodes": 982,
+        "solid_cells": 469,
+        "gmsh": "4.15.2",
+        "physical_parameters": {
+          "material": {
+            "C": 20000.0,
+            "bf": 8.0,
+            "bt": 2.0,
+            "bfs": 4.0,
+            "kappa": 500000.0
+          },
+          "beta": 500000.0,
+          "rho": 1.0,
+          "mu": 1.0,
+          "solver_options": {
+            "rtol": 1e-10,
+            "atol": 1e-12,
+            "max_iterations": 1000,
+            "recompute_every": 40
+          }
+        }
+      },
+      "solid_fine": {
+        "case": {
+          "name": "solid_fine",
+          "dt": 0.0001,
+          "final_time": 0.001,
+          "fluid_cells": 6,
+          "mesh_size": 0.9
+        },
+        "completed": true,
+        "accepted_steps": 10,
+        "reached_time_s": 0.001,
+        "failure": null,
+        "initial": {
+          "cavity_volume_ml": 84.44218141945774,
+          "wall_volume_cm3": 109.77728541983814,
+          "minimum_detF": 0.9999999999999839,
+          "maximum_detF": 1.0000000000000144,
+          "passive_energy_erg": 1.0212797156081791e-22,
+          "spring_energy_erg": 0.0,
+          "max_total_displacement_cm": 0.0
+        },
+        "final": {
+          "cavity_volume_ml": 84.44304505118782,
+          "wall_volume_cm3": 109.77673183042259,
+          "minimum_detF": 0.9999774517017749,
+          "maximum_detF": 1.0000138045808697,
+          "passive_energy_erg": 0.00425116075094558,
+          "spring_energy_erg": 0.00010334667921634426,
+          "max_total_displacement_cm": 1.4988792291948067e-05
+        },
+        "summary": {
+          "delta_cavity_ml": 0.0008636317300840801,
+          "relative_wall_volume_change": -5.04284117996967e-06,
+          "maximum_abs_relative_wall_volume_change": 5.04284117996967e-06,
+          "min_detF": 0.9999774517017749,
+          "max_detF": 1.0000138045808697,
+          "max_displacement_cm": 1.4988792291948067e-05,
+          "max_divergence_l2": 1.5913502880239354,
+          "max_net_flux_abs": 3.0531133177191805e-16,
+          "max_courant": 6.5826256595120385e-06,
+          "max_solver_residual_ratio": 0.9968965624534162,
+          "max_pressure_iterations": 36,
+          "max_lattice_power_error": 9.094947017729282e-13,
+          "accumulated_fe_minus_solid_work_erg": -0.1820642540190704,
+          "accumulated_absolute_power_gap_erg": 0.1820642540190704
+        },
+        "solid_nodes": 2259,
+        "solid_cells": 1107,
+        "gmsh": "4.15.2",
+        "physical_parameters": {
+          "material": {
+            "C": 20000.0,
+            "bf": 8.0,
+            "bt": 2.0,
+            "bfs": 4.0,
+            "kappa": 500000.0
+          },
+          "beta": 500000.0,
+          "rho": 1.0,
+          "mu": 1.0,
+          "solver_options": {
+            "rtol": 1e-10,
+            "atol": 1e-12,
+            "max_iterations": 1000,
+            "recompute_every": 40
+          }
+        }
+      },
+      "fluid_8_small_dt": {
+        "case": {
+          "name": "fluid_8_small_dt",
+          "dt": 2.5e-05,
+          "final_time": 0.001,
+          "fluid_cells": 8,
+          "mesh_size": 1.2
+        },
+        "completed": true,
+        "accepted_steps": 40,
+        "reached_time_s": 0.001,
+        "failure": null,
+        "initial": {
+          "cavity_volume_ml": 82.75809228453294,
+          "wall_volume_cm3": 108.9239477537798,
+          "minimum_detF": 0.9999999999999902,
+          "maximum_detF": 1.000000000000015,
+          "passive_energy_erg": 7.397264829303499e-23,
+          "spring_energy_erg": 0.0,
+          "max_total_displacement_cm": 0.0
+        },
+        "final": {
+          "cavity_volume_ml": 82.75901619765804,
+          "wall_volume_cm3": 108.92311125105262,
+          "minimum_detF": 0.9999594576723217,
+          "maximum_detF": 1.000030686155396,
+          "passive_energy_erg": 0.01052278478013228,
+          "spring_energy_erg": 0.00010366491367483932,
+          "max_total_displacement_cm": 2.1021120739712642e-05
+        },
+        "summary": {
+          "delta_cavity_ml": 0.0009239131251064236,
+          "relative_wall_volume_change": -7.679695277595933e-06,
+          "maximum_abs_relative_wall_volume_change": 7.679695277595933e-06,
+          "min_detF": 0.9999594576723217,
+          "max_detF": 1.000030686155396,
+          "max_displacement_cm": 2.1021120739712642e-05,
+          "max_divergence_l2": 2.457357458247448,
+          "max_net_flux_abs": 3.885780586188048e-16,
+          "max_courant": 4.671761069212749e-06,
+          "max_solver_residual_ratio": 0.9978373583060847,
+          "max_pressure_iterations": 52,
+          "max_lattice_power_error": 4.547473508864641e-13,
+          "accumulated_fe_minus_solid_work_erg": -0.19626313728670414,
+          "accumulated_absolute_power_gap_erg": 0.19626313728670414
+        },
+        "solid_nodes": 1276,
+        "solid_cells": 616,
+        "gmsh": "4.15.2",
+        "physical_parameters": {
+          "material": {
+            "C": 20000.0,
+            "bf": 8.0,
+            "bt": 2.0,
+            "bfs": 4.0,
+            "kappa": 500000.0
+          },
+          "beta": 500000.0,
+          "rho": 1.0,
+          "mu": 1.0,
+          "solver_options": {
+            "rtol": 1e-10,
+            "atol": 1e-12,
+            "max_iterations": 1000,
+            "recompute_every": 40
+          }
+        }
+      },
+      "fluid_10_small_dt": {
+        "case": {
+          "name": "fluid_10_small_dt",
+          "dt": 2.5e-05,
+          "final_time": 0.001,
+          "fluid_cells": 10,
+          "mesh_size": 1.2
+        },
+        "completed": true,
+        "accepted_steps": 40,
+        "reached_time_s": 0.001,
+        "failure": null,
+        "initial": {
+          "cavity_volume_ml": 82.75809228453294,
+          "wall_volume_cm3": 108.9239477537798,
+          "minimum_detF": 0.9999999999999902,
+          "maximum_detF": 1.000000000000015,
+          "passive_energy_erg": 7.397264829303499e-23,
+          "spring_energy_erg": 0.0,
+          "max_total_displacement_cm": 0.0
+        },
+        "final": {
+          "cavity_volume_ml": 82.75964152625836,
+          "wall_volume_cm3": 108.92217112955785,
+          "minimum_detF": 0.9999219744264145,
+          "maximum_detF": 1.000043522323673,
+          "passive_energy_erg": 0.03369469874987022,
+          "spring_energy_erg": 0.00027090601883839266,
+          "max_total_displacement_cm": 3.901018412143016e-05
+        },
+        "summary": {
+          "delta_cavity_ml": 0.001549241725427919,
+          "relative_wall_volume_change": -1.6310685194476093e-05,
+          "maximum_abs_relative_wall_volume_change": 1.6310685194476093e-05,
+          "min_detF": 0.9999219744264145,
+          "max_detF": 1.000043522323673,
+          "max_displacement_cm": 3.901018412143016e-05,
+          "max_divergence_l2": 3.888351587253532,
+          "max_net_flux_abs": 6.245004513516506e-16,
+          "max_courant": 6.367895546051186e-06,
+          "max_solver_residual_ratio": 0.9951562282377765,
+          "max_pressure_iterations": 91,
+          "max_lattice_power_error": 9.094947017729282e-13,
+          "accumulated_fe_minus_solid_work_erg": -0.3284840079162811,
+          "accumulated_absolute_power_gap_erg": 0.3284840079162811
+        },
+        "solid_nodes": 1276,
+        "solid_cells": 616,
+        "gmsh": "4.15.2",
+        "physical_parameters": {
+          "material": {
+            "C": 20000.0,
+            "bf": 8.0,
+            "bt": 2.0,
+            "bfs": 4.0,
+            "kappa": 500000.0
+          },
+          "beta": 500000.0,
+          "rho": 1.0,
+          "mu": 1.0,
+          "solver_options": {
+            "rtol": 1e-10,
+            "atol": 1e-12,
+            "max_iterations": 1000,
+            "recompute_every": 40
+          }
+        }
+      },
+      "duration_005": {
+        "case": {
+          "name": "duration_005",
+          "dt": 0.0001,
+          "final_time": 0.005,
+          "fluid_cells": 6,
+          "mesh_size": 1.2
+        },
+        "completed": true,
+        "accepted_steps": 50,
+        "reached_time_s": 0.005,
+        "failure": null,
+        "initial": {
+          "cavity_volume_ml": 82.75809228453294,
+          "wall_volume_cm3": 108.9239477537798,
+          "minimum_detF": 0.9999999999999902,
+          "maximum_detF": 1.000000000000015,
+          "passive_energy_erg": 7.397264829303499e-23,
+          "spring_energy_erg": 0.0,
+          "max_total_displacement_cm": 0.0
+        },
+        "final": {
+          "cavity_volume_ml": 82.87597859385438,
+          "wall_volume_cm3": 108.8538802576835,
+          "minimum_detF": 0.9968835988057789,
+          "maximum_detF": 1.0020383494157397,
+          "passive_energy_erg": 79.40183573632876,
+          "spring_energy_erg": 1.9966406253813886,
+          "max_total_displacement_cm": 0.002177505889185223
+        },
+        "summary": {
+          "delta_cavity_ml": 0.11788630932144883,
+          "relative_wall_volume_change": -0.0006432698918945601,
+          "maximum_abs_relative_wall_volume_change": 0.0006432698918945601,
+          "min_detF": 0.9968835988057789,
+          "max_detF": 1.0020383494157397,
+          "max_displacement_cm": 0.002177505889185223,
+          "max_divergence_l2": 43.176620415705,
+          "max_net_flux_abs": 1.2545520178264269e-14,
+          "max_courant": 0.00019569813212167402,
+          "max_solver_residual_ratio": 0.9956023715653616,
+          "max_pressure_iterations": 36,
+          "max_lattice_power_error": 5.820766091346741e-11,
+          "accumulated_fe_minus_solid_work_erg": -121.1871128867916,
+          "accumulated_absolute_power_gap_erg": 121.1871128867916
+        },
+        "solid_nodes": 1276,
+        "solid_cells": 616,
+        "gmsh": "4.15.2",
+        "physical_parameters": {
+          "material": {
+            "C": 20000.0,
+            "bf": 8.0,
+            "bt": 2.0,
+            "bfs": 4.0,
+            "kappa": 500000.0
+          },
+          "beta": 500000.0,
+          "rho": 1.0,
+          "mu": 1.0,
+          "solver_options": {
+            "rtol": 1e-10,
+            "atol": 1e-12,
+            "max_iterations": 1000,
+            "recompute_every": 40
+          }
+        }
+      },
+      "duration_010": {
+        "case": {
+          "name": "duration_010",
+          "dt": 0.0001,
+          "final_time": 0.01,
+          "fluid_cells": 6,
+          "mesh_size": 1.2
+        },
+        "completed": true,
+        "accepted_steps": 100,
+        "reached_time_s": 0.01,
+        "failure": null,
+        "initial": {
+          "cavity_volume_ml": 82.75809228453294,
+          "wall_volume_cm3": 108.9239477537798,
+          "minimum_detF": 0.9999999999999902,
+          "maximum_detF": 1.000000000000015,
+          "passive_energy_erg": 7.397264829303499e-23,
+          "spring_energy_erg": 0.0,
+          "max_total_displacement_cm": 0.0
+        },
+        "final": {
+          "cavity_volume_ml": 83.50480057564567,
+          "wall_volume_cm3": 108.61339461394985,
+          "minimum_detF": 0.9832584039982701,
+          "maximum_detF": 1.0127184545294627,
+          "passive_energy_erg": 2078.101135084681,
+          "spring_energy_erg": 72.65268313863754,
+          "max_total_displacement_cm": 0.014934538823718004
+        },
+        "summary": {
+          "delta_cavity_ml": 0.7467082911127392,
+          "relative_wall_volume_change": -0.002851100664584272,
+          "maximum_abs_relative_wall_volume_change": 0.002851100664584272,
+          "min_detF": 0.9832584039982701,
+          "max_detF": 1.0127184545294627,
+          "max_displacement_cm": 0.014934538823718004,
+          "max_divergence_l2": 120.55336173232651,
+          "max_net_flux_abs": 3.375077994860476e-14,
+          "max_courant": 0.0006437844270990775,
+          "max_solver_residual_ratio": 0.9991914619285622,
+          "max_pressure_iterations": 36,
+          "max_lattice_power_error": 2.3283064365386963e-10,
+          "accumulated_fe_minus_solid_work_erg": -916.5444216680013,
+          "accumulated_absolute_power_gap_erg": 916.5444216680013
+        },
+        "solid_nodes": 1276,
+        "solid_cells": 616,
+        "gmsh": "4.15.2",
+        "physical_parameters": {
+          "material": {
+            "C": 20000.0,
+            "bf": 8.0,
+            "bt": 2.0,
+            "bfs": 4.0,
+            "kappa": 500000.0
+          },
+          "beta": 500000.0,
+          "rho": 1.0,
+          "mu": 1.0,
+          "solver_options": {
+            "rtol": 1e-10,
+            "atol": 1e-12,
+            "max_iterations": 1000,
+            "recompute_every": 40
+          }
+        }
+      }
+    }
+  }
+}
