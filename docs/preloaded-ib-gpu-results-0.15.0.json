@@ -1,0 +1,396 @@
+{
+  "version": "0.15.0",
+  "provenance": "user-supplied GPU study reports; no pytest count included",
+  "source_files": [
+    {
+      "filename": "diagnosis.json",
+      "sha256": "a05a5022635c24724c5f284756258a1243359b5fd52145e2850a264eb0edf6fb",
+      "bytes": 51931
+    },
+    {
+      "filename": "report.json",
+      "sha256": "1dae79a5e761d75d2cfb45d4f8a65bc7845504cf2a937264bfdc66ac8c0756a7",
+      "bytes": 40991
+    }
+  ],
+  "pytest_result": null,
+  "device": "cuda",
+  "torch": "2.14.0+cu130",
+  "gpu": "NVIDIA GeForce RTX 4090",
+  "preload": {
+    "checkpoint_sha256": "f1b21532517fc0c5da41326c31a873fbfc329793a98d368223e7904f3d74fc09",
+    "report_sha256": "f7d1248397f05a793b66eaaebd332c7edc658a5019edcaa0d1fcc5c8d89f2247",
+    "legacy_tag_reconstruction": true,
+    "recomputed_force_norm_dyn": 6.730984163290653e-08,
+    "force_tolerance_dyn": 1.0431008380956108e-05,
+    "reference_rebased": false,
+    "equilibrium_resolved": false,
+    "reference_nodes": 554,
+    "reference_cells": 260
+  },
+  "source_sha256": "81f020e22a21c601efb252cc103c8ddaf0d299a823fc38ee94ffba5253fcc88d",
+  "settings": {
+    "frozen_levels": [
+      6,
+      12,
+      18
+    ],
+    "frozen_dt_s": 2.5e-05,
+    "fluid_levels": [
+      6,
+      8,
+      10
+    ],
+    "time_step_s": 5e-05,
+    "steps": 20,
+    "base_pressure_mmhg": 0.2,
+    "pressure_increment_mmhg": 0.02
+  },
+  "frozen": {
+    "completed": true,
+    "case_count": 12,
+    "initial_force_norm_dyn": 6.730984227699451e-08,
+    "incremental_force_norm_dyn": 209.34781587097416,
+    "comparisons": {
+      "native_density_tentative": [
+        {
+          "coarse": 6,
+          "fine": 12,
+          "solid_velocity_difference_norm_cm_per_s": 0.0034148474403207407,
+          "fine_solid_velocity_norm_cm_per_s": 0.006370386438037303,
+          "solid_velocity_relative_difference": 0.5360502810207609
+        },
+        {
+          "coarse": 12,
+          "fine": 18,
+          "solid_velocity_difference_norm_cm_per_s": 0.0045304641105607625,
+          "fine_solid_velocity_norm_cm_per_s": 0.009773009841493902,
+          "solid_velocity_relative_difference": 0.46356897046450085
+        }
+      ],
+      "native_density_chorin": [
+        {
+          "coarse": 6,
+          "fine": 12,
+          "solid_velocity_difference_norm_cm_per_s": 0.0012198029046884635,
+          "fine_solid_velocity_norm_cm_per_s": 0.0017025631430812784,
+          "solid_velocity_relative_difference": 0.7164509050048381
+        },
+        {
+          "coarse": 12,
+          "fine": 18,
+          "solid_velocity_difference_norm_cm_per_s": 0.002850187501407477,
+          "fine_solid_velocity_norm_cm_per_s": 0.003942026370434857,
+          "solid_velocity_relative_difference": 0.7230259855144155
+        }
+      ],
+      "native_density_schur": [
+        {
+          "coarse": 6,
+          "fine": 12,
+          "solid_velocity_difference_norm_cm_per_s": 0.0011446029279326931,
+          "fine_solid_velocity_norm_cm_per_s": 0.0014733767840841318,
+          "solid_velocity_relative_difference": 0.7768569046947429
+        },
+        {
+          "coarse": 12,
+          "fine": 18,
+          "solid_velocity_difference_norm_cm_per_s": 0.002788146472106992,
+          "fine_solid_velocity_norm_cm_per_s": 0.003677686667059789,
+          "solid_velocity_relative_difference": 0.7581250727746308
+        }
+      ],
+      "native_dual_tentative": [
+        {
+          "coarse": 6,
+          "fine": 12,
+          "solid_velocity_difference_norm_cm_per_s": 0.0067756059845393325,
+          "fine_solid_velocity_norm_cm_per_s": 0.012668597995299704,
+          "solid_velocity_relative_difference": 0.5348347139165055
+        },
+        {
+          "coarse": 12,
+          "fine": 18,
+          "solid_velocity_difference_norm_cm_per_s": 0.009249515397881922,
+          "fine_solid_velocity_norm_cm_per_s": 0.01987851506227826,
+          "solid_velocity_relative_difference": 0.4653021299077781
+        }
+      ],
+      "native_dual_chorin": [
+        {
+          "coarse": 6,
+          "fine": 12,
+          "solid_velocity_difference_norm_cm_per_s": 0.00426680724196373,
+          "fine_solid_velocity_norm_cm_per_s": 0.007920211925831578,
+          "solid_velocity_relative_difference": 0.5387238727852272
+        },
+        {
+          "coarse": 12,
+          "fine": 18,
+          "solid_velocity_difference_norm_cm_per_s": 0.00731502409502201,
+          "fine_solid_velocity_norm_cm_per_s": 0.013513216055419755,
+          "solid_velocity_relative_difference": 0.541323698594175
+        }
+      ],
+      "native_dual_schur": [
+        {
+          "coarse": 6,
+          "fine": 12,
+          "solid_velocity_difference_norm_cm_per_s": 0.004145895748047416,
+          "fine_solid_velocity_norm_cm_per_s": 0.007630399909877277,
+          "solid_velocity_relative_difference": 0.5433392478788305
+        },
+        {
+          "coarse": 12,
+          "fine": 18,
+          "solid_velocity_difference_norm_cm_per_s": 0.00720103957960731,
+          "fine_solid_velocity_norm_cm_per_s": 0.013132664437144097,
+          "solid_velocity_relative_difference": 0.5483304331785156
+        }
+      ],
+      "fixed_density_tentative": [
+        {
+          "coarse": 6,
+          "fine": 12,
+          "solid_velocity_difference_norm_cm_per_s": 2.8596431272009982e-05,
+          "fine_solid_velocity_norm_cm_per_s": 0.0035006612769778746,
+          "solid_velocity_relative_difference": 0.008168865539798046
+        },
+        {
+          "coarse": 12,
+          "fine": 18,
+          "solid_velocity_difference_norm_cm_per_s": 4.773786877486745e-06,
+          "fine_solid_velocity_norm_cm_per_s": 0.003500566258845076,
+          "solid_velocity_relative_difference": 0.001363718474239575
+        }
+      ],
+      "fixed_density_chorin": [
+        {
+          "coarse": 6,
+          "fine": 12,
+          "solid_velocity_difference_norm_cm_per_s": 0.0006614933499816772,
+          "fine_solid_velocity_norm_cm_per_s": 0.0005635505800463753,
+          "solid_velocity_relative_difference": 1.1737958816886358
+        },
+        {
+          "coarse": 12,
+          "fine": 18,
+          "solid_velocity_difference_norm_cm_per_s": 0.00012595287002404752,
+          "fine_solid_velocity_norm_cm_per_s": 0.00046384861502705706,
+          "solid_velocity_relative_difference": 0.2715387433391398
+        }
+      ],
+      "fixed_density_schur": [
+        {
+          "coarse": 6,
+          "fine": 12,
+          "solid_velocity_difference_norm_cm_per_s": 0.0005889196494536139,
+          "fine_solid_velocity_norm_cm_per_s": 0.0004652961603604732,
+          "solid_velocity_relative_difference": 1.2656877482018491
+        },
+        {
+          "coarse": 12,
+          "fine": 18,
+          "solid_velocity_difference_norm_cm_per_s": 7.316609574160678e-05,
+          "fine_solid_velocity_norm_cm_per_s": 0.0004160573774717514,
+          "solid_velocity_relative_difference": 0.1758557826476096
+        }
+      ],
+      "fixed_dual_tentative": [
+        {
+          "coarse": 6,
+          "fine": 12,
+          "solid_velocity_difference_norm_cm_per_s": 0.0008192991075524252,
+          "fine_solid_velocity_norm_cm_per_s": 0.007322224999027974,
+          "solid_velocity_relative_difference": 0.11189209668662016
+        },
+        {
+          "coarse": 12,
+          "fine": 18,
+          "solid_velocity_difference_norm_cm_per_s": 0.00029933354054192973,
+          "fine_solid_velocity_norm_cm_per_s": 0.007612241877470545,
+          "solid_velocity_relative_difference": 0.0393226522961452
+        }
+      ],
+      "fixed_dual_chorin": [
+        {
+          "coarse": 6,
+          "fine": 12,
+          "solid_velocity_difference_norm_cm_per_s": 0.0007939901476399456,
+          "fine_solid_velocity_norm_cm_per_s": 0.004408257711641126,
+          "solid_velocity_relative_difference": 0.18011427633715982
+        },
+        {
+          "coarse": 12,
+          "fine": 18,
+          "solid_velocity_difference_norm_cm_per_s": 0.00015581145183585744,
+          "fine_solid_velocity_norm_cm_per_s": 0.004547494638577932,
+          "solid_velocity_relative_difference": 0.03426314140407254
+        }
+      ],
+      "fixed_dual_schur": [
+        {
+          "coarse": 6,
+          "fine": 12,
+          "solid_velocity_difference_norm_cm_per_s": 0.0008288185354752037,
+          "fine_solid_velocity_norm_cm_per_s": 0.004297815612093763,
+          "solid_velocity_relative_difference": 0.19284646208249706
+        },
+        {
+          "coarse": 12,
+          "fine": 18,
+          "solid_velocity_difference_norm_cm_per_s": 0.00020314097591651195,
+          "fine_solid_velocity_norm_cm_per_s": 0.004487564061503378,
+          "solid_velocity_relative_difference": 0.045267537829522975
+        }
+      ]
+    }
+  },
+  "coupled": {
+    "completed": true,
+    "cases": {
+      "6": {
+        "fluid_cells": 6,
+        "time_s": 0.001,
+        "reference_sha256": "bf8966574b22528f390f85eaa74a6dd6eb020df5b2b75ea91e2a47659a4acc4e",
+        "completed": true,
+        "accepted_steps": 20,
+        "loads": {
+          "pressure_mmhg": 0.2,
+          "tension": 0.0,
+          "pressure_increment_mmhg": 0.02,
+          "hold_time": 0.0005,
+          "ramp_time": 0.00025
+        },
+        "summary": {
+          "delta_cavity_ml": 9.463774716778062e-06,
+          "max_incremental_displacement_cm": 1.7852840542378674e-07,
+          "max_fluid_speed_cm_per_s": 0.0023819637389653286,
+          "minimum_detF": 0.9991897303082442,
+          "max_absolute_wall_volume_change_cm3": 5.475526322129554e-06,
+          "max_corrected_divergence_l2": 0.032874012966572344,
+          "max_solver_residual_ratio": 0.9845090810084354,
+          "accumulated_fe_minus_solid_work_erg": -7.722559646438943e-05,
+          "final_applied_pressure_mmhg": 0.22000000000000003
+        }
+      },
+      "8": {
+        "fluid_cells": 8,
+        "time_s": 0.001,
+        "reference_sha256": "bf8966574b22528f390f85eaa74a6dd6eb020df5b2b75ea91e2a47659a4acc4e",
+        "completed": true,
+        "accepted_steps": 20,
+        "loads": {
+          "pressure_mmhg": 0.2,
+          "tension": 0.0,
+          "pressure_increment_mmhg": 0.02,
+          "hold_time": 0.0005,
+          "ramp_time": 0.00025
+        },
+        "summary": {
+          "delta_cavity_ml": 9.135855947306482e-06,
+          "max_incremental_displacement_cm": 2.062652646786384e-07,
+          "max_fluid_speed_cm_per_s": 0.002960426087359605,
+          "minimum_detF": 0.9991894145466309,
+          "max_absolute_wall_volume_change_cm3": 8.197173372082034e-06,
+          "max_corrected_divergence_l2": 0.040303657041927614,
+          "max_solver_residual_ratio": 0.9971025452935842,
+          "accumulated_fe_minus_solid_work_erg": -5.804729235150503e-05,
+          "final_applied_pressure_mmhg": 0.22000000000000003
+        }
+      },
+      "10": {
+        "fluid_cells": 10,
+        "time_s": 0.001,
+        "reference_sha256": "bf8966574b22528f390f85eaa74a6dd6eb020df5b2b75ea91e2a47659a4acc4e",
+        "completed": true,
+        "accepted_steps": 20,
+        "loads": {
+          "pressure_mmhg": 0.2,
+          "tension": 0.0,
+          "pressure_increment_mmhg": 0.02,
+          "hold_time": 0.0005,
+          "ramp_time": 0.00025
+        },
+        "summary": {
+          "delta_cavity_ml": 1.488065716159781e-05,
+          "max_incremental_displacement_cm": 3.7947990248957675e-07,
+          "max_fluid_speed_cm_per_s": 0.004891923348497681,
+          "minimum_detF": 0.9991892764568809,
+          "max_absolute_wall_volume_change_cm3": 1.60985294570537e-05,
+          "max_corrected_divergence_l2": 0.0627539695994111,
+          "max_solver_residual_ratio": 0.9657535394819163,
+          "accumulated_fe_minus_solid_work_erg": -0.00010199728671235776,
+          "final_applied_pressure_mmhg": 0.22000000000000003
+        }
+      }
+    },
+    "comparisons": [
+      {
+        "available": true,
+        "coarse_cells": 6,
+        "fine_cells": 8,
+        "absolute_delta_cavity_difference_ml": 3.2791876947158016e-07,
+        "displacement_nodal_l2_difference_cm": 1.4616543872865967e-06,
+        "fine_displacement_nodal_l2_cm": 2.039190282310099e-06,
+        "relative_metrics": {
+          "delta_cavity_response": 0.03589360114289677,
+          "max_incremental_displacement": 0.1344717895088431,
+          "displacement_nodal_l2": 0.7167817539963753
+        },
+        "screen": "needs_refinement"
+      },
+      {
+        "available": true,
+        "coarse_cells": 8,
+        "fine_cells": 10,
+        "absolute_delta_cavity_difference_ml": 5.7448012142913285e-06,
+        "displacement_nodal_l2_difference_cm": 1.9424484164834755e-06,
+        "fine_displacement_nodal_l2_cm": 2.978390010115957e-06,
+        "relative_metrics": {
+          "delta_cavity_response": 0.3860583005108681,
+          "max_incremental_displacement": 0.45645273089448013,
+          "displacement_nodal_l2": 0.6521806781133579
+        },
+        "screen": "needs_refinement"
+      }
+    ],
+    "all_refinement_screens_met": false,
+    "full_cycle_ready": false
+  },
+  "gpu_minus_linux_cpu": {
+    "6": {
+      "delta_cavity_ml": 1.4210854715202004e-14,
+      "max_incremental_displacement_cm": -2.6469779601696886e-23,
+      "max_fluid_speed_cm_per_s": -5.782874179516284e-14,
+      "minimum_detF": -1.7985612998927536e-14,
+      "max_absolute_wall_volume_change_cm3": 1.4210854715202004e-14,
+      "max_corrected_divergence_l2": -1.781769176645298e-13,
+      "max_solver_residual_ratio": -1.2025429019235645e-07,
+      "accumulated_fe_minus_solid_work_erg": 8.29821237766093e-16,
+      "final_applied_pressure_mmhg": 0.0
+    },
+    "8": {
+      "delta_cavity_ml": 1.4210854715202004e-14,
+      "max_incremental_displacement_cm": 0.0,
+      "max_fluid_speed_cm_per_s": 2.2812914751701996e-14,
+      "minimum_detF": -1.2989609388114332e-14,
+      "max_absolute_wall_volume_change_cm3": 1.4210854715202004e-14,
+      "max_corrected_divergence_l2": -6.23945339839338e-14,
+      "max_solver_residual_ratio": -1.1579244440840242e-05,
+      "accumulated_fe_minus_solid_work_erg": -1.49890950346121e-16,
+      "final_applied_pressure_mmhg": 0.0
+    },
+    "10": {
+      "delta_cavity_ml": 1.4210854715202004e-14,
+      "max_incremental_displacement_cm": -1.0376153603865179e-19,
+      "max_fluid_speed_cm_per_s": -1.1538252991938336e-13,
+      "minimum_detF": -1.432187701766452e-14,
+      "max_absolute_wall_volume_change_cm3": 1.4210854715202004e-14,
+      "max_corrected_divergence_l2": -1.2168044349891716e-13,
+      "max_solver_residual_ratio": 0.05754694557795814,
+      "accumulated_fe_minus_solid_work_erg": 5.854691731421724e-17,
+      "final_applied_pressure_mmhg": 0.0
+    }
+  }
+}
