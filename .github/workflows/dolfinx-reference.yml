@@ -58,6 +58,8 @@ jobs:
           .venv-torch/bin/python examples/chorin_box.py --device cpu --output validation/results/chorin_box.json
           .venv-torch/bin/python validation/compare_coupled_dolfinx.py --reference validation/results/coupled_patch.npz --output validation/results/coupled_patch.json
           .venv-torch/bin/python examples/coupled_lv.py --device cpu --output validation/results/coupled_lv
+          .venv-torch/bin/python validation/study_lv.py --device cpu --output validation/results/lv_study
+          .venv-torch/bin/python scripts/plot_lv_study.py --source validation/results/lv_study/study.json --output validation/results/lv_study/study.png
           .venv-torch/bin/python examples/ib_patch.py --device cpu
           .venv-torch/bin/python examples/ideal_lv.py --device cpu --output validation/results/ideal_lv
           .venv-torch/bin/python scripts/preview_lv.py --source validation/results/ideal_lv/generated.npz --output validation/results/ideal_lv/preview.png

@@ -2,9 +2,23 @@
 
 目标是在 GPU 上实现 AFSI 的非线性固体、背景流体与 IB 耦合，算例采用程序生成的厘米制理想左心室。当前已具备 P2 固体、Q2/Q1 流体、Chorin 求解及显式耦合时间步，并通过独立 DOLFINx/NumPy 对照；完整心动周期、收敛和长期稳定性仍待验收。
 
+## 第十一步：时间步、网格和时长研究
+
+当前版本 **0.11.0** 增加 11 组受控研究、失败状态保存和汇总图。**研究发现当前流体网格敏感性仍明显，尚不能宣称完整周期可靠。** 保持已有物理方程和耦合顺序不变，见 [研究设置与实测结论](docs/STABILITY.md)。
+
+```bash
+git pull --ff-only
+conda activate afsi-torch
+python -m pip install -e ".[test,geometry]"
+CUDA_VISIBLE_DEVICES=0 python -m pytest -q
+CUDA_VISIBLE_DEVICES=0 python validation/study_lv.py --device cuda --output results/lv_study
+```
+
+本地 CPU 测试为 **120 passed、81 CUDA skipped**，完整 GPU 环境应执行 **201 项**。研究的运行完成与响应收敛分别记录；应阅读 `study.json` 的 `assessment`，不能把退出码 0 当作收敛证明。本版目标 GPU 尚待验证。
+
 ## 第十步：完整显式耦合与生成左室短程运行
 
-当前版本 **0.10.0** 连接固体力、IB 密度散布、流体求解、速度插值与坐标更新。左室位移现在来自耦合计算，默认运行 10 步、共 0.001 s，尚不是完整心动周期。见 [耦合顺序、单位、输出与验收限制](docs/COUPLING.md)。
+0.10.0 连接固体力、IB 密度散布、流体求解、速度插值与坐标更新。左室位移现在来自耦合计算，默认运行 10 步、共 0.001 s，尚不是完整心动周期。见 [耦合顺序、单位、输出与验收限制](docs/COUPLING.md)。
 
 ```bash
 git pull --ff-only
@@ -99,7 +113,7 @@ CUDA_VISIBLE_DEVICES=0 python validation/compare_dolfinx.py --device cuda --outp
 CUDA_VISIBLE_DEVICES=0 python -m pytest -q
 ```
 
-比较应输出 `status: passed`。0.5.0 pytest 为 92 项，0.6.0 为 113 项，0.7.0（含 geometry）为 131 项，0.8.0 为 155 项，0.9.0 为 174 项，当前 0.10.0 为 **188 项**。已经创建过 `afsi-reference` 时跳过环境创建。原有 CUDA 环境保持独立。加密网格对照、误差解释及从 Actions 下载参考数据的方法见 [详细说明](docs/DOLFINX.md)。
+比较应输出 `status: passed`。0.5.0 pytest 为 92 项，0.6.0 为 113 项，0.7.0（含 geometry）为 131 项，0.8.0 为 155 项，0.9.0 为 174 项，0.10.0 为 188 项，当前 0.11.0 为 **201 项**。已经创建过 `afsi-reference` 时跳过环境创建。原有 CUDA 环境保持独立。加密网格对照、误差解释及从 Actions 下载参考数据的方法见 [详细说明](docs/DOLFINX.md)。
 
 ## GitHub 协作
 
@@ -138,7 +152,7 @@ CUDA_VISIBLE_DEVICES=0 python examples/boundary_patch.py --device cuda
 CUDA_VISIBLE_DEVICES=0 python -m pytest -q
 ```
 
-0.4.0 的完整测试为 **81 项**，0.5.0 为 92 项，0.6.0 为 113 项，0.7.0（含 geometry）为 131 项，0.8.0 为 155 项，0.9.0 为 174 项，当前 0.10.0 为 **188 项**。若出现 skipped，请先运行环境检查，不能将跳过项当作 GPU 验证成功。
+0.4.0 的完整测试为 **81 项**，0.5.0 为 92 项，0.6.0 为 113 项，0.7.0（含 geometry）为 131 项，0.8.0 为 155 项，0.9.0 为 174 项，0.10.0 为 188 项，当前 0.11.0 为 **201 项**。若出现 skipped，请先运行环境检查，不能将跳过项当作 GPU 验证成功。
 
 可选的 Basix 独立对照（只需轻量的 Basix，无需安装完整 FEniCSx）：
 

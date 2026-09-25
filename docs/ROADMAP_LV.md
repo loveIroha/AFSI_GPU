@@ -45,3 +45,5 @@
 - [IB 三维实现](https://github.com/npuheart/afsi/blob/99df0ffba795fa05043ba874ad00353dcb986466/afsic/src/coupling/IBMesh3D.h)
 
 用户允许按性能瓶颈引入自定义 CUDA/C++ 核；是否替换须以测量和等价性验证为依据，保留当前 PyTorch 实现作为参考。
+
+0.11.0 已建立时间步、流固分别加密及短程延长研究。当前流体网格敏感性未通过诊断筛选，完整算例验收仍未完成；下一阶段优先定位 IB 平滑尺度/相对分辨率和压力投影误差，见 [STABILITY](STABILITY.md)。
