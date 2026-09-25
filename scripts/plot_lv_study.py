@@ -26,7 +26,8 @@ def plot(source, output):
     if names:
         axes[0, 1].bar(range(len(names)), [cases[n]['summary']['delta_cavity_ml'] for n in names], color='#4386a0')
         axes[0, 1].set_xticks(range(len(names)), names, rotation=20, ha='right')
-    axes[0, 1].set(title='Separate solid/fluid mesh changes at 1 ms', ylabel='Final cavity volume change [mL]')
+    final_ms = cases['baseline']['case']['final_time']*1000
+    axes[0, 1].set(title=f'Separate solid/fluid mesh changes at {final_ms:g} ms', ylabel='Final cavity volume change [mL]')
     for name in ('baseline', 'duration_005', 'duration_010'):
         r = cases.get(name)
         if not r or not r['history']:
