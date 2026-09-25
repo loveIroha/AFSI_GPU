@@ -1,0 +1,121 @@
+{
+  "version": "0.14.0",
+  "source": "User supplied report.json from RTX 4090; pytest count reported separately in conversation",
+  "report_sha256": "140efbc882df7bc4e27dbb963d9541caed8daaf7aff9b8d373600d9a07bb8a84",
+  "pytest": "251 passed, 1 warning in 447.18 s; user reported, raw pytest log not attached",
+  "device": "cuda",
+  "torch": "2.14.0+cu130",
+  "gpu": "NVIDIA GeForce RTX 4090",
+  "units": {
+    "length": "cm",
+    "volume": "cm^3 (mL)",
+    "time": "s",
+    "mass": "g",
+    "force": "dyn",
+    "stress": "dyn/cm^2",
+    "pressure": "dyn/cm^2",
+    "energy": "erg",
+    "spring_coefficient": "dyn/cm^3"
+  },
+  "provenance": {
+    "checkpoint_sha256": "f1b21532517fc0c5da41326c31a873fbfc329793a98d368223e7904f3d74fc09",
+    "report_sha256": "f7d1248397f05a793b66eaaebd332c7edc658a5019edcaa0d1fcc5c8d89f2247",
+    "legacy_tag_reconstruction": true,
+    "recomputed_force_norm_dyn": 6.730984124150903e-08,
+    "force_tolerance_dyn": 1.0431008380956108e-05,
+    "reference_rebased": false,
+    "equilibrium_resolved": false,
+    "reference_nodes": 554,
+    "reference_cells": 260
+  },
+  "initial": {
+    "cavity_volume_ml": 78.37290679929856,
+    "wall_volume_cm3": 105.57536545774255,
+    "minimum_detF": 0.9991897424747945,
+    "maximum_detF": 1.0009239379204662,
+    "passive_energy_erg": 113.21605121718903,
+    "spring_energy_erg": 3.236057763789737,
+    "max_total_displacement_cm": 0.016381068564674448
+  },
+  "dt_s": 5e-05,
+  "steps": 20,
+  "fluid_cells": 6,
+  "completed": true,
+  "hold_screen_passed": true,
+  "perturbation_detected": true,
+  "full_cycle_ready": false,
+  "zero_ramp_control": {
+    "force_norm_dyn": 2093.478158710002,
+    "rejected_by_balance_gate": true
+  },
+  "cases": {
+    "hold": {
+      "loads": {
+        "pressure_mmhg": 0.2,
+        "tension": 0.0,
+        "pressure_increment_mmhg": 0.0,
+        "hold_time": 0.0005,
+        "ramp_time": 0.00025
+      },
+      "completed": true,
+      "initial_force_norm_dyn": 6.730984569459403e-08,
+      "initial_fluid_free_rhs_norm_dyn": 7.049877253533578e-08,
+      "initial_solid_force_time_s": 0.0,
+      "accepted_steps": 20,
+      "reached_time_s": 0.001,
+      "summary": {
+        "max_incremental_displacement_cm": 2.5110743991215813e-15,
+        "max_abs_cavity_change_ml": 0.0,
+        "final_cavity_change_ml": 0.0,
+        "max_fluid_speed_cm_per_s": 7.503160588871802e-12,
+        "min_detF": 0.9991897424747925,
+        "max_solver_residual_ratio": 0.9775940202409862
+      },
+      "first_applied_prescribed_pressure_mmhg": 0.2,
+      "last_applied_prescribed_pressure_mmhg": 0.2
+    },
+    "pressure_increment": {
+      "loads": {
+        "pressure_mmhg": 0.2,
+        "tension": 0.0,
+        "pressure_increment_mmhg": 0.02,
+        "hold_time": 0.0005,
+        "ramp_time": 0.00025
+      },
+      "completed": true,
+      "initial_force_norm_dyn": 6.73098409123127e-08,
+      "initial_fluid_free_rhs_norm_dyn": 7.049877089338128e-08,
+      "initial_solid_force_time_s": 0.0,
+      "accepted_steps": 20,
+      "reached_time_s": 0.001,
+      "summary": {
+        "max_incremental_displacement_cm": 1.7852840542378674e-07,
+        "max_abs_cavity_change_ml": 9.463774716778062e-06,
+        "final_cavity_change_ml": 9.463774716778062e-06,
+        "max_fluid_speed_cm_per_s": 0.0023819637389650597,
+        "min_detF": 0.9991897303082442,
+        "max_solver_residual_ratio": 0.9845090482425001
+      },
+      "first_applied_prescribed_pressure_mmhg": 0.2,
+      "last_applied_prescribed_pressure_mmhg": 0.22000000000000003
+    }
+  },
+  "gpu_minus_linux_cpu_summary": {
+    "hold": {
+      "max_incremental_displacement_cm": -5.871570637524555e-17,
+      "max_abs_cavity_change_ml": -1.4210854715202004e-14,
+      "final_cavity_change_ml": -1.4210854715202004e-14,
+      "max_fluid_speed_cm_per_s": -1.0687937485110192e-13,
+      "min_detF": -1.0658141036401503e-14,
+      "max_solver_residual_ratio": 0.000339920361703161
+    },
+    "pressure_increment": {
+      "max_incremental_displacement_cm": -2.6469779601696886e-23,
+      "max_abs_cavity_change_ml": 1.4210854715202004e-14,
+      "final_cavity_change_ml": 1.4210854715202004e-14,
+      "max_fluid_speed_cm_per_s": -5.809762393393925e-14,
+      "min_detF": -1.7985612998927536e-14,
+      "max_solver_residual_ratio": -1.530202254906854e-07
+    }
+  }
+}

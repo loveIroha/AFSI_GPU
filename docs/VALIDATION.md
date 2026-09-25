@@ -2,11 +2,13 @@
 
 ## 0.14.0：保持预加载的 IB 启动
 
-[Linux 自动验证 36184599813](https://github.com/loveIroha/AFSI_GPU/actions/runs/36184599813) 全部通过，代码提交 `65aebbed44335ee665642cf89220ae99141e4cc0`：**155 passed、96 CUDA skipped、1 warning**。原独立参考对照仍通过，新增预加载保持和小幅增压各 20 步均成功；Linux 保持位移漂移 2.57e-15 cm、增压增量位移 1.79e-7 cm，与本地一致。CI 使用新版自包含检查点，本地复用旧版检查点，两者均保留原参考构形且加载器不重新求平衡。见 [两平台数值记录](preload-startup-results-0.14.0.json)。本版目标 GPU 尚待执行。
+用户报告 RTX 4090 / torch 2.14.0+cu130 的 **251 passed、1 warning，447.18 s**；随附 `report.json` 已核对，0.2 mmHg 保持和增至 0.22 mmHg 两组均各完成 20 步。保持组最大增量位移 2.51e-15 cm、腔体积变化 0 mL；增压组最大增量位移 1.785284e-7 cm、腔体积变化 9.463775e-6 mL。与 Linux CPU 的增压位移指标差约 2.65e-23 cm、体积指标差约 1.42e-14 mL。所有报告内流体求解残量均满足容差。报告中的 `full_cycle_ready=false` 保持不变；pytest 数量来自用户反馈，并无附带 pytest 原始日志。见 [GPU 报告摘要及 SHA-256](preload-startup-gpu-results-0.14.0.json)。
+
+[Linux 自动验证 36184599813](https://github.com/loveIroha/AFSI_GPU/actions/runs/36184599813) 全部通过，代码提交 `65aebbed44335ee665642cf89220ae99141e4cc0`：**155 passed、96 CUDA skipped、1 warning**。原独立参考对照仍通过，新增预加载保持和小幅增压各 20 步均成功；Linux 保持位移漂移 2.57e-15 cm、增压增量位移 1.79e-7 cm，与本地一致。CI 使用新版自包含检查点，本地复用旧版检查点，两者均保留原参考构形且加载器不重新求平衡。见 [本地和 Linux 数值记录](preload-startup-results-0.14.0.json)。上述 GPU 报告为此后收到的验证结果。
 
 本地 Windows CPU **155 passed、96 CUDA skipped、1 warning**，共 251 项。新增预加载时程、实际残余力启动、保留参考构形、滞后载荷、小型预应力 P2 保持/扰动、检查点恢复与错误状态拒绝测试。新版自包含检查点和旧版几何标签恢复路径均覆盖；本轮没有重算已有本地左室非线性平衡。
 
-已有 0.2 mmHg 预加载的恒压保持和 +0.02 mmHg 增压各执行 20 步、dt=5e-5 s，均通过启动诊断；本版 GPU 待执行。该验证仅覆盖给定腔压随动载荷的启动，不证明流体压力等于腔压、网格收敛或完整周期稳定性。详见 [说明](PRELOAD_STARTUP.md)。
+已有 0.2 mmHg 预加载的恒压保持和 +0.02 mmHg 增压各执行 20 步、dt=5e-5 s，均通过启动诊断；此时 GPU 尚待执行，后续结果已记录在本节开头。该验证仅覆盖给定腔压随动载荷的启动，不证明流体压力等于腔压、网格收敛或完整周期稳定性。详见 [说明](PRELOAD_STARTUP.md)。
 
 ## 0.13.0：Newton–GMRES 非线性固体平衡
 
