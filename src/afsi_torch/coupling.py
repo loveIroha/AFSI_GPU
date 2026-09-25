@@ -54,6 +54,29 @@ class ExplicitIBStepper:
             X.new_zeros(len(self.fluid.op.mesh.pressure_coordinates)), torch.zeros_like(x), None)
 
     @torch.no_grad()
+    def initialize_equilibrium(self,x,*,force_tolerance):
+        """Opt-in prescribed-traction equilibrium start, with u=0 and p=0.
+
+        Retains actual total nodal force, including its small residual. The
+        reference geometry remains owned by the force callback. p=0 is the
+        background solver field, not the prescribed cavity traction pressure.
+        The original initialize() continues to provide zero-force bootstrap.
+        """
+        if not isfinite(force_tolerance) or force_tolerance<=0:
+            raise ValueError('positive finite equilibrium force tolerance required')
+        if self.fluid.pressure_values.count_nonzero().item():
+            raise ValueError('equilibrium initializer currently requires zero pressure gauge')
+        state=self.initialize(x)
+        force=self.force(state.x,0.)
+        if (force.shape!=x.shape or force.dtype!=x.dtype or force.device!=x.device or
+                not torch.isfinite(force).all()):
+            raise ValueError('equilibrium force must be finite and match solid coordinates')
+        norm=torch.linalg.vector_norm(force).item()
+        if norm>force_tolerance:
+            raise ValueError(f'preload is not balanced under the initial load: {norm:.6g} > {force_tolerance:.6g}')
+        return CoupledState(0,0.,state.x,state.velocity,state.pressure,force.detach().clone(),0.)
+
+    @torch.no_grad()
     def step(self, state, *, boundary_values=None):
         dt = self.fluid.dt
         if (not isinstance(state.step, int) or state.step < 0 or

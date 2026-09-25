@@ -1,6 +1,14 @@
 # 验证记录
 
+## 0.14.0：保持预加载的 IB 启动
+
+本地 Windows CPU **155 passed、96 CUDA skipped、1 warning**，共 251 项。新增预加载时程、实际残余力启动、保留参考构形、滞后载荷、小型预应力 P2 保持/扰动、检查点恢复与错误状态拒绝测试。新版自包含检查点和旧版几何标签恢复路径均覆盖；本轮没有重算已有本地左室非线性平衡。
+
+已有 0.2 mmHg 预加载的恒压保持和 +0.02 mmHg 增压各执行 20 步、dt=5e-5 s，均通过启动诊断；本版 GPU 待执行。该验证仅覆盖给定腔压随动载荷的启动，不证明流体压力等于腔压、网格收敛或完整周期稳定性。详见 [说明](PRELOAD_STARTUP.md)。
+
 ## 0.13.0：Newton–GMRES 非线性固体平衡
+
+后续用户提供 RTX 4090 / torch 2.14.0+cu130 的小块和左室非线性报告，均收敛。仿射位置误差 9.26e-16 cm，左室两级均 4 次 Newton，最终残量 6.73e-8 dyn；CPU/GPU 最终最大位移指标差约 2.51e-14 cm。未同时提供 232 项 pytest 结果。见 [用户 GPU 原报告与文件指纹](nonlinear-gpu-results-0.13.0.json)。下文“GPU 尚待执行”为此前历史状态。
 
 [Linux 自动验证 36147461337](https://github.com/loveIroha/AFSI_GPU/actions/runs/36147461337) 全部通过，代码提交 `26d1c532f0d6476a45143cb55fe01db7c1f46911`：**138 passed、94 CUDA skipped**。随动压力平衡解与独立 UFL/DOLFINx 残量及完整 Jacobian 的直接 Newton 解最大坐标差 **1.77e-15 cm**。小块解析和随动载荷例分别 6/3 次 Newton，左室 0.1/0.2 mmHg 各 4 次收敛；原参考回归全部通过。见 [完整数值记录](nonlinear-results-0.13.0.json)。本版 GPU 尚待执行。
 

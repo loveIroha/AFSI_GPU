@@ -2,6 +2,20 @@
 
 目标是在 GPU 上实现 AFSI 的非线性固体、背景流体与 IB 耦合，算例采用程序生成的厘米制理想左心室。当前已具备 P2 固体、Q2/Q1 流体、Chorin 求解及显式耦合时间步，并通过独立 DOLFINx/NumPy 对照；完整心动周期、收敛和长期稳定性仍待验收。
 
+## 第十四步：预加载接入与保持测试
+
+当前版本 **0.14.0** 可直接读取第十三步的收敛结果，保留原参考网格和预应力，以实际平衡节点力初始化 IB，然后分别执行恒压保持和小幅增压。无需重新求解已有预加载。详见 [运行方法、检查点与压力定义](docs/PRELOAD_STARTUP.md)。
+
+```bash
+git pull --ff-only
+conda activate afsi-torch
+python -m pip install -e ".[test,geometry]"
+CUDA_VISIBLE_DEVICES=0 python -m pytest -q
+CUDA_VISIBLE_DEVICES=0 python examples/preloaded_lv.py --preload results/lv_equilibrium --device cuda --output results/preloaded_lv
+```
+
+本地 CPU **155 passed、96 CUDA skipped**，共 **251 项**；本版 GPU 尚待执行。默认两组各 20 步、dt=5e-5 s，仅验证 1 ms 的启动。腔压仍是固体的给定随动载荷，背景流体压力初值为零；这不是已建立生理腔压的完整流体初场，也不是完整周期验收。
+
 ## 第十三步：GPU 非线性固体平衡
 
 当前版本 **0.13.0** 新增 Newton–GMRES、自动微分 JVP、节点块预条件与构形检查/回溯，已完成 P2 仿射平衡、随动压力平衡和生成左室低压预加载的本地验证。现有显式 IB 时间推进保持不变；详见 [非线性算法、运行与限制](docs/NONLINEAR.md)。
@@ -15,7 +29,7 @@ CUDA_VISIBLE_DEVICES=0 python examples/nonlinear_patch.py --device cuda --output
 CUDA_VISIBLE_DEVICES=0 python examples/lv_equilibrium.py --device cuda --mesh-size 1.8 --pressure-mmhg 0.2 --load-steps 2 --output results/lv_equilibrium
 ```
 
-本地 CPU **138 passed、94 CUDA skipped**，完整测试共 **232 项**；本版目标 GPU 尚待执行。左室示例是 0.2 mmHg 小载荷数值验证，不是已验收的生理预加载或完整周期。
+本地 CPU **138 passed、94 CUDA skipped**，完整测试共 **232 项**。用户已提供 GPU 小块和左室非线性报告，均收敛，见 [GPU 记录](docs/nonlinear-gpu-results-0.13.0.json)；未提供这一版的完整 pytest 计数。左室示例是 0.2 mmHg 小载荷数值验证，不是已验收的生理预加载或完整周期。
 
 [0.13.0 Linux 自动验证已通过](https://github.com/loveIroha/AFSI_GPU/actions/runs/36147461337)：独立 UFL/DOLFINx 平衡解坐标差约 1.77e-15 cm，左室两级加载均收敛；[完整结果](docs/nonlinear-results-0.13.0.json)。
 

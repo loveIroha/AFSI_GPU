@@ -1,0 +1,402 @@
+{
+  "provenance": "User-supplied GPU reports; no new pytest count supplied",
+  "source_files": [
+    {
+      "name": "report.json",
+      "sha256": "f7d1248397f05a793b66eaaebd332c7edc658a5019edcaa0d1fcc5c8d89f2247"
+    },
+    {
+      "name": "report_nonlinear",
+      "sha256": "a2d44d785b1b8f0c89fd14ec0754873d215121cce373271dd7b3c930dcd8b958"
+    }
+  ],
+  "pytest_result": null,
+  "lv": {
+    "device": "cuda",
+    "torch": "2.14.0+cu130",
+    "units": {
+      "length": "cm",
+      "volume": "cm^3 (mL)",
+      "time": "s",
+      "mass": "g",
+      "force": "dyn",
+      "stress": "dyn/cm^2",
+      "pressure": "dyn/cm^2",
+      "energy": "erg",
+      "spring_coefficient": "dyn/cm^3"
+    },
+    "gpu": "NVIDIA GeForce RTX 4090",
+    "solid_config": {
+      "inner_axes": [
+        2.5,
+        2.5,
+        4.5
+      ],
+      "outer_axes": [
+        3.5,
+        3.5,
+        5.5
+      ],
+      "base_height": 1.5,
+      "mesh_size": 1.8,
+      "center": [
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "nodes": 554,
+    "cells": 260,
+    "gmsh": "4.15.2",
+    "target_pressure_mmhg": 0.2,
+    "target_tension_dyn_per_cm2": 0.0,
+    "material": {
+      "C": 20000.0,
+      "bf": 8.0,
+      "bt": 2.0,
+      "bfs": 4.0,
+      "kappa": 500000.0
+    },
+    "beta": 500000.0,
+    "options": {
+      "rtol": 1e-08,
+      "atol": 1e-05,
+      "max_iterations": 25,
+      "max_backtracks": 20,
+      "armijo": 0.0001,
+      "linear": {
+        "rtol": 0.001,
+        "atol": 1e-12,
+        "restart": 80,
+        "max_iterations": 2400,
+        "check_every": 5
+      }
+    },
+    "load_steps": 2,
+    "history": [
+      {
+        "load_fraction": 0.5,
+        "pressure_mmhg": 0.1,
+        "tension_dyn_per_cm2": 0.0,
+        "iterations": 4,
+        "residual_norm": 6.635312234018421e-08,
+        "tolerance": 1.0395098278642956e-05,
+        "newton_history": [
+          {
+            "iteration": 0,
+            "residual_norm": 1039.5098278642956
+          },
+          {
+            "iteration": 1,
+            "residual_norm": 62.30443354812666,
+            "alpha": 1.0,
+            "backtracks": 0,
+            "linear": {
+              "iterations": 305,
+              "residual_norm": 1.0194418499504179,
+              "tolerance": 1.0395098278642956
+            }
+          },
+          {
+            "iteration": 2,
+            "residual_norm": 0.0626031916831749,
+            "alpha": 1.0,
+            "backtracks": 0,
+            "linear": {
+              "iterations": 315,
+              "residual_norm": 0.061856569853780775,
+              "tolerance": 0.06230443354812666
+            }
+          },
+          {
+            "iteration": 3,
+            "residual_norm": 6.628895781057819e-05,
+            "alpha": 1.0,
+            "backtracks": 0,
+            "linear": {
+              "iterations": 685,
+              "residual_norm": 6.106884121089237e-05,
+              "tolerance": 6.260319168317489e-05
+            }
+          },
+          {
+            "iteration": 4,
+            "residual_norm": 6.635312234018421e-08,
+            "alpha": 1.0,
+            "backtracks": 0,
+            "linear": {
+              "iterations": 775,
+              "residual_norm": 6.544898557613789e-08,
+              "tolerance": 6.628895781057819e-08
+            }
+          }
+        ],
+        "cavity_volume_ml": 77.94464895387216,
+        "wall_volume_cm3": 105.57136316533159,
+        "minimum_detF": 0.9995989289979825,
+        "maximum_detF": 1.0004641349760943,
+        "passive_energy_erg": 28.068007749867498,
+        "spring_energy_erg": 0.8068668476751214,
+        "max_total_displacement_cm": 0.008140400535195302
+      },
+      {
+        "load_fraction": 1.0,
+        "pressure_mmhg": 0.2,
+        "tension_dyn_per_cm2": 0.0,
+        "iterations": 4,
+        "residual_norm": 6.730984137613711e-08,
+        "tolerance": 1.0431008380956108e-05,
+        "newton_history": [
+          {
+            "iteration": 0,
+            "residual_norm": 1043.1008380956107
+          },
+          {
+            "iteration": 1,
+            "residual_norm": 63.95203304399639,
+            "alpha": 1.0,
+            "backtracks": 0,
+            "linear": {
+              "iterations": 305,
+              "residual_norm": 1.030754087712597,
+              "tolerance": 1.0431008380956108
+            }
+          },
+          {
+            "iteration": 2,
+            "residual_norm": 0.06418576745886201,
+            "alpha": 1.0,
+            "backtracks": 0,
+            "linear": {
+              "iterations": 315,
+              "residual_norm": 0.0634699647407128,
+              "tolerance": 0.0639520330439964
+            }
+          },
+          {
+            "iteration": 3,
+            "residual_norm": 6.907637612021601e-05,
+            "alpha": 1.0,
+            "backtracks": 0,
+            "linear": {
+              "iterations": 670,
+              "residual_norm": 6.36332688978772e-05,
+              "tolerance": 6.418576745886201e-05
+            }
+          },
+          {
+            "iteration": 4,
+            "residual_norm": 6.730984137613711e-08,
+            "alpha": 1.0,
+            "backtracks": 0,
+            "linear": {
+              "iterations": 825,
+              "residual_norm": 6.63551767588231e-08,
+              "tolerance": 6.907637612021601e-08
+            }
+          }
+        ],
+        "cavity_volume_ml": 78.37290679929856,
+        "wall_volume_cm3": 105.57536545774255,
+        "minimum_detF": 0.9991897424747945,
+        "maximum_detF": 1.0009239379204662,
+        "passive_energy_erg": 113.21605121718903,
+        "spring_energy_erg": 3.236057763789737,
+        "max_total_displacement_cm": 0.016381068564674448
+      }
+    ],
+    "initial": {
+      "cavity_volume_ml": 77.52179138774079,
+      "wall_volume_cm3": 105.56730609102021,
+      "minimum_detF": 0.9999999999999906,
+      "maximum_detF": 1.000000000000013,
+      "passive_energy_erg": 4.9364777703970524e-23,
+      "spring_energy_erg": 0.0,
+      "max_total_displacement_cm": 0.0
+    },
+    "converged": true,
+    "production_ib_changed": false,
+    "physiological_preload_validated": false,
+    "full_cycle_ready": false,
+    "final": {
+      "cavity_volume_ml": 78.37290679929856,
+      "wall_volume_cm3": 105.57536545774255,
+      "minimum_detF": 0.9991897424747945,
+      "maximum_detF": 1.0009239379204662,
+      "passive_energy_erg": 113.21605121718903,
+      "spring_energy_erg": 3.236057763789737,
+      "max_total_displacement_cm": 0.016381068564674448
+    }
+  },
+  "patch": {
+    "device": "cuda",
+    "torch": "2.14.0+cu130",
+    "units": {
+      "length": "cm",
+      "volume": "cm^3 (mL)",
+      "time": "s",
+      "mass": "g",
+      "force": "dyn",
+      "stress": "dyn/cm^2",
+      "pressure": "dyn/cm^2",
+      "energy": "erg",
+      "spring_coefficient": "dyn/cm^3"
+    },
+    "options": {
+      "rtol": 1e-09,
+      "atol": 1e-07,
+      "max_iterations": 25,
+      "max_backtracks": 20,
+      "armijo": 0.0001,
+      "linear": {
+        "rtol": 1e-05,
+        "atol": 1e-12,
+        "restart": 70,
+        "max_iterations": 700,
+        "check_every": 5
+      }
+    },
+    "nodes": 27,
+    "cells": 6,
+    "material": {
+      "C": 20000.0,
+      "bf": 8.0,
+      "bt": 2.0,
+      "bfs": 4.0,
+      "kappa": 500000.0
+    },
+    "cases": {
+      "affine": {
+        "converged": true,
+        "iterations": 6,
+        "residual_norm": 2.3490837670132106e-10,
+        "tolerance": 8.846413047306108e-05,
+        "history": [
+          {
+            "iteration": 0,
+            "residual_norm": 88464.13047306107
+          },
+          {
+            "iteration": 1,
+            "residual_norm": 11318.916814992277,
+            "alpha": 1.0,
+            "backtracks": 0,
+            "linear": {
+              "iterations": 50,
+              "residual_norm": 0.0058130622350972445,
+              "tolerance": 0.8846413047306108
+            }
+          },
+          {
+            "iteration": 2,
+            "residual_norm": 2184.925129586391,
+            "alpha": 1.0,
+            "backtracks": 0,
+            "linear": {
+              "iterations": 54,
+              "residual_norm": 7.627357402771327e-11,
+              "tolerance": 0.11318916814992278
+            }
+          },
+          {
+            "iteration": 3,
+            "residual_norm": 84.22035876985561,
+            "alpha": 1.0,
+            "backtracks": 0,
+            "linear": {
+              "iterations": 54,
+              "residual_norm": 1.184767744542267e-11,
+              "tolerance": 0.021849251295863913
+            }
+          },
+          {
+            "iteration": 4,
+            "residual_norm": 1.0058361081382972,
+            "alpha": 1.0,
+            "backtracks": 0,
+            "linear": {
+              "iterations": 54,
+              "residual_norm": 1.179517651019539e-12,
+              "tolerance": 0.0008422035876985562
+            }
+          },
+          {
+            "iteration": 5,
+            "residual_norm": 0.00012649796038340842,
+            "alpha": 1.0,
+            "backtracks": 0,
+            "linear": {
+              "iterations": 54,
+              "residual_norm": 1.692595119677218e-14,
+              "tolerance": 1.0058361081382973e-05
+            }
+          },
+          {
+            "iteration": 6,
+            "residual_norm": 2.3490837670132106e-10,
+            "alpha": 1.0,
+            "backtracks": 0,
+            "linear": {
+              "iterations": 54,
+              "residual_norm": 3.2546914541734757e-18,
+              "tolerance": 1.2649796038340843e-09
+            }
+          }
+        ],
+        "minimum_detF": 1.0799999999999976,
+        "max_displacement_cm": 0.08381527307120167,
+        "analytic_position_max_error_cm": 9.26342336171615e-16
+      },
+      "follower": {
+        "converged": true,
+        "iterations": 3,
+        "residual_norm": 2.624473980966712e-10,
+        "tolerance": 4.714045207910428e-07,
+        "history": [
+          {
+            "iteration": 0,
+            "residual_norm": 471.4045207910427
+          },
+          {
+            "iteration": 1,
+            "residual_norm": 21.065559152917103,
+            "alpha": 1.0,
+            "backtracks": 0,
+            "linear": {
+              "iterations": 35,
+              "residual_norm": 0.00449471684706943,
+              "tolerance": 0.004714045207910428
+            }
+          },
+          {
+            "iteration": 2,
+            "residual_norm": 0.0009979309974482702,
+            "alpha": 1.0,
+            "backtracks": 0,
+            "linear": {
+              "iterations": 40,
+              "residual_norm": 8.768352556355586e-05,
+              "tolerance": 0.00021065559152917105
+            }
+          },
+          {
+            "iteration": 3,
+            "residual_norm": 2.624473980966712e-10,
+            "alpha": 1.0,
+            "backtracks": 0,
+            "linear": {
+              "iterations": 45,
+              "residual_norm": 2.337142176733894e-10,
+              "tolerance": 9.979309974482703e-09
+            }
+          }
+        ],
+        "minimum_detF": 0.9989821624289504,
+        "max_displacement_cm": 0.006318284946203045
+      }
+    },
+    "converged": true,
+    "production_ib_changed": false,
+    "full_cycle_ready": false
+  }
+}

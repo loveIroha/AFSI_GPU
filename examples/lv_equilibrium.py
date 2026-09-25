@@ -7,13 +7,13 @@ import argparse
 from dataclasses import asdict,replace
 import json
 from pathlib import Path
-import numpy as np
 import torch
 from afsi_torch.geometry import LVConfig,generate_lv
 from afsi_torch.lv_model import LVSolid,RampLoads
 from afsi_torch.nonlinear import NewtonOptions,GMRESOptions,newton,NonlinearFailure
 from afsi_torch.solid_preconditioner import guccione_blocks,block_inverse
 from afsi_torch.units import CGS_UNITS
+from afsi_torch.preload import save_checkpoint
 
 
 def run(device='cpu',mesh_size=1.8,pressure_mmhg=.2,tension=0.,load_steps=2,output='results/lv_equilibrium'):
@@ -39,8 +39,7 @@ def run(device='cpu',mesh_size=1.8,pressure_mmhg=.2,tension=0.,load_steps=2,outp
     def save():
         (folder/'report.json').write_text(json.dumps(report,indent=2,allow_nan=False)+'\n',encoding='utf-8')
     def snapshot(path,y,fraction):
-        np.savez_compressed(path,X=mesh.X.cpu().numpy(),cells=mesh.cells.cpu().numpy(),
-            x=y.cpu().numpy(),load_fraction=fraction)
+        save_checkpoint(path,model,y,fraction)
     snapshot(folder/'last_converged.npz',x,0.)
     (folder/'failed_load_last_iterate.npz').unlink(missing_ok=True)
     save()

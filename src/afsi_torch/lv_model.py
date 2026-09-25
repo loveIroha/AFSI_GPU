@@ -28,6 +28,27 @@ class RampLoads:
         return self.pressure_mmhg*MMHG_TO_DYN_PER_CM2*scale, self.tension*scale
 
 
+@dataclass(frozen=True)
+class PreloadedLoads:
+    """Physical-time load schedule starting at the saved preload, not zero."""
+    pressure_mmhg: float
+    tension: float = 0.
+    pressure_increment_mmhg: float = 0.
+    hold_time: float = .0005
+    ramp_time: float = .0005
+
+    def __post_init__(self):
+        values=(self.pressure_mmhg,self.tension,self.pressure_increment_mmhg,self.hold_time,self.ramp_time)
+        if not all(isfinite(v) for v in values) or min(values)<0 or self.ramp_time==0:
+            raise ValueError('finite nonnegative preloaded loads and positive ramp time required')
+
+    def at(self,time):
+        if not isfinite(time) or time<0:
+            raise ValueError('nonnegative finite load time required')
+        fraction=min(max((time-self.hold_time)/self.ramp_time,0.),1.)
+        return ((self.pressure_mmhg+fraction*self.pressure_increment_mmhg)*MMHG_TO_DYN_PER_CM2,self.tension)
+
+
 class LVSolid:
     def __init__(self, mesh, *, loads=None, beta=5e5, parameters=None):
         if not isfinite(beta) or beta < 0:

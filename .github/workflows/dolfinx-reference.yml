@@ -51,6 +51,7 @@ jobs:
           .venv-torch/bin/python validation/compare_nonlinear_dolfinx.py --reference validation/results/nonlinear.npz --output validation/results/nonlinear.json
           .venv-torch/bin/python examples/nonlinear_patch.py --device cpu --output validation/results/nonlinear_patch
           .venv-torch/bin/python examples/lv_equilibrium.py --device cpu --output validation/results/lv_equilibrium
+          .venv-torch/bin/python examples/preloaded_lv.py --preload validation/results/lv_equilibrium --device cpu --output validation/results/preloaded_lv
           .venv-torch/bin/python validation/compare_dolfinx.py --reference validation/results/coarse.npz --output validation/results/coarse.json
           .venv-torch/bin/python validation/compare_dolfinx.py --reference validation/results/fine.npz --output validation/results/fine.json
           .venv-torch/bin/python validation/compare_ib.py --output validation/results/ib.json
