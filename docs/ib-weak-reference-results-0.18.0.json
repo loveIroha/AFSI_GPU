@@ -1,0 +1,247 @@
+{
+  "device": "cpu",
+  "torch": "2.14.0+cpu",
+  "gpu": null,
+  "point_cm": [
+    0.37,
+    -0.41,
+    -1.23
+  ],
+  "force_dyn": [
+    1.0,
+    -0.7,
+    0.4
+  ],
+  "epsilon_cm": 1.0,
+  "dt_s": 5e-05,
+  "levels": [
+    6,
+    12,
+    18,
+    24
+  ],
+  "weak_loads": {
+    "6": {
+      "fluid_cells": 6,
+      "velocity_spacing_cm": 1.0,
+      "reference_resultant_dyn": [
+        0.9999999999999988,
+        -0.6999999999999997,
+        0.40000000000000024
+      ],
+      "reference_force_moment_dyn_cm": [
+        0.3699999999999998,
+        0.28699999999999953,
+        -0.4919999999999997
+      ],
+      "direct_resultant_dyn": [
+        1.0,
+        -0.7000000000000001,
+        0.4
+      ],
+      "density_resultant_dyn": [
+        1.0000000000000002,
+        -0.6999999999999987,
+        0.40000000000000024
+      ],
+      "direct_relative_to_quadrature": 0.4505845008495757,
+      "density_relative_to_quadrature": 0.10240606991458583,
+      "direct_vs_density_relative_to_quadrature": 0.48579436528057124
+    },
+    "12": {
+      "fluid_cells": 12,
+      "velocity_spacing_cm": 0.5,
+      "reference_resultant_dyn": [
+        0.9999999999999982,
+        -0.6999999999999992,
+        0.3999999999999998
+      ],
+      "reference_force_moment_dyn_cm": [
+        0.37,
+        0.28699999999999953,
+        -0.4919999999999995
+      ],
+      "direct_resultant_dyn": [
+        1.0000000000000002,
+        -0.6999999999999987,
+        0.3999999999999999
+      ],
+      "density_resultant_dyn": [
+        1.0000000000000013,
+        -0.6999999999999998,
+        0.40000000000000013
+      ],
+      "direct_relative_to_quadrature": 0.4895107277770081,
+      "density_relative_to_quadrature": 0.02206921568433033,
+      "direct_vs_density_relative_to_quadrature": 0.49393252686096156
+    },
+    "18": {
+      "fluid_cells": 18,
+      "velocity_spacing_cm": 0.3333333333333333,
+      "reference_resultant_dyn": [
+        0.999999999999999,
+        -0.7000000000000002,
+        0.4000000000000013
+      ],
+      "reference_force_moment_dyn_cm": [
+        0.3699999999999994,
+        0.2869999999999988,
+        -0.49200000000000105
+      ],
+      "direct_resultant_dyn": [
+        0.999999999999999,
+        -0.7000000000000001,
+        0.39999999999999963
+      ],
+      "density_resultant_dyn": [
+        0.9999999999999994,
+        -0.7000000000000014,
+        0.3999999999999991
+      ],
+      "direct_relative_to_quadrature": 0.5054240953600866,
+      "density_relative_to_quadrature": 0.006312049208586886,
+      "direct_vs_density_relative_to_quadrature": 0.505596156492112
+    },
+    "24": {
+      "fluid_cells": 24,
+      "velocity_spacing_cm": 0.25,
+      "reference_resultant_dyn": [
+        1.0000000000000002,
+        -0.6999999999999991,
+        0.400000000000001
+      ],
+      "reference_force_moment_dyn_cm": [
+        0.37000000000000177,
+        0.28700000000000025,
+        -0.4919999999999994
+      ],
+      "direct_resultant_dyn": [
+        0.999999999999999,
+        -0.6999999999999993,
+        0.3999999999999993
+      ],
+      "density_resultant_dyn": [
+        0.9999999999999956,
+        -0.7000000000000028,
+        0.4000000000000002
+      ],
+      "direct_relative_to_quadrature": 0.5121896078017313,
+      "density_relative_to_quadrature": 0.004049427404679794,
+      "direct_vs_density_relative_to_quadrature": 0.5125247643625006
+    }
+  },
+  "box_control": {
+    "12": {
+      "fluid_cells": 12,
+      "box_length_cm": 12.0,
+      "velocity_spacing_cm": 0.5,
+      "chorin_solid_velocity_cm_per_s": [
+        4.3588146154247615e-06,
+        -3.0516126932358427e-06,
+        1.7420199678362592e-06
+      ],
+      "schur_solid_velocity_cm_per_s": [
+        4.306305596293873e-06,
+        -3.014956520648415e-06,
+        1.7207523473258306e-06
+      ],
+      "chorin_vs_schur_solid_velocity_relative": 0.012199184610227117,
+      "chorin_divergence_dual_l2": 8.404562332816304e-07,
+      "schur_divergence_dual_l2": 1.8774367268762356e-13,
+      "chorin_solver_max_residual_ratio": 0.9692454097759178,
+      "schur_solver_residual_ratio": 0.8728157235894246
+    },
+    "18": {
+      "fluid_cells": 18,
+      "box_length_cm": 18.0,
+      "velocity_spacing_cm": 0.5,
+      "chorin_solid_velocity_cm_per_s": [
+        4.375264612676118e-06,
+        -3.063211980105576e-06,
+        1.7488652779604302e-06
+      ],
+      "schur_solid_velocity_cm_per_s": [
+        4.324234498302253e-06,
+        -3.027599187010306e-06,
+        1.7282151087583122e-06
+      ],
+      "chorin_vs_schur_solid_velocity_relative": 0.011804021127119074,
+      "chorin_divergence_dual_l2": 8.392503655909021e-07,
+      "schur_divergence_dual_l2": 9.848590675775175e-15,
+      "chorin_solver_max_residual_ratio": 0.8660069761245311,
+      "schur_solver_residual_ratio": 0.9848099083500506
+    },
+    "large_vs_small_chorin_relative": 0.0037973312910295214
+  },
+  "lv_box_control": {
+    "preload": {
+      "checkpoint_sha256": "81ffd2ba26b0aabec58d59c0dc45b70e6179348b77cb41e7568b044ba73a8311",
+      "report_sha256": "97ab99406c07b0d8c5dbc5514bd3c89fe2c44840558408ae96eaee615640b71f",
+      "legacy_tag_reconstruction": true,
+      "recomputed_force_norm_dyn": 6.80833192161239e-08,
+      "force_tolerance_dyn": 1.0431008380954383e-05,
+      "reference_rebased": false,
+      "equilibrium_resolved": false,
+      "reference_nodes": 554,
+      "reference_cells": 260
+    },
+    "incremental_force_norm_dyn": 209.34781587097413,
+    "density": {
+      "12": {
+        "fluid_cells": 12,
+        "box_length_cm": 12.0,
+        "velocity_spacing_cm": 0.5,
+        "chorin_solid_velocity_nodal_norm_cm_per_s": 0.0011270664252479954,
+        "schur_solid_velocity_nodal_norm_cm_per_s": 0.0009305646731345377,
+        "chorin_vs_schur_relative": 0.2563635141624796,
+        "chorin_divergence_dual_l2": 0.0003918572872444876,
+        "schur_divergence_dual_l2": 5.062154150513047e-15,
+        "chorin_solver_max_residual_ratio": 0.8013676596239632,
+        "schur_solver_residual_ratio": 0.5049042825629133
+      },
+      "18": {
+        "fluid_cells": 18,
+        "box_length_cm": 18.0,
+        "velocity_spacing_cm": 0.5,
+        "chorin_solid_velocity_nodal_norm_cm_per_s": 0.0012324631426056036,
+        "schur_solid_velocity_nodal_norm_cm_per_s": 0.0010527718358318624,
+        "chorin_vs_schur_relative": 0.21716115730752364,
+        "chorin_divergence_dual_l2": 0.0003890447928155944,
+        "schur_divergence_dual_l2": 8.334248508702994e-15,
+        "chorin_solver_max_residual_ratio": 0.9823898261915235,
+        "schur_solver_residual_ratio": 0.8320176283345377
+      },
+      "large_vs_small_chorin_relative": 0.16668674229585578
+    },
+    "dual": {
+      "12": {
+        "fluid_cells": 12,
+        "box_length_cm": 12.0,
+        "velocity_spacing_cm": 0.5,
+        "chorin_solid_velocity_nodal_norm_cm_per_s": 0.00880293035379078,
+        "schur_solid_velocity_nodal_norm_cm_per_s": 0.008582044155777542,
+        "chorin_vs_schur_relative": 0.026768823201324544,
+        "chorin_divergence_dual_l2": 0.00037277341298131095,
+        "schur_divergence_dual_l2": 5.9079638990802836e-15,
+        "chorin_solver_max_residual_ratio": 0.9749812069895972,
+        "schur_solver_residual_ratio": 0.5892813023859333
+      },
+      "18": {
+        "fluid_cells": 18,
+        "box_length_cm": 18.0,
+        "velocity_spacing_cm": 0.5,
+        "chorin_solid_velocity_nodal_norm_cm_per_s": 0.008888045233014686,
+        "schur_solid_velocity_nodal_norm_cm_per_s": 0.008678707588063727,
+        "chorin_vs_schur_relative": 0.02536826089315948,
+        "chorin_divergence_dual_l2": 0.0003702261614525042,
+        "schur_divergence_dual_l2": 7.82994912871132e-15,
+        "chorin_solver_max_residual_ratio": 0.9890911382002543,
+        "schur_solver_residual_ratio": 0.7817515783744323
+      },
+      "large_vs_small_chorin_relative": 0.0211050227029608
+    }
+  },
+  "completed": true,
+  "full_cycle_ready": false,
+  "scope": "independent Q2 weak-load reference and fixed-spacing box/projection controls; no coupled trajectory"
+}

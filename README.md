@@ -2,9 +2,21 @@
 
 目标是在 GPU 上实现 AFSI 的非线性固体、背景流体与 IB 耦合，算例采用程序生成的厘米制理想左心室。当前已具备 P2 固体、Q2/Q1 流体、Chorin 求解及显式耦合时间步，并通过独立 DOLFINx/NumPy 对照；完整心动周期、收敛和长期稳定性仍待验收。
 
+## 第十八步：固定宽度 IB 力的独立弱式验证
+
+版本 **0.18.0** 针对上一阶段看似收敛的“固定核＋直接弱式载荷”进行独立检查。固定物理宽度 `1 cm` 时，NumPy 分段高阶积分给出正则化力的 Q2 弱式参考：原密度载荷的相对误差从 6³ 的 10.2% 降到 24³ 的 0.4%，直接 `Hᵀg` 则约为 45%–51%。同格距左室增量力盒子对照还显示密度路径的外边界与投影影响不可忽略。本地完整回归 **167 passed、99 CUDA skipped**；直接载荷的代数功率配对不能作为替换生产载荷的充分依据。[验证方法、运行及限制](docs/IB_WEAK_REFERENCE.md)；[本地参考结果](docs/ib-weak-reference-results-0.18.0.json)；[上一阶段 RTX 4090 耦合报告](docs/coupled-ib-gpu-results-0.17.0.json)。
+
+```bash
+git pull --ff-only
+conda activate afsi-torch
+python -m pip install -e ".[test,geometry]"
+CUDA_VISIBLE_DEVICES=0 python -m pytest -q
+CUDA_VISIBLE_DEVICES=0 python validation/verify_ib_weak.py --device cuda --preload results/lv_equilibrium --output results/ib_weak_reference/report.json
+```
+
 ## 第十七步：短程耦合的核宽度与载荷路径对照
 
-版本 **0.17.0** 在同一预加载左室上，将原 IB 核/固定 1 cm 核与原密度载荷/直接弱式载荷组成四组短程耦合对照。原路径仍是默认生产方法。运行要求和解释边界见 [试验说明](docs/COUPLED_IB_FACTORS.md)。本地 CPU 的 6³/12³、8 步先导试验全部完成，完整回归 **162 passed、98 CUDA skipped**；四组的网格响应均尚未通过 5% 筛选。[先导数值](docs/coupled-ib-pilot-results-0.17.0.json)使用旧本地预加载检查点，不能直接与目标 GPU 预加载结果逐项比较。这不是 1 ms 正式 GPU 验证，也不证明某个替代方法正确。
+版本 **0.17.0** 在同一预加载左室上，将原 IB 核/固定 1 cm 核与原密度载荷/直接弱式载荷组成四组短程耦合对照。原路径仍是默认生产方法。运行要求和解释边界见 [试验说明](docs/COUPLED_IB_FACTORS.md)。本地 CPU 的 6³/12³、8 步先导试验完成，完整回归 **162 passed、98 CUDA skipped**；[先导数值](docs/coupled-ib-pilot-results-0.17.0.json)使用旧本地预加载检查点。用户随后提供的 [RTX 4090 正式对照报告](docs/coupled-ib-gpu-results-0.17.0.json)完成全部 12 条、每条 20 步的轨迹：“固定核＋直接弱式载荷”在 12³→18³ 通过 5% 筛选，但在 6³→12³ 未通过；0.18.0 的独立弱式参考进一步表明不能仅凭这一筛选替换生产方法。用户报告未附 0.17.0 的 pytest 计数。
 
 ```bash
 git pull --ff-only

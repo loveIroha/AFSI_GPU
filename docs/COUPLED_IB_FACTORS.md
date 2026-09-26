@@ -36,3 +36,7 @@ CUDA_VISIBLE_DEVICES=0 python validation/compare_coupled_ib.py \
 这个旧 CPU 检查点的 SHA256 是 `81ffd2ba26b0aabec58d59c0dc45b70e6179348b77cb41e7568b044ba73a8311`，与用户 RTX 4090 诊断所用检查点 `f1b21532517fc0c5da41326c31a873fbfc329793a98d368223e7904f3d74fc09` 不同；不能把两者逐项数值当作同一初始条件比较。正式 GPU 对照应直接使用目标机上的 `results/lv_equilibrium`，先核对其检查点哈希。
 
 本地完整回归：**162 passed、98 CUDA skipped、1 warning**。这不代替目标 RTX 4090 上的完整 GPU 回归。
+
+## RTX 4090 正式对照结果
+
+用户提供的[完整 GPU 报告](coupled-ib-gpu-results-0.17.0.json)中，12 组 6³/12³/18³、20 步（1 ms）轨迹全部完成，检查点哈希为 `f1b21532517fc0c5da41326c31a873fbfc329793a98d368223e7904f3d74fc09`。原核+密度路径的 12³→18³ 腔体积/最大增量位移/节点位移向量差为 62.2%/59.2%/74.5%；固定核+直接弱式路径为 3.6%/3.5%/3.3%，但其 6³→12³ 节点位移差仍为 18.9%。这只是相邻网格筛选的结果，不能证明替代方法正确。报告没有 pytest 计数。[0.18.0 独立弱式参考](IB_WEAK_REFERENCE.md)表明，直接弱式路径没有逼近固定物理核对应的 Q2 连续弱式载荷，故目前不应改用该路径作为生产方法。
