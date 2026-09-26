@@ -13,7 +13,7 @@ python -m pip install -e ".[test,geometry]"
 CUDA_VISIBLE_DEVICES=0 python validation/phase_power_ib.py --study results/preloaded_ib_study --device cuda --output results/preloaded_ib_phase
 ```
 
-本地 CPU **32 组试验全部完成**：12³ 原核+密度路径在三轴各偏移半格距后，固体速度向量变化 43.6%；固定 1 cm 核约 3.5%。格点功率恒等式仍成立，但原密度载荷进入 Q2 弱式后出现非零功率差；直接弱式载荷为单独的诊断离散。[数值记录](docs/phase-power-results-0.16.0.json)。本版 GPU 与 Linux CI 尚待执行，完整周期仍未验收。
+本地 CPU **32 组试验全部完成**：12³ 原核+密度路径在三轴各偏移半格距后，固体速度向量变化 43.6%；固定 1 cm 核约 3.5%。格点功率恒等式仍成立，但原密度载荷进入 Q2 弱式后出现非零功率差；直接弱式载荷为单独的诊断离散。[数值记录](docs/phase-power-results-0.16.0.json)。[Linux 自动验证](https://github.com/loveIroha/AFSI_GPU/actions/runs/36192329164) **158 passed、96 CUDA skipped**，32 组诊断结果与本地一致；本版 GPU 待执行，完整周期仍未验收。
 
 ## 第十五步：预加载左室的流体/IB 网格研究
 

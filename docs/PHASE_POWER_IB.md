@@ -22,3 +22,5 @@ CUDA_VISIBLE_DEVICES=0 python validation/phase_power_ib.py \
 ## 首次本地结果
 
 32 组均完成，核零/一次矩和格点功率恒等式处于数值精度。12³ 原核+密度路径沿 x 半格距的腔体积变化率差约 0.007%，但固体节点速度向量差约 29.86%；三轴各半格距的节点速度差约 43.61%。18³ 三轴各半格距为 25.52%。固定 1 cm 核+密度路径的同项差降至 3.45%/2.53%。原密度路径在 12³/18³ 的 Q2 弱式功率差约 -0.0633/-0.1629 erg/s；已有 Chorin/Schur 投影的固体速度差约 24.25%/14.02%。这些值提示多个因素需要处理，但不证明它们相加等于 0.15.0 耦合轨迹的全部误差。[完整数值记录](phase-power-results-0.16.0.json)。
+
+[Linux 自动验证](https://github.com/loveIroha/AFSI_GPU/actions/runs/36192329164)也已通过，158 passed、96 CUDA skipped；32 组诊断结果与本地一致，[数值记录](phase-power-results-0.16.0.json)已包含两平台数据。目标 GPU 待执行。
