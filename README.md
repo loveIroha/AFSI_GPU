@@ -2,6 +2,17 @@
 
 目标是在 GPU 上实现 AFSI 的非线性固体、背景流体与 IB 耦合，算例采用程序生成的厘米制理想左心室。当前已具备 P2 固体、Q2/Q1 流体、Chorin 求解及显式耦合时间步，并通过独立 DOLFINx/NumPy 对照；完整心动周期、收敛和长期稳定性仍待验收。
 
+## 第十七步：短程耦合的核宽度与载荷路径对照
+
+版本 **0.17.0** 在同一预加载左室上，将原 IB 核/固定 1 cm 核与原密度载荷/直接弱式载荷组成四组短程耦合对照。原路径仍是默认生产方法。运行要求和解释边界见 [试验说明](docs/COUPLED_IB_FACTORS.md)。本地 CPU 的 6³/12³、8 步先导试验全部完成，完整回归 **162 passed、98 CUDA skipped**；四组的网格响应均尚未通过 5% 筛选。[先导数值](docs/coupled-ib-pilot-results-0.17.0.json)使用旧本地预加载检查点，不能直接与目标 GPU 预加载结果逐项比较。这不是 1 ms 正式 GPU 验证，也不证明某个替代方法正确。
+
+```bash
+git pull --ff-only
+conda activate afsi-torch
+python -m pip install -e ".[test,geometry]"
+CUDA_VISIBLE_DEVICES=0 python validation/compare_coupled_ib.py --preload results/lv_equilibrium --device cuda --fluid-levels 6 12 18 --steps 20 --output results/coupled_ib_factors
+```
+
 ## 第十六步：定位 IB 位置、载荷功率与压力投影差异
 
 版本 **0.16.0** 接续第十五步预加载研究，在固定构形下测量 IB 相互作用点相对背景格点的位置、原密度载荷与流体有限元弱式功率的差异，并汇总已有 Chorin/Schur 投影对照；生产耦合算法未改变。详见 [试验定义及限制](docs/PHASE_POWER_IB.md)。
@@ -13,7 +24,7 @@ python -m pip install -e ".[test,geometry]"
 CUDA_VISIBLE_DEVICES=0 python validation/phase_power_ib.py --study results/preloaded_ib_study --device cuda --output results/preloaded_ib_phase
 ```
 
-本地 CPU **32 组试验全部完成**：12³ 原核+密度路径在三轴各偏移半格距后，固体速度向量变化 43.6%；固定 1 cm 核约 3.5%。格点功率恒等式仍成立，但原密度载荷进入 Q2 弱式后出现非零功率差；直接弱式载荷为单独的诊断离散。[数值记录](docs/phase-power-results-0.16.0.json)。[Linux 自动验证](https://github.com/loveIroha/AFSI_GPU/actions/runs/36192329164) **158 passed、96 CUDA skipped**，32 组诊断结果与本地一致；本版 GPU 待执行，完整周期仍未验收。
+本地 CPU **32 组试验全部完成**：12³ 原核+密度路径在三轴各偏移半格距后，固体速度向量变化 43.6%；固定 1 cm 核约 3.5%。格点功率恒等式仍成立，但原密度载荷进入 Q2 弱式后出现非零功率差；直接弱式载荷为单独的诊断离散。[数值记录](docs/phase-power-results-0.16.0.json)。[Linux 自动验证](https://github.com/loveIroha/AFSI_GPU/actions/runs/36192329164) **158 passed、96 CUDA skipped**，32 组诊断结果与本地一致。用户随后提供的 [RTX 4090 报告](docs/phase-power-gpu-results-0.16.0.json)也完成了全部 32 组诊断；完整周期仍未验收。
 
 ## 第十五步：预加载左室的流体/IB 网格研究
 

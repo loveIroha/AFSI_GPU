@@ -56,6 +56,40 @@ def test_zero_force_bootstrap_lag_and_manual_composition(device):
     assert abs(result.diagnostics['fe_minus_solid_power']) > 1e-10
 
 
+def test_diagnostic_dual_load_uses_weak_rhs_and_preserves_power(device):
+    X, _, fluid, _, validate = setup(device)
+    force = lambda x, t: x.new_tensor([.01, -.02, .03]).expand_as(x)
+    driver = ExplicitIBStepper(fluid, force, validate, load_path='dual')
+    first = driver.step(driver.initialize(X))
+    state = first.state
+    stencil = ib.prepare_stencil(state.x, driver.grid)
+    dual = ib.spread_load(state.force, stencil)
+    reference = fluid.step(state.velocity, nodal_load=dual, pressure_initial=state.pressure)
+    result = driver.step(state)
+    torch.testing.assert_close(result.state.velocity, reference.velocity, atol=1e-13, rtol=1e-11)
+    torch.testing.assert_close(result.state.x, state.x + fluid.dt * ib.interpolate(reference.velocity, stencil),
+                               atol=1e-13, rtol=1e-11)
+    assert result.diagnostics['load_path'] == 'dual'
+    assert abs(result.diagnostics['fe_minus_solid_power']) < 1e-13
+
+
+def test_diagnostic_scaled_stencil_runs_moving_coupling(device):
+    from validation.diagnose_ib import scaled_stencil
+    mesh = create_box((6,)*3, (6.,)*3, (-3.,)*3, device=device)
+    fluid = ChorinSolver(prepare_operators(mesh), dt=1e-4)
+    X = torch.tensor([[-.2, .1, .2], [.2, -.1, -.2]], device=device, dtype=torch.float64)
+    force = lambda x, t: x.new_tensor([1., 0., 0.]).expand_as(x)
+    driver = ExplicitIBStepper(fluid, force, lambda x: None,
+        stencil_factory=lambda x, grid: scaled_stencil(x, grid, 2), load_path='dual')
+    state = driver.initialize(X)
+    state = driver.step(state).state
+    result = driver.step(state)
+    assert result.state.step == 2
+    assert torch.linalg.vector_norm(result.state.x - X).item() > 0
+    assert result.diagnostics['lattice_power_error'] < 1e-13
+    assert abs(result.diagnostics['fe_minus_solid_power']) < 1e-13
+
+
 def test_translation_rebuilds_support_and_uses_old_positions(device):
     X, _, fluid, _, validate = setup(device, dt=.1)
     X = X+.37

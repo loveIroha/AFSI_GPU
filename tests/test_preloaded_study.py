@@ -2,6 +2,7 @@
 import numpy as np
 import pytest
 from validation.study_preloaded_ib import compare,relative_change
+from validation.compare_coupled_ib import _method_difference,run as factor_run
 
 
 def _case(path,n,amplitude):
@@ -43,3 +44,24 @@ def test_large_grid_difference_is_recorded_not_called_converged(tmp_path):
     result=compare(a,b)
     assert result['screen']=='needs_refinement'
     assert result['relative_metrics']['delta_cavity_response']==pytest.approx(1.)
+
+
+def test_method_comparison_requires_same_grid_and_preload(tmp_path):
+    a=_case(tmp_path/'a.npz',6,1e-5)
+    b=_case(tmp_path/'b.npz',6,1.2e-5)
+    result=_method_difference(a,b)
+    assert result['displacement_relative_to_baseline']==pytest.approx(.2)
+    assert result['delta_cavity_relative_to_baseline']==pytest.approx(.2)
+    b['fluid_cells']=12
+    with pytest.raises(ValueError,match='resolution'):
+        _method_difference(a,b)
+    b['fluid_cells']=6
+    b['reference_sha256']='other'
+    with pytest.raises(ValueError,match='preloaded solid'):
+        _method_difference(a,b)
+
+
+def test_factor_study_rejects_nonintegral_fixed_kernel_before_loading(tmp_path):
+    with pytest.raises(ValueError,match='integer dilation'):
+        factor_run(preload=tmp_path/'missing',output=tmp_path/'unused',
+                   fluid_levels=(6,8),fixed_epsilon_cm=1.)

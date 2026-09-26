@@ -1,0 +1,877 @@
+{
+  "device": "cuda",
+  "torch": "2.14.0+cu130",
+  "gpu": "NVIDIA GeForce RTX 4090",
+  "source": {
+    "preload": {
+      "checkpoint_sha256": "f1b21532517fc0c5da41326c31a873fbfc329793a98d368223e7904f3d74fc09",
+      "report_sha256": "f7d1248397f05a793b66eaaebd332c7edc658a5019edcaa0d1fcc5c8d89f2247",
+      "legacy_tag_reconstruction": true,
+      "recomputed_force_norm_dyn": 6.730984200447421e-08,
+      "force_tolerance_dyn": 1.0431008380956108e-05,
+      "reference_rebased": false,
+      "equilibrium_resolved": false,
+      "reference_nodes": 554,
+      "reference_cells": 260
+    },
+    "source_sha256": "81f020e22a21c601efb252cc103c8ddaf0d299a823fc38ee94ffba5253fcc88d",
+    "frozen_levels": [
+      6,
+      12,
+      18
+    ],
+    "frozen_dt_s": 2.5e-05
+  },
+  "levels": [
+    12,
+    18
+  ],
+  "phases": {
+    "base": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "x_quarter": [
+      0.25,
+      0.0,
+      0.0
+    ],
+    "x_half": [
+      0.5,
+      0.0,
+      0.0
+    ],
+    "diagonal_half": [
+      0.5,
+      0.5,
+      0.5
+    ]
+  },
+  "dt_s": 2.5e-05,
+  "case_count_expected": 32,
+  "source_production_chorin_vs_schur": {
+    "12": 0.24248930147357867,
+    "18": 0.14020234696231518
+  },
+  "cases": {
+    "12_base_native_density": {
+      "completed": true,
+      "fluid_cells": 12,
+      "phase": "base",
+      "phase_grid_steps": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "kernel": "native",
+      "load_path": "density",
+      "moment_zero_error": 4.440892098500626e-16,
+      "moment_one_error_cm": 1.7763568394002505e-15,
+      "fe_density_vs_dual_rhs_relative_norm": 0.5487773680962785,
+      "solid_velocity_nodal_norm_cm_per_s": 0.0017025631430812788,
+      "cavity_rate_ml_per_s": 0.010311384217527737,
+      "solid_power_erg_per_s": 0.2928321287539388,
+      "lattice_power_error_erg_per_s": 5.551115123125783e-17,
+      "fe_minus_solid_power_erg_per_s": -0.06329587417943133,
+      "max_solver_residual_ratio": 0.9647881662929151
+    },
+    "12_base_native_dual": {
+      "completed": true,
+      "fluid_cells": 12,
+      "phase": "base",
+      "phase_grid_steps": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "kernel": "native",
+      "load_path": "dual",
+      "moment_zero_error": 4.440892098500626e-16,
+      "moment_one_error_cm": 1.7763568394002505e-15,
+      "fe_density_vs_dual_rhs_relative_norm": 0.5487773680962785,
+      "solid_velocity_nodal_norm_cm_per_s": 0.0079202119258316,
+      "cavity_rate_ml_per_s": 0.04849757513427372,
+      "solid_power_erg_per_s": 1.297833401470837,
+      "lattice_power_error_erg_per_s": 2.220446049250313e-16,
+      "fe_minus_solid_power_erg_per_s": 2.220446049250313e-16,
+      "max_solver_residual_ratio": 0.9657384777207948
+    },
+    "12_base_fixed_density": {
+      "completed": true,
+      "fluid_cells": 12,
+      "phase": "base",
+      "phase_grid_steps": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "kernel": "fixed",
+      "load_path": "density",
+      "moment_zero_error": 4.440892098500626e-16,
+      "moment_one_error_cm": 1.3322676295501878e-15,
+      "fe_density_vs_dual_rhs_relative_norm": 0.5850032777829198,
+      "solid_velocity_nodal_norm_cm_per_s": 0.0005635505800463754,
+      "cavity_rate_ml_per_s": 0.0019811047799347917,
+      "solid_power_erg_per_s": 0.06437952919064516,
+      "lattice_power_error_erg_per_s": 0.0,
+      "fe_minus_solid_power_erg_per_s": -0.0121866252602367,
+      "max_solver_residual_ratio": 0.9226068753926995
+    },
+    "12_base_fixed_dual": {
+      "completed": true,
+      "fluid_cells": 12,
+      "phase": "base",
+      "phase_grid_steps": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "kernel": "fixed",
+      "load_path": "dual",
+      "moment_zero_error": 4.440892098500626e-16,
+      "moment_one_error_cm": 1.3322676295501878e-15,
+      "fe_density_vs_dual_rhs_relative_norm": 0.5850032777829198,
+      "solid_velocity_nodal_norm_cm_per_s": 0.0044082577116411085,
+      "cavity_rate_ml_per_s": 0.019379560477187748,
+      "solid_power_erg_per_s": 0.5232660364099073,
+      "lattice_power_error_erg_per_s": 0.0,
+      "fe_minus_solid_power_erg_per_s": 0.0,
+      "max_solver_residual_ratio": 0.975340476760473
+    },
+    "12_x_quarter_native_density": {
+      "completed": true,
+      "fluid_cells": 12,
+      "phase": "x_quarter",
+      "phase_grid_steps": [
+        0.25,
+        0.0,
+        0.0
+      ],
+      "kernel": "native",
+      "load_path": "density",
+      "moment_zero_error": 4.440892098500626e-16,
+      "moment_one_error_cm": 1.7763568394002505e-15,
+      "fe_density_vs_dual_rhs_relative_norm": 0.5492947472230933,
+      "solid_velocity_nodal_norm_cm_per_s": 0.0017067552230986965,
+      "cavity_rate_ml_per_s": 0.010331971921672543,
+      "solid_power_erg_per_s": 0.29276572382886046,
+      "lattice_power_error_erg_per_s": 0.0,
+      "fe_minus_solid_power_erg_per_s": -0.06482106299416221,
+      "max_solver_residual_ratio": 0.9433368542489059
+    },
+    "12_x_quarter_native_dual": {
+      "completed": true,
+      "fluid_cells": 12,
+      "phase": "x_quarter",
+      "phase_grid_steps": [
+        0.25,
+        0.0,
+        0.0
+      ],
+      "kernel": "native",
+      "load_path": "dual",
+      "moment_zero_error": 4.440892098500626e-16,
+      "moment_one_error_cm": 1.7763568394002505e-15,
+      "fe_density_vs_dual_rhs_relative_norm": 0.5492947472230933,
+      "solid_velocity_nodal_norm_cm_per_s": 0.00795791096977286,
+      "cavity_rate_ml_per_s": 0.04869021109183501,
+      "solid_power_erg_per_s": 1.3024361569278828,
+      "lattice_power_error_erg_per_s": 0.0,
+      "fe_minus_solid_power_erg_per_s": 0.0,
+      "max_solver_residual_ratio": 0.7898275809829572
+    },
+    "12_x_quarter_fixed_density": {
+      "completed": true,
+      "fluid_cells": 12,
+      "phase": "x_quarter",
+      "phase_grid_steps": [
+        0.25,
+        0.0,
+        0.0
+      ],
+      "kernel": "fixed",
+      "load_path": "density",
+      "moment_zero_error": 4.440892098500626e-16,
+      "moment_one_error_cm": 1.7763568394002505e-15,
+      "fe_density_vs_dual_rhs_relative_norm": 0.585005015427434,
+      "solid_velocity_nodal_norm_cm_per_s": 0.0005635715530023414,
+      "cavity_rate_ml_per_s": 0.0019828343576071576,
+      "solid_power_erg_per_s": 0.06442531288682926,
+      "lattice_power_error_erg_per_s": 0.0,
+      "fe_minus_solid_power_erg_per_s": -0.012212532939934212,
+      "max_solver_residual_ratio": 0.9256483729210375
+    },
+    "12_x_quarter_fixed_dual": {
+      "completed": true,
+      "fluid_cells": 12,
+      "phase": "x_quarter",
+      "phase_grid_steps": [
+        0.25,
+        0.0,
+        0.0
+      ],
+      "kernel": "fixed",
+      "load_path": "dual",
+      "moment_zero_error": 4.440892098500626e-16,
+      "moment_one_error_cm": 1.7763568394002505e-15,
+      "fe_density_vs_dual_rhs_relative_norm": 0.585005015427434,
+      "solid_velocity_nodal_norm_cm_per_s": 0.004408684685624848,
+      "cavity_rate_ml_per_s": 0.019386109654043228,
+      "solid_power_erg_per_s": 0.5234374280517622,
+      "lattice_power_error_erg_per_s": 0.0,
+      "fe_minus_solid_power_erg_per_s": 0.0,
+      "max_solver_residual_ratio": 0.7904114127658887
+    },
+    "12_x_half_native_density": {
+      "completed": true,
+      "fluid_cells": 12,
+      "phase": "x_half",
+      "phase_grid_steps": [
+        0.5,
+        0.0,
+        0.0
+      ],
+      "kernel": "native",
+      "load_path": "density",
+      "moment_zero_error": 4.440892098500626e-16,
+      "moment_one_error_cm": 1.7763568394002505e-15,
+      "fe_density_vs_dual_rhs_relative_norm": 0.5496957245001544,
+      "solid_velocity_nodal_norm_cm_per_s": 0.0017125246247368566,
+      "cavity_rate_ml_per_s": 0.010312136244021478,
+      "solid_power_erg_per_s": 0.2911139452357249,
+      "lattice_power_error_erg_per_s": 0.0,
+      "fe_minus_solid_power_erg_per_s": -0.065594471087113,
+      "max_solver_residual_ratio": 0.9367403466951141
+    },
+    "12_x_half_native_dual": {
+      "completed": true,
+      "fluid_cells": 12,
+      "phase": "x_half",
+      "phase_grid_steps": [
+        0.5,
+        0.0,
+        0.0
+      ],
+      "kernel": "native",
+      "load_path": "dual",
+      "moment_zero_error": 4.440892098500626e-16,
+      "moment_one_error_cm": 1.7763568394002505e-15,
+      "fe_density_vs_dual_rhs_relative_norm": 0.5496957245001544,
+      "solid_velocity_nodal_norm_cm_per_s": 0.007990661120524408,
+      "cavity_rate_ml_per_s": 0.048615501603837694,
+      "solid_power_erg_per_s": 1.2996810130344267,
+      "lattice_power_error_erg_per_s": 2.220446049250313e-16,
+      "fe_minus_solid_power_erg_per_s": -2.220446049250313e-16,
+      "max_solver_residual_ratio": 0.9781152833766203
+    },
+    "12_x_half_fixed_density": {
+      "completed": true,
+      "fluid_cells": 12,
+      "phase": "x_half",
+      "phase_grid_steps": [
+        0.5,
+        0.0,
+        0.0
+      ],
+      "kernel": "fixed",
+      "load_path": "density",
+      "moment_zero_error": 4.440892098500626e-16,
+      "moment_one_error_cm": 1.3322676295501878e-15,
+      "fe_density_vs_dual_rhs_relative_norm": 0.5849912710816206,
+      "solid_velocity_nodal_norm_cm_per_s": 0.0005632426517723445,
+      "cavity_rate_ml_per_s": 0.0019842942693520924,
+      "solid_power_erg_per_s": 0.06448210882939051,
+      "lattice_power_error_erg_per_s": 0.0,
+      "fe_minus_solid_power_erg_per_s": -0.01223990280946402,
+      "max_solver_residual_ratio": 0.9290687051340707
+    },
+    "12_x_half_fixed_dual": {
+      "completed": true,
+      "fluid_cells": 12,
+      "phase": "x_half",
+      "phase_grid_steps": [
+        0.5,
+        0.0,
+        0.0
+      ],
+      "kernel": "fixed",
+      "load_path": "dual",
+      "moment_zero_error": 4.440892098500626e-16,
+      "moment_one_error_cm": 1.3322676295501878e-15,
+      "fe_density_vs_dual_rhs_relative_norm": 0.5849912710816206,
+      "solid_velocity_nodal_norm_cm_per_s": 0.004407829213889099,
+      "cavity_rate_ml_per_s": 0.019388505038354396,
+      "solid_power_erg_per_s": 0.5235138511000998,
+      "lattice_power_error_erg_per_s": 0.0,
+      "fe_minus_solid_power_erg_per_s": 0.0,
+      "max_solver_residual_ratio": 0.9223402949208389
+    },
+    "12_diagonal_half_native_density": {
+      "completed": true,
+      "fluid_cells": 12,
+      "phase": "diagonal_half",
+      "phase_grid_steps": [
+        0.5,
+        0.5,
+        0.5
+      ],
+      "kernel": "native",
+      "load_path": "density",
+      "moment_zero_error": 4.440892098500626e-16,
+      "moment_one_error_cm": 1.7763568394002505e-15,
+      "fe_density_vs_dual_rhs_relative_norm": 0.5515032122830489,
+      "solid_velocity_nodal_norm_cm_per_s": 0.001722687459356552,
+      "cavity_rate_ml_per_s": 0.010296588834104241,
+      "solid_power_erg_per_s": 0.2890794782639078,
+      "lattice_power_error_erg_per_s": 0.0,
+      "fe_minus_solid_power_erg_per_s": -0.06804774637072641,
+      "max_solver_residual_ratio": 0.8688201533629596
+    },
+    "12_diagonal_half_native_dual": {
+      "completed": true,
+      "fluid_cells": 12,
+      "phase": "diagonal_half",
+      "phase_grid_steps": [
+        0.5,
+        0.5,
+        0.5
+      ],
+      "kernel": "native",
+      "load_path": "dual",
+      "moment_zero_error": 4.440892098500626e-16,
+      "moment_one_error_cm": 1.7763568394002505e-15,
+      "fe_density_vs_dual_rhs_relative_norm": 0.5515032122830489,
+      "solid_velocity_nodal_norm_cm_per_s": 0.008135396435033679,
+      "cavity_rate_ml_per_s": 0.048944870109879725,
+      "solid_power_erg_per_s": 1.3094636571781009,
+      "lattice_power_error_erg_per_s": 0.0,
+      "fe_minus_solid_power_erg_per_s": 0.0,
+      "max_solver_residual_ratio": 0.8351105369298512
+    },
+    "12_diagonal_half_fixed_density": {
+      "completed": true,
+      "fluid_cells": 12,
+      "phase": "diagonal_half",
+      "phase_grid_steps": [
+        0.5,
+        0.5,
+        0.5
+      ],
+      "kernel": "fixed",
+      "load_path": "density",
+      "moment_zero_error": 3.3306690738754696e-16,
+      "moment_one_error_cm": 1.7763568394002505e-15,
+      "fe_density_vs_dual_rhs_relative_norm": 0.5849940255072341,
+      "solid_velocity_nodal_norm_cm_per_s": 0.000553977297521536,
+      "cavity_rate_ml_per_s": 0.0019863657591150568,
+      "solid_power_erg_per_s": 0.0639670788724819,
+      "lattice_power_error_erg_per_s": 0.0,
+      "fe_minus_solid_power_erg_per_s": -0.01235486651790043,
+      "max_solver_residual_ratio": 0.9443851088763081
+    },
+    "12_diagonal_half_fixed_dual": {
+      "completed": true,
+      "fluid_cells": 12,
+      "phase": "diagonal_half",
+      "phase_grid_steps": [
+        0.5,
+        0.5,
+        0.5
+      ],
+      "kernel": "fixed",
+      "load_path": "dual",
+      "moment_zero_error": 3.3306690738754696e-16,
+      "moment_one_error_cm": 1.7763568394002505e-15,
+      "fe_density_vs_dual_rhs_relative_norm": 0.5849940255072341,
+      "solid_velocity_nodal_norm_cm_per_s": 0.004398506918095724,
+      "cavity_rate_ml_per_s": 0.01940681086774397,
+      "solid_power_erg_per_s": 0.5232973866784453,
+      "lattice_power_error_erg_per_s": 0.0,
+      "fe_minus_solid_power_erg_per_s": 0.0,
+      "max_solver_residual_ratio": 0.8330951128149214
+    },
+    "18_base_native_density": {
+      "completed": true,
+      "fluid_cells": 18,
+      "phase": "base",
+      "phase_grid_steps": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "kernel": "native",
+      "load_path": "density",
+      "moment_zero_error": 4.440892098500626e-16,
+      "moment_one_error_cm": 1.7763568394002505e-15,
+      "fe_density_vs_dual_rhs_relative_norm": 0.5453922031014178,
+      "solid_velocity_nodal_norm_cm_per_s": 0.003942026370434856,
+      "cavity_rate_ml_per_s": 0.025883150064884727,
+      "solid_power_erg_per_s": 0.7120126830204463,
+      "lattice_power_error_erg_per_s": 1.1102230246251565e-16,
+      "fe_minus_solid_power_erg_per_s": -0.16294567479683753,
+      "max_solver_residual_ratio": 0.969757116603554
+    },
+    "18_base_native_dual": {
+      "completed": true,
+      "fluid_cells": 18,
+      "phase": "base",
+      "phase_grid_steps": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "kernel": "native",
+      "load_path": "dual",
+      "moment_zero_error": 4.440892098500626e-16,
+      "moment_one_error_cm": 1.7763568394002505e-15,
+      "fe_density_vs_dual_rhs_relative_norm": 0.5453922031014178,
+      "solid_velocity_nodal_norm_cm_per_s": 0.013513216055419759,
+      "cavity_rate_ml_per_s": 0.0993920366514669,
+      "solid_power_erg_per_s": 2.6505669786146653,
+      "lattice_power_error_erg_per_s": 0.0,
+      "fe_minus_solid_power_erg_per_s": 0.0,
+      "max_solver_residual_ratio": 0.9892506994114401
+    },
+    "18_base_fixed_density": {
+      "completed": true,
+      "fluid_cells": 18,
+      "phase": "base",
+      "phase_grid_steps": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "kernel": "fixed",
+      "load_path": "density",
+      "moment_zero_error": 4.440892098500626e-16,
+      "moment_one_error_cm": 2.6645352591003757e-15,
+      "fe_density_vs_dual_rhs_relative_norm": 0.5982766759164823,
+      "solid_velocity_nodal_norm_cm_per_s": 0.0004638486150270571,
+      "cavity_rate_ml_per_s": 0.0013150572832144936,
+      "solid_power_erg_per_s": 0.047295349248534124,
+      "lattice_power_error_erg_per_s": 0.0,
+      "fe_minus_solid_power_erg_per_s": -0.007354150580144131,
+      "max_solver_residual_ratio": 0.953826833666769
+    },
+    "18_base_fixed_dual": {
+      "completed": true,
+      "fluid_cells": 18,
+      "phase": "base",
+      "phase_grid_steps": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "kernel": "fixed",
+      "load_path": "dual",
+      "moment_zero_error": 4.440892098500626e-16,
+      "moment_one_error_cm": 2.6645352591003757e-15,
+      "fe_density_vs_dual_rhs_relative_norm": 0.5982766759164823,
+      "solid_velocity_nodal_norm_cm_per_s": 0.00454749463857793,
+      "cavity_rate_ml_per_s": 0.020109211369369114,
+      "solid_power_erg_per_s": 0.5426019987445285,
+      "lattice_power_error_erg_per_s": 0.0,
+      "fe_minus_solid_power_erg_per_s": 0.0,
+      "max_solver_residual_ratio": 0.9505102864570262
+    },
+    "18_x_quarter_native_density": {
+      "completed": true,
+      "fluid_cells": 18,
+      "phase": "x_quarter",
+      "phase_grid_steps": [
+        0.25,
+        0.0,
+        0.0
+      ],
+      "kernel": "native",
+      "load_path": "density",
+      "moment_zero_error": 4.440892098500626e-16,
+      "moment_one_error_cm": 2.220446049250313e-15,
+      "fe_density_vs_dual_rhs_relative_norm": 0.5455111250191645,
+      "solid_velocity_nodal_norm_cm_per_s": 0.003967883519795147,
+      "cavity_rate_ml_per_s": 0.02611279866298072,
+      "solid_power_erg_per_s": 0.7179467115122569,
+      "lattice_power_error_erg_per_s": 0.0,
+      "fe_minus_solid_power_erg_per_s": -0.16926903609343813,
+      "max_solver_residual_ratio": 0.9908695715600264
+    },
+    "18_x_quarter_native_dual": {
+      "completed": true,
+      "fluid_cells": 18,
+      "phase": "x_quarter",
+      "phase_grid_steps": [
+        0.25,
+        0.0,
+        0.0
+      ],
+      "kernel": "native",
+      "load_path": "dual",
+      "moment_zero_error": 4.440892098500626e-16,
+      "moment_one_error_cm": 2.220446049250313e-15,
+      "fe_density_vs_dual_rhs_relative_norm": 0.5455111250191645,
+      "solid_velocity_nodal_norm_cm_per_s": 0.013635909314177824,
+      "cavity_rate_ml_per_s": 0.10016329054062786,
+      "solid_power_erg_per_s": 2.67113128344357,
+      "lattice_power_error_erg_per_s": 0.0,
+      "fe_minus_solid_power_erg_per_s": 0.0,
+      "max_solver_residual_ratio": 0.9267859242996043
+    },
+    "18_x_quarter_fixed_density": {
+      "completed": true,
+      "fluid_cells": 18,
+      "phase": "x_quarter",
+      "phase_grid_steps": [
+        0.25,
+        0.0,
+        0.0
+      ],
+      "kernel": "fixed",
+      "load_path": "density",
+      "moment_zero_error": 4.440892098500626e-16,
+      "moment_one_error_cm": 2.6645352591003757e-15,
+      "fe_density_vs_dual_rhs_relative_norm": 0.5982701594687568,
+      "solid_velocity_nodal_norm_cm_per_s": 0.0004640525261808523,
+      "cavity_rate_ml_per_s": 0.0013154754519988517,
+      "solid_power_erg_per_s": 0.04730286702782323,
+      "lattice_power_error_erg_per_s": 6.938893903907228e-18,
+      "fe_minus_solid_power_erg_per_s": -0.007354357790766201,
+      "max_solver_residual_ratio": 0.8816516168201398
+    },
+    "18_x_quarter_fixed_dual": {
+      "completed": true,
+      "fluid_cells": 18,
+      "phase": "x_quarter",
+      "phase_grid_steps": [
+        0.25,
+        0.0,
+        0.0
+      ],
+      "kernel": "fixed",
+      "load_path": "dual",
+      "moment_zero_error": 4.440892098500626e-16,
+      "moment_one_error_cm": 2.6645352591003757e-15,
+      "fe_density_vs_dual_rhs_relative_norm": 0.5982701594687568,
+      "solid_velocity_nodal_norm_cm_per_s": 0.004548018230620095,
+      "cavity_rate_ml_per_s": 0.020108926781408833,
+      "solid_power_erg_per_s": 0.5425876689633661,
+      "lattice_power_error_erg_per_s": 1.1102230246251565e-16,
+      "fe_minus_solid_power_erg_per_s": -1.1102230246251565e-16,
+      "max_solver_residual_ratio": 0.88592337452576
+    },
+    "18_x_half_native_density": {
+      "completed": true,
+      "fluid_cells": 18,
+      "phase": "x_half",
+      "phase_grid_steps": [
+        0.5,
+        0.0,
+        0.0
+      ],
+      "kernel": "native",
+      "load_path": "density",
+      "moment_zero_error": 4.440892098500626e-16,
+      "moment_one_error_cm": 2.220446049250313e-15,
+      "fe_density_vs_dual_rhs_relative_norm": 0.5453277538752109,
+      "solid_velocity_nodal_norm_cm_per_s": 0.004010140189699277,
+      "cavity_rate_ml_per_s": 0.026499596193019302,
+      "solid_power_erg_per_s": 0.7276522188215911,
+      "lattice_power_error_erg_per_s": 1.1102230246251565e-16,
+      "fe_minus_solid_power_erg_per_s": -0.17882135155186163,
+      "max_solver_residual_ratio": 0.9739023548379155
+    },
+    "18_x_half_native_dual": {
+      "completed": true,
+      "fluid_cells": 18,
+      "phase": "x_half",
+      "phase_grid_steps": [
+        0.5,
+        0.0,
+        0.0
+      ],
+      "kernel": "native",
+      "load_path": "dual",
+      "moment_zero_error": 4.440892098500626e-16,
+      "moment_one_error_cm": 2.220446049250313e-15,
+      "fe_density_vs_dual_rhs_relative_norm": 0.5453277538752109,
+      "solid_velocity_nodal_norm_cm_per_s": 0.013831711224550108,
+      "cavity_rate_ml_per_s": 0.10142155903069051,
+      "solid_power_erg_per_s": 2.7041461601678463,
+      "lattice_power_error_erg_per_s": 0.0,
+      "fe_minus_solid_power_erg_per_s": 0.0,
+      "max_solver_residual_ratio": 0.998312388998191
+    },
+    "18_x_half_fixed_density": {
+      "completed": true,
+      "fluid_cells": 18,
+      "phase": "x_half",
+      "phase_grid_steps": [
+        0.5,
+        0.0,
+        0.0
+      ],
+      "kernel": "fixed",
+      "load_path": "density",
+      "moment_zero_error": 4.440892098500626e-16,
+      "moment_one_error_cm": 2.6645352591003757e-15,
+      "fe_density_vs_dual_rhs_relative_norm": 0.5982695374001267,
+      "solid_velocity_nodal_norm_cm_per_s": 0.00046439088342078907,
+      "cavity_rate_ml_per_s": 0.0013170064766735263,
+      "solid_power_erg_per_s": 0.047335571951076016,
+      "lattice_power_error_erg_per_s": 0.0,
+      "fe_minus_solid_power_erg_per_s": -0.007376132900855287,
+      "max_solver_residual_ratio": 0.9189140555848132
+    },
+    "18_x_half_fixed_dual": {
+      "completed": true,
+      "fluid_cells": 18,
+      "phase": "x_half",
+      "phase_grid_steps": [
+        0.5,
+        0.0,
+        0.0
+      ],
+      "kernel": "fixed",
+      "load_path": "dual",
+      "moment_zero_error": 4.440892098500626e-16,
+      "moment_one_error_cm": 2.6645352591003757e-15,
+      "fe_density_vs_dual_rhs_relative_norm": 0.5982695374001267,
+      "solid_velocity_nodal_norm_cm_per_s": 0.004549688714042123,
+      "cavity_rate_ml_per_s": 0.020113648726291185,
+      "solid_power_erg_per_s": 0.5427040099869834,
+      "lattice_power_error_erg_per_s": 1.1102230246251565e-16,
+      "fe_minus_solid_power_erg_per_s": -1.1102230246251565e-16,
+      "max_solver_residual_ratio": 0.9316978529652075
+    },
+    "18_diagonal_half_native_density": {
+      "completed": true,
+      "fluid_cells": 18,
+      "phase": "diagonal_half",
+      "phase_grid_steps": [
+        0.5,
+        0.5,
+        0.5
+      ],
+      "kernel": "native",
+      "load_path": "density",
+      "moment_zero_error": 4.440892098500626e-16,
+      "moment_one_error_cm": 2.6645352591003757e-15,
+      "fe_density_vs_dual_rhs_relative_norm": 0.5398315376992892,
+      "solid_velocity_nodal_norm_cm_per_s": 0.004085511754854799,
+      "cavity_rate_ml_per_s": 0.027000875585202786,
+      "solid_power_erg_per_s": 0.7424988124746639,
+      "lattice_power_error_erg_per_s": 0.0,
+      "fe_minus_solid_power_erg_per_s": -0.1429776338473907,
+      "max_solver_residual_ratio": 0.9834334684018601
+    },
+    "18_diagonal_half_native_dual": {
+      "completed": true,
+      "fluid_cells": 18,
+      "phase": "diagonal_half",
+      "phase_grid_steps": [
+        0.5,
+        0.5,
+        0.5
+      ],
+      "kernel": "native",
+      "load_path": "dual",
+      "moment_zero_error": 4.440892098500626e-16,
+      "moment_one_error_cm": 2.6645352591003757e-15,
+      "fe_density_vs_dual_rhs_relative_norm": 0.5398315376992892,
+      "solid_velocity_nodal_norm_cm_per_s": 0.01326875283684639,
+      "cavity_rate_ml_per_s": 0.09695625193872405,
+      "solid_power_erg_per_s": 2.587816037621375,
+      "lattice_power_error_erg_per_s": 4.440892098500626e-16,
+      "fe_minus_solid_power_erg_per_s": 4.440892098500626e-16,
+      "max_solver_residual_ratio": 0.9986915150060783
+    },
+    "18_diagonal_half_fixed_density": {
+      "completed": true,
+      "fluid_cells": 18,
+      "phase": "diagonal_half",
+      "phase_grid_steps": [
+        0.5,
+        0.5,
+        0.5
+      ],
+      "kernel": "fixed",
+      "load_path": "density",
+      "moment_zero_error": 4.440892098500626e-16,
+      "moment_one_error_cm": 2.6645352591003757e-15,
+      "fe_density_vs_dual_rhs_relative_norm": 0.5980381765191446,
+      "solid_velocity_nodal_norm_cm_per_s": 0.00045723808440809597,
+      "cavity_rate_ml_per_s": 0.001301482890597509,
+      "solid_power_erg_per_s": 0.04663269911285371,
+      "lattice_power_error_erg_per_s": 0.0,
+      "fe_minus_solid_power_erg_per_s": -0.006992011545599419,
+      "max_solver_residual_ratio": 0.9247160529267406
+    },
+    "18_diagonal_half_fixed_dual": {
+      "completed": true,
+      "fluid_cells": 18,
+      "phase": "diagonal_half",
+      "phase_grid_steps": [
+        0.5,
+        0.5,
+        0.5
+      ],
+      "kernel": "fixed",
+      "load_path": "dual",
+      "moment_zero_error": 4.440892098500626e-16,
+      "moment_one_error_cm": 2.6645352591003757e-15,
+      "fe_density_vs_dual_rhs_relative_norm": 0.5980381765191446,
+      "solid_velocity_nodal_norm_cm_per_s": 0.004522592118946973,
+      "cavity_rate_ml_per_s": 0.01999965607197381,
+      "solid_power_erg_per_s": 0.5394161063538627,
+      "lattice_power_error_erg_per_s": 0.0,
+      "fe_minus_solid_power_erg_per_s": 0.0,
+      "max_solver_residual_ratio": 0.9610520492943827
+    }
+  },
+  "phase_comparisons": {
+    "12_native_density": [
+      {
+        "phase": "x_quarter",
+        "solid_velocity_relative_to_base": 0.16606545220458296,
+        "cavity_rate_relative_to_base": 0.0019965994584713294
+      },
+      {
+        "phase": "x_half",
+        "solid_velocity_relative_to_base": 0.29862534711715766,
+        "cavity_rate_relative_to_base": 7.293167220581296e-05
+      },
+      {
+        "phase": "diagonal_half",
+        "solid_velocity_relative_to_base": 0.436051776297227,
+        "cavity_rate_relative_to_base": 0.0014348590947029193
+      }
+    ],
+    "12_native_dual": [
+      {
+        "phase": "x_quarter",
+        "solid_velocity_relative_to_base": 0.09623944243036663,
+        "cavity_rate_relative_to_base": 0.00397207400633837
+      },
+      {
+        "phase": "x_half",
+        "solid_velocity_relative_to_base": 0.17382441808109195,
+        "cavity_rate_relative_to_base": 0.002431595172283893
+      },
+      {
+        "phase": "diagonal_half",
+        "solid_velocity_relative_to_base": 0.26893280222111904,
+        "cavity_rate_relative_to_base": 0.009223037942981582
+      }
+    ],
+    "12_fixed_density": [
+      {
+        "phase": "x_quarter",
+        "solid_velocity_relative_to_base": 0.007228527897436699,
+        "cavity_rate_relative_to_base": 0.0008730369488194501
+      },
+      {
+        "phase": "x_half",
+        "solid_velocity_relative_to_base": 0.013756034525840897,
+        "cavity_rate_relative_to_base": 0.001609954935046765
+      },
+      {
+        "phase": "diagonal_half",
+        "solid_velocity_relative_to_base": 0.034504692941700894,
+        "cavity_rate_relative_to_base": 0.002655578459832011
+      }
+    ],
+    "12_fixed_dual": [
+      {
+        "phase": "x_quarter",
+        "solid_velocity_relative_to_base": 0.003303085694321842,
+        "cavity_rate_relative_to_base": 0.00033794248652795474
+      },
+      {
+        "phase": "x_half",
+        "solid_velocity_relative_to_base": 0.006197741655211243,
+        "cavity_rate_relative_to_base": 0.000461546131408764
+      },
+      {
+        "phase": "diagonal_half",
+        "solid_velocity_relative_to_base": 0.01055538352365897,
+        "cavity_rate_relative_to_base": 0.0014061407939720569
+      }
+    ],
+    "18_native_density": [
+      {
+        "phase": "x_quarter",
+        "solid_velocity_relative_to_base": 0.09792446992568248,
+        "cavity_rate_relative_to_base": 0.008872513489289411
+      },
+      {
+        "phase": "x_half",
+        "solid_velocity_relative_to_base": 0.18060195808580537,
+        "cavity_rate_relative_to_base": 0.02381650326908619
+      },
+      {
+        "phase": "diagonal_half",
+        "solid_velocity_relative_to_base": 0.25522670210127707,
+        "cavity_rate_relative_to_base": 0.043183519684277555
+      }
+    ],
+    "18_native_dual": [
+      {
+        "phase": "x_quarter",
+        "solid_velocity_relative_to_base": 0.09044354736866422,
+        "cavity_rate_relative_to_base": 0.00775971511546226
+      },
+      {
+        "phase": "x_half",
+        "solid_velocity_relative_to_base": 0.1658948367684554,
+        "cavity_rate_relative_to_base": 0.020419366053846363
+      },
+      {
+        "phase": "diagonal_half",
+        "solid_velocity_relative_to_base": 0.23434158606288188,
+        "cavity_rate_relative_to_base": 0.024506839730875946
+      }
+    ],
+    "18_fixed_density": [
+      {
+        "phase": "x_quarter",
+        "solid_velocity_relative_to_base": 0.004457803729281223,
+        "cavity_rate_relative_to_base": 0.0003179852236823727
+      },
+      {
+        "phase": "x_half",
+        "solid_velocity_relative_to_base": 0.007866695171590988,
+        "cavity_rate_relative_to_base": 0.0014822118275092107
+      },
+      {
+        "phase": "diagonal_half",
+        "solid_velocity_relative_to_base": 0.025340257396116582,
+        "cavity_rate_relative_to_base": 0.010322282375261801
+      }
+    ],
+    "18_fixed_dual": [
+      {
+        "phase": "x_quarter",
+        "solid_velocity_relative_to_base": 0.004762895544696947,
+        "cavity_rate_relative_to_base": 1.4152119397101251e-05
+      },
+      {
+        "phase": "x_half",
+        "solid_velocity_relative_to_base": 0.008725340519906633,
+        "cavity_rate_relative_to_base": 0.00022066290122298661
+      },
+      {
+        "phase": "diagonal_half",
+        "solid_velocity_relative_to_base": 0.014535798991960537,
+        "cavity_rate_relative_to_base": 0.005448015607523084
+      }
+    ]
+  },
+  "completed": true,
+  "full_cycle_ready": false,
+  "limitations": [
+    "frozen interaction-point shifts are not coupled trajectories",
+    "solid/fluid relative position also changes distance to outer box walls",
+    "density and dual FE loads are distinct discretizations; no production replacement",
+    "algebraic lattice adjointness does not imply weak FE power consistency"
+  ]
+}
