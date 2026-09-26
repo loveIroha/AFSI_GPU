@@ -1,0 +1,247 @@
+{
+  "device": "cuda",
+  "torch": "2.14.0+cu130",
+  "gpu": "NVIDIA GeForce RTX 4090",
+  "point_cm": [
+    0.37,
+    -0.41,
+    -1.23
+  ],
+  "force_dyn": [
+    1.0,
+    -0.7,
+    0.4
+  ],
+  "epsilon_cm": 1.0,
+  "dt_s": 5e-05,
+  "levels": [
+    6,
+    12,
+    18,
+    24
+  ],
+  "weak_loads": {
+    "6": {
+      "fluid_cells": 6,
+      "velocity_spacing_cm": 1.0,
+      "reference_resultant_dyn": [
+        0.9999999999999988,
+        -0.6999999999999997,
+        0.40000000000000024
+      ],
+      "reference_force_moment_dyn_cm": [
+        0.3699999999999998,
+        0.28699999999999953,
+        -0.4919999999999997
+      ],
+      "direct_resultant_dyn": [
+        1.0,
+        -0.7000000000000001,
+        0.4
+      ],
+      "density_resultant_dyn": [
+        1.0000000000000002,
+        -0.6999999999999987,
+        0.40000000000000013
+      ],
+      "direct_relative_to_quadrature": 0.4505845008495757,
+      "density_relative_to_quadrature": 0.10240606991458585,
+      "direct_vs_density_relative_to_quadrature": 0.48579436528057124
+    },
+    "12": {
+      "fluid_cells": 12,
+      "velocity_spacing_cm": 0.5,
+      "reference_resultant_dyn": [
+        0.9999999999999982,
+        -0.6999999999999992,
+        0.3999999999999998
+      ],
+      "reference_force_moment_dyn_cm": [
+        0.37,
+        0.28699999999999953,
+        -0.4919999999999995
+      ],
+      "direct_resultant_dyn": [
+        1.0000000000000002,
+        -0.6999999999999986,
+        0.3999999999999999
+      ],
+      "density_resultant_dyn": [
+        1.000000000000001,
+        -0.6999999999999998,
+        0.40000000000000013
+      ],
+      "direct_relative_to_quadrature": 0.48951072777700805,
+      "density_relative_to_quadrature": 0.022069215684330335,
+      "direct_vs_density_relative_to_quadrature": 0.4939325268609616
+    },
+    "18": {
+      "fluid_cells": 18,
+      "velocity_spacing_cm": 0.3333333333333333,
+      "reference_resultant_dyn": [
+        0.999999999999999,
+        -0.7000000000000002,
+        0.4000000000000013
+      ],
+      "reference_force_moment_dyn_cm": [
+        0.3699999999999994,
+        0.2869999999999988,
+        -0.49200000000000105
+      ],
+      "direct_resultant_dyn": [
+        0.9999999999999987,
+        -0.7000000000000002,
+        0.3999999999999996
+      ],
+      "density_resultant_dyn": [
+        0.9999999999999992,
+        -0.7000000000000012,
+        0.399999999999999
+      ],
+      "direct_relative_to_quadrature": 0.5054240953600866,
+      "density_relative_to_quadrature": 0.006312049208586847,
+      "direct_vs_density_relative_to_quadrature": 0.505596156492112
+    },
+    "24": {
+      "fluid_cells": 24,
+      "velocity_spacing_cm": 0.25,
+      "reference_resultant_dyn": [
+        1.0000000000000002,
+        -0.6999999999999991,
+        0.400000000000001
+      ],
+      "reference_force_moment_dyn_cm": [
+        0.37000000000000177,
+        0.28700000000000025,
+        -0.4919999999999994
+      ],
+      "direct_resultant_dyn": [
+        0.999999999999999,
+        -0.6999999999999993,
+        0.39999999999999925
+      ],
+      "density_resultant_dyn": [
+        0.9999999999999958,
+        -0.7000000000000027,
+        0.40000000000000024
+      ],
+      "direct_relative_to_quadrature": 0.5121896078017313,
+      "density_relative_to_quadrature": 0.004049427404679787,
+      "direct_vs_density_relative_to_quadrature": 0.5125247643625007
+    }
+  },
+  "box_control": {
+    "12": {
+      "fluid_cells": 12,
+      "box_length_cm": 12.0,
+      "velocity_spacing_cm": 0.5,
+      "chorin_solid_velocity_cm_per_s": [
+        4.3588146154247615e-06,
+        -3.0516126932358423e-06,
+        1.7420199678362592e-06
+      ],
+      "schur_solid_velocity_cm_per_s": [
+        4.306305596293873e-06,
+        -3.0149565206484153e-06,
+        1.7207523473258304e-06
+      ],
+      "chorin_vs_schur_solid_velocity_relative": 0.012199184610227046,
+      "chorin_divergence_dual_l2": 8.404562332816315e-07,
+      "schur_divergence_dual_l2": 1.8774367414926142e-13,
+      "chorin_solver_max_residual_ratio": 0.9692449820188908,
+      "schur_solver_residual_ratio": 0.8728157399868115
+    },
+    "18": {
+      "fluid_cells": 18,
+      "box_length_cm": 18.0,
+      "velocity_spacing_cm": 0.5,
+      "chorin_solid_velocity_cm_per_s": [
+        4.375264612676117e-06,
+        -3.063211980105575e-06,
+        1.7488652779604295e-06
+      ],
+      "schur_solid_velocity_cm_per_s": [
+        4.324234498302253e-06,
+        -3.0275991870103056e-06,
+        1.7282151087583124e-06
+      ],
+      "chorin_vs_schur_solid_velocity_relative": 0.011804021127118864,
+      "chorin_divergence_dual_l2": 8.392503655909018e-07,
+      "schur_divergence_dual_l2": 9.848590884446323e-15,
+      "chorin_solver_max_residual_ratio": 0.8660070432134935,
+      "schur_solver_residual_ratio": 0.9848099182754299
+    },
+    "large_vs_small_chorin_relative": 0.0037973312910293275
+  },
+  "lv_box_control": {
+    "preload": {
+      "checkpoint_sha256": "f1b21532517fc0c5da41326c31a873fbfc329793a98d368223e7904f3d74fc09",
+      "report_sha256": "f7d1248397f05a793b66eaaebd332c7edc658a5019edcaa0d1fcc5c8d89f2247",
+      "legacy_tag_reconstruction": true,
+      "recomputed_force_norm_dyn": 6.730984030365344e-08,
+      "force_tolerance_dyn": 1.0431008380956108e-05,
+      "reference_rebased": false,
+      "equilibrium_resolved": false,
+      "reference_nodes": 554,
+      "reference_cells": 260
+    },
+    "incremental_force_norm_dyn": 209.34781587097416,
+    "density": {
+      "12": {
+        "fluid_cells": 12,
+        "box_length_cm": 12.0,
+        "velocity_spacing_cm": 0.5,
+        "chorin_solid_velocity_nodal_norm_cm_per_s": 0.0011270664252480997,
+        "schur_solid_velocity_nodal_norm_cm_per_s": 0.0009305646731345376,
+        "chorin_vs_schur_relative": 0.25636351416260605,
+        "chorin_divergence_dual_l2": 0.0003918572872445618,
+        "schur_divergence_dual_l2": 5.062312445459264e-15,
+        "chorin_solver_max_residual_ratio": 0.8013701533363569,
+        "schur_solver_residual_ratio": 0.5049122791270974
+      },
+      "18": {
+        "fluid_cells": 18,
+        "box_length_cm": 18.0,
+        "velocity_spacing_cm": 0.5,
+        "chorin_solid_velocity_nodal_norm_cm_per_s": 0.001232463142605611,
+        "schur_solid_velocity_nodal_norm_cm_per_s": 0.0010527718358318628,
+        "chorin_vs_schur_relative": 0.21716115730753158,
+        "chorin_divergence_dual_l2": 0.0003890447928156017,
+        "schur_divergence_dual_l2": 8.334235564986076e-15,
+        "chorin_solver_max_residual_ratio": 0.9823899262356105,
+        "schur_solver_residual_ratio": 0.832024733944643
+      },
+      "large_vs_small_chorin_relative": 0.16668674229579916
+    },
+    "dual": {
+      "12": {
+        "fluid_cells": 12,
+        "box_length_cm": 12.0,
+        "velocity_spacing_cm": 0.5,
+        "chorin_solid_velocity_nodal_norm_cm_per_s": 0.008802930353790907,
+        "schur_solid_velocity_nodal_norm_cm_per_s": 0.00858204415577754,
+        "chorin_vs_schur_relative": 0.026768823201338957,
+        "chorin_divergence_dual_l2": 0.0003727734129813887,
+        "schur_divergence_dual_l2": 5.907686016872624e-15,
+        "chorin_solver_max_residual_ratio": 0.9749812666134008,
+        "schur_solver_residual_ratio": 0.5892905154405782
+      },
+      "18": {
+        "fluid_cells": 18,
+        "box_length_cm": 18.0,
+        "velocity_spacing_cm": 0.5,
+        "chorin_solid_velocity_nodal_norm_cm_per_s": 0.008888045233014674,
+        "schur_solid_velocity_nodal_norm_cm_per_s": 0.008678707588063727,
+        "chorin_vs_schur_relative": 0.02536826089315826,
+        "chorin_divergence_dual_l2": 0.0003702261614524975,
+        "schur_divergence_dual_l2": 7.829840866062955e-15,
+        "chorin_solver_max_residual_ratio": 0.9890910065920105,
+        "schur_solver_residual_ratio": 0.7817499447239926
+      },
+      "large_vs_small_chorin_relative": 0.021105022702954262
+    }
+  },
+  "completed": true,
+  "full_cycle_ready": false,
+  "scope": "independent Q2 weak-load reference and fixed-spacing box/projection controls; no coupled trajectory"
+}

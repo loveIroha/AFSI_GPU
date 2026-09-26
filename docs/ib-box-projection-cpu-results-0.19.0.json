@@ -1,0 +1,169 @@
+{
+  "device": "cpu",
+  "torch": "2.14.0+cpu",
+  "gpu": null,
+  "units": {
+    "length": "cm",
+    "volume": "cm^3 (mL)",
+    "time": "s",
+    "mass": "g",
+    "force": "dyn",
+    "stress": "dyn/cm^2",
+    "pressure": "dyn/cm^2",
+    "energy": "erg",
+    "spring_coefficient": "dyn/cm^3"
+  },
+  "preload": {
+    "checkpoint_sha256": "81ffd2ba26b0aabec58d59c0dc45b70e6179348b77cb41e7568b044ba73a8311",
+    "report_sha256": "97ab99406c07b0d8c5dbc5514bd3c89fe2c44840558408ae96eaee615640b71f",
+    "legacy_tag_reconstruction": true,
+    "recomputed_force_norm_dyn": 6.80833192161239e-08,
+    "force_tolerance_dyn": 1.0431008380954383e-05,
+    "reference_rebased": false,
+    "equilibrium_resolved": false,
+    "reference_nodes": 554,
+    "reference_cells": 260
+  },
+  "levels": [
+    12,
+    18,
+    24
+  ],
+  "velocity_spacing_cm": 0.5,
+  "epsilon_cm": 1.0,
+  "kernel_dilation": 2,
+  "dt_s": 5e-05,
+  "pressure_increment_mmhg": 0.02,
+  "incremental_force_norm_dyn": 209.34781587097413,
+  "load_path": "Q2 density: M_f H^T g / delta_V",
+  "chorin_solver_options": {
+    "rtol": 1e-10,
+    "atol": 1e-12,
+    "max_iterations": 4000,
+    "recompute_every": 200
+  },
+  "schur_solver_options": {
+    "rtol": 1e-12,
+    "atol": 1e-14,
+    "max_iterations": 4000,
+    "recompute_every": 200
+  },
+  "cases": {
+    "12": {
+      "box_length_cm": 12.0,
+      "origin_cm": [
+        -6.0,
+        -6.0,
+        -8.0
+      ],
+      "velocity_spacing_cm": 0.5,
+      "ib_support_identical": true,
+      "ib_support_min_wall_distance_cm": 0.4887288197326116,
+      "density_resultant_dyn": [
+        -0.0033024526295381113,
+        -0.00027524535177682156,
+        -429.04458427034297
+      ],
+      "chorin_solid_velocity_nodal_norm_cm_per_s": 0.0011270664251669758,
+      "schur_solid_velocity_nodal_norm_cm_per_s": 0.0009305646731335976,
+      "chorin_vs_schur_absolute_nodal_l2_cm_per_s": 0.00023856282968071923,
+      "chorin_vs_schur_relative_to_schur": 0.2563635140772958,
+      "chorin_divergence_dual_l2": 0.00039185728723215127,
+      "schur_divergence_dual_l2": 8.073316794487334e-15,
+      "chorin_solver_max_residual_ratio": 0.9187558786727598,
+      "schur_solver_residual_ratio": 0.8072671089393774
+    },
+    "18": {
+      "box_length_cm": 18.0,
+      "origin_cm": [
+        -9.0,
+        -9.0,
+        -11.0
+      ],
+      "velocity_spacing_cm": 0.5,
+      "ib_support_identical": true,
+      "ib_support_min_wall_distance_cm": 3.4887288197326116,
+      "density_resultant_dyn": [
+        -0.003302452629541813,
+        -0.00027524535178318627,
+        -429.0445842703431
+      ],
+      "chorin_solid_velocity_nodal_norm_cm_per_s": 0.0012324631424665477,
+      "schur_solid_velocity_nodal_norm_cm_per_s": 0.0010527718358323559,
+      "chorin_vs_schur_absolute_nodal_l2_cm_per_s": 0.0002286211502043662,
+      "chorin_vs_schur_relative_to_schur": 0.21716115726406265,
+      "chorin_divergence_dual_l2": 0.0003890447927815976,
+      "schur_divergence_dual_l2": 7.544690376410997e-15,
+      "chorin_solver_max_residual_ratio": 0.899477684225161,
+      "schur_solver_residual_ratio": 0.7544596788643807
+    },
+    "24": {
+      "box_length_cm": 24.0,
+      "origin_cm": [
+        -12.0,
+        -12.0,
+        -14.0
+      ],
+      "velocity_spacing_cm": 0.5,
+      "ib_support_identical": true,
+      "ib_support_min_wall_distance_cm": 6.488728819732611,
+      "density_resultant_dyn": [
+        -0.0033024526295577644,
+        -0.0002752453517863751,
+        -429.04458427034297
+      ],
+      "chorin_solid_velocity_nodal_norm_cm_per_s": 0.0012531104104985564,
+      "schur_solid_velocity_nodal_norm_cm_per_s": 0.0010763172911207528,
+      "chorin_vs_schur_absolute_nodal_l2_cm_per_s": 0.0002278180976539611,
+      "chorin_vs_schur_relative_to_schur": 0.21166444089803446,
+      "chorin_divergence_dual_l2": 0.0003889621540963949,
+      "schur_divergence_dual_l2": 8.227472866549105e-15,
+      "chorin_solver_max_residual_ratio": 0.9751425558297093,
+      "schur_solver_residual_ratio": 0.8227331340294485
+    }
+  },
+  "box_comparisons": {
+    "chorin": {
+      "12_to_18": {
+        "absolute_nodal_l2_cm_per_s": 0.00018786703050498193,
+        "relative_to_small": 0.16668674206770848,
+        "relative_to_large": 0.15243216939453516
+      },
+      "12_to_24": {
+        "absolute_nodal_l2_cm_per_s": 0.00022734100701594703,
+        "relative_to_small": 0.20171038897043383,
+        "relative_to_large": 0.1814213696664592
+      },
+      "18_to_24": {
+        "absolute_nodal_l2_cm_per_s": 4.0979720528822074e-05,
+        "relative_to_small": 0.03325026048795968,
+        "relative_to_large": 0.0327024021071839
+      }
+    },
+    "schur": {
+      "12_to_18": {
+        "absolute_nodal_l2_cm_per_s": 0.00020538179504510612,
+        "relative_to_small": 0.22070663219301065,
+        "relative_to_large": 0.19508671115116272
+      },
+      "12_to_24": {
+        "absolute_nodal_l2_cm_per_s": 0.0002469953473514379,
+        "relative_to_small": 0.26542523532480766,
+        "relative_to_large": 0.22948190964603515
+      },
+      "18_to_24": {
+        "absolute_nodal_l2_cm_per_s": 4.3468963251162825e-05,
+        "relative_to_small": 0.04129001344037176,
+        "relative_to_large": 0.040386755476072726
+      }
+    }
+  },
+  "completed": true,
+  "full_cycle_ready": false,
+  "scope": "frozen preloaded LV, zero initial fluid velocity, one incremental-force step",
+  "adjacent_change_ratio": {
+    "chorin": 0.21813151790747742,
+    "schur": 0.21164954392192423
+  },
+  "response_file": "results\\ib_box_projection\\responses.npz"
+}

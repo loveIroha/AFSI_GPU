@@ -2,6 +2,18 @@
 
 目标是在 GPU 上实现 AFSI 的非线性固体、背景流体与 IB 耦合，算例采用程序生成的厘米制理想左心室。当前已具备 P2 固体、Q2/Q1 流体、Chorin 求解及显式耦合时间步，并通过独立 DOLFINx/NumPy 对照；完整心动周期、收敛和长期稳定性仍待验收。
 
+## 第十九步：流体边界与投影的定距对照
+
+版本 **0.19.0** 延续 [0.18.0 的 RTX 4090 报告](docs/ib-weak-reference-gpu-results-0.18.0.json)：保留对独立 Q2 弱式参考收敛的密度载荷，固定 0.5 cm 流体速度节点间距与 1 cm IB 核宽度，用同一预加载左室增量力比较 12/18/24 cm 流体盒。每盒在相同暂定速度上分别计算 Chorin 与参考 Schur 投影，报告全部左室节点速度的逐对差异及求解残差。[实验说明与命令](docs/IB_BOX_PROJECTION.md)。[本地 CPU 单步先导](docs/ib-box-projection-cpu-results-0.19.0.json)的 Chorin 盒子差从 16.67% 降到 3.33%，但 24 cm 盒的 Chorin/Schur 差仍有 21.17%；CPU 检查点与目标 RTX 4090 不同，GPU 对照仍需运行。本地回归 **170 passed、99 CUDA skipped、1 warning**；本轮仍不是完整周期。
+
+```bash
+git pull --ff-only
+conda activate afsi-torch
+python -m pip install -e ".[test,geometry]"
+CUDA_VISIBLE_DEVICES=0 python -m pytest -q
+CUDA_VISIBLE_DEVICES=0 python validation/compare_ib_box_projection.py --preload results/lv_equilibrium --device cuda --levels 12 18 24 --output results/ib_box_projection/report.json
+```
+
 ## 第十八步：固定宽度 IB 力的独立弱式验证
 
 版本 **0.18.0** 针对上一阶段看似收敛的“固定核＋直接弱式载荷”进行独立检查。固定物理宽度 `1 cm` 时，NumPy 分段高阶积分给出正则化力的 Q2 弱式参考：原密度载荷的相对误差从 6³ 的 10.2% 降到 24³ 的 0.4%，直接 `Hᵀg` 则约为 45%–51%。同格距左室增量力盒子对照还显示密度路径的外边界与投影影响不可忽略。本地完整回归 **167 passed、99 CUDA skipped**；直接载荷的代数功率配对不能作为替换生产载荷的充分依据。[验证方法、运行及限制](docs/IB_WEAK_REFERENCE.md)；[本地参考结果](docs/ib-weak-reference-results-0.18.0.json)；[上一阶段 RTX 4090 耦合报告](docs/coupled-ib-gpu-results-0.17.0.json)。

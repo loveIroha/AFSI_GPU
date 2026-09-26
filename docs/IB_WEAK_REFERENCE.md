@@ -35,4 +35,4 @@ CUDA_VISIBLE_DEVICES=0 python validation/verify_ib_weak.py \
 
 本阶段没有重新求解预加载平衡，也没有启动完整周期。下一步应**优先保留对该连续参考显示一致性的密度载荷**，在目标 GPU 检查点上重做等格距盒子与 Chorin/Schur 对照，并检验更大流体域是否降低 16.67% 的盒子影响。之后研究与密度载荷配对的有限元插值：若散布右端为 `Sg=M_f Hᵀg/ΔV`，则代数功率对偶的插值应为 `Ju=H M_f u/ΔV`。这是待验证的候选离散，须先检查常量场、仿射场与正则化连续插值的一致性，再做固定核宽度下的时间步、流体和固体联合加密及短程耦合对照。
 
-本地完整回归：**167 passed、99 CUDA skipped、1 warning**。目标 RTX 4090 的同版 GPU 回归和参考脚本尚待运行。
+本地完整回归：**167 passed、99 CUDA skipped、1 warning**。用户提供的 [RTX 4090 报告](ib-weak-reference-gpu-results-0.18.0.json)已完成同版参考脚本，使用原 GPU 预加载检查点 `f1b21532517fc0c5da41326c31a873fbfc329793a98d368223e7904f3d74fc09`；弱式载荷误差和 12/18 cm 盒子对照与本地先导的数值一致。用户提供的 pytest 输出达到 100%，只有同一弃用警告；输出未包含测试总数。三盒边界/投影实验见 [0.19.0 说明](IB_BOX_PROJECTION.md)。

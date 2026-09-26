@@ -76,7 +76,7 @@ class BoxMassInverse:
 
 
 @torch.no_grad()
-def discrete_projection(flow, star, mass_inverse):
+def discrete_projection(flow, star, mass_inverse, *, options=None):
     """Reference M-orthogonal projection onto D u=0 with zero outer velocity.
 
     S = D M_free^-1 D.T, S lambda = D star,
@@ -88,8 +88,10 @@ def discrete_projection(flow, star, mass_inverse):
         raise ValueError('reference projection requires zero boundary velocity')
     action = lambda p: op.divergence(mass_inverse(op.divergence_transpose(p)))
     rhs = op.divergence(star)
+    if options is None:
+        options = SolverOptions(rtol=1e-12, atol=1e-14, max_iterations=2000)
     multiplier, info = pcg(action, rhs, flow.diagonals['pressure_stiffness'],
-        fixed=flow.pressure_fixed, options=SolverOptions(rtol=1e-12, atol=1e-14, max_iterations=2000))
+        fixed=flow.pressure_fixed, options=options)
     velocity = star-mass_inverse(op.divergence_transpose(multiplier))
     # Check the omitted gauge equation as well; never hide incompatibility.
     residual = torch.linalg.vector_norm(op.divergence(velocity)).item()
