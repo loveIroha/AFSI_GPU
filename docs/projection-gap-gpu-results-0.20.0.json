@@ -1,0 +1,106 @@
+{
+  "device": "cuda",
+  "torch": "2.14.0+cu130",
+  "gpu": "NVIDIA GeForce RTX 4090",
+  "units": {
+    "length": "cm",
+    "volume": "cm^3 (mL)",
+    "time": "s",
+    "mass": "g",
+    "force": "dyn",
+    "stress": "dyn/cm^2",
+    "pressure": "dyn/cm^2",
+    "energy": "erg",
+    "spring_coefficient": "dyn/cm^3"
+  },
+  "preload": {
+    "checkpoint_sha256": "f1b21532517fc0c5da41326c31a873fbfc329793a98d368223e7904f3d74fc09",
+    "report_sha256": "f7d1248397f05a793b66eaaebd332c7edc658a5019edcaa0d1fcc5c8d89f2247",
+    "legacy_tag_reconstruction": true,
+    "recomputed_force_norm_dyn": 6.730984277997502e-08,
+    "force_tolerance_dyn": 1.0431008380956108e-05,
+    "reference_rebased": false,
+    "equilibrium_resolved": false,
+    "reference_nodes": 554,
+    "reference_cells": 260
+  },
+  "levels": [
+    18,
+    24
+  ],
+  "velocity_spacing_cm": 0.5,
+  "epsilon_cm": 1.0,
+  "dt_s": 5e-05,
+  "pressure_increment_mmhg": 0.02,
+  "incremental_force_norm_dyn": 209.34781587097416,
+  "kernel_dilation": 2,
+  "load_path": "Q2 density: M_f H^T g / delta_V",
+  "chorin_solver_options": {
+    "rtol": 1e-10,
+    "atol": 1e-12,
+    "max_iterations": 4000,
+    "recompute_every": 200
+  },
+  "schur_solver_options": {
+    "rtol": 1e-12,
+    "atol": 1e-14,
+    "max_iterations": 4000,
+    "recompute_every": 200
+  },
+  "cases": {
+    "18": {
+      "box_length_cm": 18.0,
+      "velocity_spacing_cm": 0.5,
+      "ib_support_identical": true,
+      "force_resultant_dyn": [
+        -0.0033024526294553325,
+        -0.00027524535143885753,
+        -429.0445842703428
+      ],
+      "tentative_divergence_dual_l2": 0.005866490950534948,
+      "chorin_divergence_dual_l2": 0.0003890447927816048,
+      "schur_divergence_dual_l2": 7.544812623222797e-15,
+      "chorin_solid_velocity_nodal_norm_cm_per_s": 0.0012324631424665549,
+      "schur_solid_velocity_nodal_norm_cm_per_s": 0.0010527718358323559,
+      "chorin_vs_schur_solid_velocity_relative": 0.21716115726407065,
+      "reconstructed_vs_schur_solid_velocity_relative": 0.21716115726515237,
+      "chorin_vs_reconstructed_solid_velocity_relative": 2.14695004416859e-10,
+      "chorin_solver_max_residual_ratio": 0.8994777271161356,
+      "schur_solver_residual_ratio": 0.7544710728167711,
+      "free_gradient_plus_divergence_transpose_relative": 1.5075740346897728e-15,
+      "laplacian_multiplier_residual_relative": 7.268192423818115e-11,
+      "laplacian_multiplier_schur_residual_relative": 0.06631643960450984,
+      "chorin_vs_reconstructed_full_velocity_relative": 7.51329277538102e-09,
+      "reconstructed_divergence_dual_l2": 0.0003890447928115542
+    },
+    "24": {
+      "box_length_cm": 24.0,
+      "velocity_spacing_cm": 0.5,
+      "ib_support_identical": true,
+      "force_resultant_dyn": [
+        -0.003302452629466046,
+        -0.00027524535143541584,
+        -429.04458427034274
+      ],
+      "tentative_divergence_dual_l2": 0.0058664909505387235,
+      "chorin_divergence_dual_l2": 0.00038896215409639387,
+      "schur_divergence_dual_l2": 8.227279569096799e-15,
+      "chorin_solid_velocity_nodal_norm_cm_per_s": 0.001253110410498556,
+      "schur_solid_velocity_nodal_norm_cm_per_s": 0.001076317291120753,
+      "chorin_vs_schur_solid_velocity_relative": 0.2116644408980338,
+      "reconstructed_vs_schur_solid_velocity_relative": 0.21166444080852723,
+      "chorin_vs_reconstructed_solid_velocity_relative": 1.1510823968317933e-10,
+      "chorin_solver_max_residual_ratio": 0.9751425597116429,
+      "schur_solver_residual_ratio": 0.8227134553977973,
+      "free_gradient_plus_divergence_transpose_relative": 1.499729961862531e-15,
+      "laplacian_multiplier_residual_relative": 8.3193935831006e-11,
+      "laplacian_multiplier_schur_residual_relative": 0.06630235304046038,
+      "chorin_vs_reconstructed_full_velocity_relative": 9.701459677028992e-09,
+      "reconstructed_divergence_dual_l2": 0.0003889621541112844
+    }
+  },
+  "completed": true,
+  "full_cycle_ready": false,
+  "scope": "frozen preloaded LV, zero initial fluid velocity, one pressure-projection attribution",
+  "response_file": "results/projection_gap/responses.npz"
+}

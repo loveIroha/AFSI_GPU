@@ -2,9 +2,21 @@
 
 目标是在 GPU 上实现 AFSI 的非线性固体、背景流体与 IB 耦合，算例采用程序生成的厘米制理想左心室。当前已具备 P2 固体、Q2/Q1 流体、Chorin 求解及显式耦合时间步，并通过独立 DOLFINx/NumPy 对照；完整心动周期、收敛和长期稳定性仍待验收。
 
+## 第二十一步：投影差异进入短程耦合轨迹
+
+版本 **0.21.0** 将 Chorin 与参考 Schur 投影放入同一预加载理想左室的显式 IB/FEM 时间推进，默认比较 18/24 cm 流体盒、每条轨迹 20 步（1 ms）。固体模型、1 cm IB 核、密度载荷、压力日程及时间步完全相同；生产 Chorin 保持原状。参考 Schur 只替换修正后的流体速度，报告终点节点位移、腔容积增量和盒子敏感性。[实验定义与运行命令](docs/COUPLED_PROJECTION.md)。本地 CPU 12 cm、20 步先导完成，Chorin 基准重现 0.17.0 同盒结果；两种投影的节点位移向量和腔容积增量分别相差 6.94% 和 11.78%。本地回归 **175 passed、101 CUDA skipped、1 warning**。目标 RTX 4090 的 18/24 cm 正式对照仍需运行；完整周期尚未验收。
+
+```bash
+git pull --ff-only
+conda activate afsi-torch
+python -m pip install -e ".[test,geometry]"
+CUDA_VISIBLE_DEVICES=0 python -m pytest -q
+CUDA_VISIBLE_DEVICES=0 python validation/compare_coupled_projection.py --preload results/lv_equilibrium --device cuda --levels 18 24 --steps 20 --output results/coupled_projection
+```
+
 ## 第二十步：定位压力投影差异
 
-版本 **0.20.0** 接续 [0.19.0 RTX 4090 三盒报告](docs/ib-box-projection-gpu-results-0.19.0.json)：24 cm 盒内 Chorin 与参考 Schur 的左室单步响应仍相差 21.17%。新实验以同一个暂定流速重建 Chorin 修正，并与参考 Schur 比较，区分压力算子差异与梯度/边界/质量矩阵求解差异。[实验原理与运行命令](docs/PROJECTION_GAP.md)。本地 CPU 18/24 cm 先导中，重建与 Chorin 的左室速度相对差低于 `3e-10`，与 Schur 仍相差 21.72%/21.17%；目标 GPU 检查点有待复核。本地回归 **172 passed、100 CUDA skipped、1 warning**。本阶段继续推进理想左室 GPU IB/FEM 流固耦合目标，仍不构成完整周期验收。
+版本 **0.20.0** 接续 [0.19.0 RTX 4090 三盒报告](docs/ib-box-projection-gpu-results-0.19.0.json)：24 cm 盒内 Chorin 与参考 Schur 的左室单步响应仍相差 21.17%。新实验以同一个暂定流速重建 Chorin 修正，并与参考 Schur 比较，区分压力算子差异与梯度/边界/质量矩阵求解差异。[实验原理与运行命令](docs/PROJECTION_GAP.md)。本地 CPU 与[目标 GPU 报告](docs/projection-gap-gpu-results-0.20.0.json)一致：重建与 Chorin 的左室速度相对差低于 `3e-10`，与 Schur 仍相差 21.72%/21.17%。本地回归 **172 passed、100 CUDA skipped、1 warning**。本阶段继续推进理想左室 GPU IB/FEM 流固耦合目标，仍不构成完整周期验收。
 
 ```bash
 git pull --ff-only

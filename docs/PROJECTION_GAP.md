@@ -24,4 +24,4 @@ CUDA_VISIBLE_DEVICES=0 python validation/diagnose_projection_gap.py \
 
 保留 `report.json` 与同目录 `responses.npz`。`completed=true` 表示冻结预加载左室的一次增量力诊断完成，不表示耦合时间轨迹、流体/固体联合加密或完整周期已验收。本地完整回归：**172 passed、100 CUDA skipped、1 warning**。
 
-AFSI 的 [3D IB 耦合代码](https://github.com/loveIroha/afsi/blob/main/afsic/src/coupling/IBMesh3D.h)明确了四点核、节点映射、插值及体积缩放的力散布；这些是 PyTorch 实现的重要数值参考。此处观察到的约 21% 差异位于流体压力投影，直接把整个耦合层移植成 CUDA 不会改变该离散方程。IB 插值与散布若在性能分析中成为主要耗时，可再做局部 CUDA 扩展并与现有 PyTorch 算子逐项比对。
+AFSI 的 [3D IB 耦合代码](https://github.com/loveIroha/afsi/blob/main/afsic/src/coupling/IBMesh3D.h)明确了四点核、节点映射、插值及体积缩放的力散布；这些是 PyTorch 实现的重要数值参考。此处观察到的约 21% 差异位于流体压力投影，直接把整个耦合层移植成 CUDA 不会改变该离散方程。IB 插值与散布若在性能分析中成为主要耗时，可再做局部 CUDA 扩展并与现有 PyTorch 算子逐项比对。用户提供的 [RTX 4090 投影归因报告](projection-gap-gpu-results-0.20.0.json)重现了本地数值；短程耦合对照见 [0.21.0 说明](COUPLED_PROJECTION.md)。
