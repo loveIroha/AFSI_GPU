@@ -2,9 +2,21 @@
 
 目标是在 GPU 上实现 AFSI 的非线性固体、背景流体与 IB 耦合，算例采用程序生成的厘米制理想左心室。当前已具备 P2 固体、Q2/Q1 流体、Chorin 求解及显式耦合时间步，并通过独立 DOLFINx/NumPy 对照；完整心动周期、收敛和长期稳定性仍待验收。
 
+## 第二十步：定位压力投影差异
+
+版本 **0.20.0** 接续 [0.19.0 RTX 4090 三盒报告](docs/ib-box-projection-gpu-results-0.19.0.json)：24 cm 盒内 Chorin 与参考 Schur 的左室单步响应仍相差 21.17%。新实验以同一个暂定流速重建 Chorin 修正，并与参考 Schur 比较，区分压力算子差异与梯度/边界/质量矩阵求解差异。[实验原理与运行命令](docs/PROJECTION_GAP.md)。本地 CPU 18/24 cm 先导中，重建与 Chorin 的左室速度相对差低于 `3e-10`，与 Schur 仍相差 21.72%/21.17%；目标 GPU 检查点有待复核。本地回归 **172 passed、100 CUDA skipped、1 warning**。本阶段继续推进理想左室 GPU IB/FEM 流固耦合目标，仍不构成完整周期验收。
+
+```bash
+git pull --ff-only
+conda activate afsi-torch
+python -m pip install -e ".[test,geometry]"
+CUDA_VISIBLE_DEVICES=0 python -m pytest -q
+CUDA_VISIBLE_DEVICES=0 python validation/diagnose_projection_gap.py --preload results/lv_equilibrium --device cuda --levels 18 24 --output results/projection_gap/report.json
+```
+
 ## 第十九步：流体边界与投影的定距对照
 
-版本 **0.19.0** 延续 [0.18.0 的 RTX 4090 报告](docs/ib-weak-reference-gpu-results-0.18.0.json)：保留对独立 Q2 弱式参考收敛的密度载荷，固定 0.5 cm 流体速度节点间距与 1 cm IB 核宽度，用同一预加载左室增量力比较 12/18/24 cm 流体盒。每盒在相同暂定速度上分别计算 Chorin 与参考 Schur 投影，报告全部左室节点速度的逐对差异及求解残差。[实验说明与命令](docs/IB_BOX_PROJECTION.md)。[本地 CPU 单步先导](docs/ib-box-projection-cpu-results-0.19.0.json)的 Chorin 盒子差从 16.67% 降到 3.33%，但 24 cm 盒的 Chorin/Schur 差仍有 21.17%；CPU 检查点与目标 RTX 4090 不同，GPU 对照仍需运行。本地回归 **170 passed、99 CUDA skipped、1 warning**；本轮仍不是完整周期。
+版本 **0.19.0** 延续 [0.18.0 的 RTX 4090 报告](docs/ib-weak-reference-gpu-results-0.18.0.json)：保留对独立 Q2 弱式参考收敛的密度载荷，固定 0.5 cm 流体速度节点间距与 1 cm IB 核宽度，用同一预加载左室增量力比较 12/18/24 cm 流体盒。每盒在相同暂定速度上分别计算 Chorin 与参考 Schur 投影，报告全部左室节点速度的逐对差异及求解残差。[实验说明与命令](docs/IB_BOX_PROJECTION.md)。[本地 CPU 单步先导](docs/ib-box-projection-cpu-results-0.19.0.json)及[用户 RTX 4090 报告](docs/ib-box-projection-gpu-results-0.19.0.json)一致：Chorin 盒子差从 16.67% 降到 3.33%，但 24 cm 盒的 Chorin/Schur 差仍有 21.17%。本地回归 **170 passed、99 CUDA skipped、1 warning**；本轮仍不是完整周期。
 
 ```bash
 git pull --ff-only

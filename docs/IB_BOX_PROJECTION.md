@@ -27,4 +27,4 @@ CUDA_VISIBLE_DEVICES=0 python validation/compare_ib_box_projection.py \
   --output results/ib_box_projection/report.json
 ```
 
-请保留 `report.json` 和同目录 `responses.npz`。前者包含对照指标及检查点哈希，后者保存每盒 Chorin/Schur 的原始左室节点速度，便于复核向量差。报告 `completed=true` 仅表示单步诊断完成，`full_cycle_ready=false`；没有进行耦合时间轨迹、时间步或固体网格收敛验证。CPU 本地检查点与用户 RTX 4090 检查点不同，因此 CPU 结果仅作代码先导检查。
+请保留 `report.json` 和同目录 `responses.npz`。前者包含对照指标及检查点哈希，后者保存每盒 Chorin/Schur 的原始左室节点速度，便于复核向量差。报告 `completed=true` 仅表示单步诊断完成，`full_cycle_ready=false`；没有进行耦合时间轨迹、时间步或固体网格收敛验证。用户提供的 [RTX 4090 三盒报告](ib-box-projection-gpu-results-0.19.0.json)使用原 GPU 预加载检查点，与 CPU 先导的各项盒子和投影差异在显示精度内一致；后续压力投影归因见 [0.20.0 实验](PROJECTION_GAP.md)。

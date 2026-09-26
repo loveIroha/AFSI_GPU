@@ -1,0 +1,106 @@
+{
+  "device": "cpu",
+  "torch": "2.14.0+cpu",
+  "gpu": null,
+  "units": {
+    "length": "cm",
+    "volume": "cm^3 (mL)",
+    "time": "s",
+    "mass": "g",
+    "force": "dyn",
+    "stress": "dyn/cm^2",
+    "pressure": "dyn/cm^2",
+    "energy": "erg",
+    "spring_coefficient": "dyn/cm^3"
+  },
+  "preload": {
+    "checkpoint_sha256": "81ffd2ba26b0aabec58d59c0dc45b70e6179348b77cb41e7568b044ba73a8311",
+    "report_sha256": "97ab99406c07b0d8c5dbc5514bd3c89fe2c44840558408ae96eaee615640b71f",
+    "legacy_tag_reconstruction": true,
+    "recomputed_force_norm_dyn": 6.80833192161239e-08,
+    "force_tolerance_dyn": 1.0431008380954383e-05,
+    "reference_rebased": false,
+    "equilibrium_resolved": false,
+    "reference_nodes": 554,
+    "reference_cells": 260
+  },
+  "levels": [
+    18,
+    24
+  ],
+  "velocity_spacing_cm": 0.5,
+  "epsilon_cm": 1.0,
+  "dt_s": 5e-05,
+  "pressure_increment_mmhg": 0.02,
+  "incremental_force_norm_dyn": 209.34781587097413,
+  "kernel_dilation": 2,
+  "load_path": "Q2 density: M_f H^T g / delta_V",
+  "chorin_solver_options": {
+    "rtol": 1e-10,
+    "atol": 1e-12,
+    "max_iterations": 4000,
+    "recompute_every": 200
+  },
+  "schur_solver_options": {
+    "rtol": 1e-12,
+    "atol": 1e-14,
+    "max_iterations": 4000,
+    "recompute_every": 200
+  },
+  "cases": {
+    "18": {
+      "box_length_cm": 18.0,
+      "velocity_spacing_cm": 0.5,
+      "ib_support_identical": true,
+      "force_resultant_dyn": [
+        -0.003302452629541813,
+        -0.00027524535178318627,
+        -429.0445842703431
+      ],
+      "tentative_divergence_dual_l2": 0.005866490950534946,
+      "chorin_divergence_dual_l2": 0.0003890447927815976,
+      "schur_divergence_dual_l2": 7.544690376410997e-15,
+      "chorin_solid_velocity_nodal_norm_cm_per_s": 0.0012324631424665477,
+      "schur_solid_velocity_nodal_norm_cm_per_s": 0.0010527718358323559,
+      "chorin_vs_schur_solid_velocity_relative": 0.2171611572640627,
+      "reconstructed_vs_schur_solid_velocity_relative": 0.2171611572651532,
+      "chorin_vs_reconstructed_solid_velocity_relative": 2.1469535035557815e-10,
+      "chorin_solver_max_residual_ratio": 0.899477684225161,
+      "schur_solver_residual_ratio": 0.7544596788643807,
+      "free_gradient_plus_divergence_transpose_relative": 1.4829586571630436e-15,
+      "laplacian_multiplier_residual_relative": 7.268189037621517e-11,
+      "laplacian_multiplier_schur_residual_relative": 0.06631643960450985,
+      "chorin_vs_reconstructed_full_velocity_relative": 7.513292645622523e-09,
+      "reconstructed_divergence_dual_l2": 0.00038904479281155426
+    },
+    "24": {
+      "box_length_cm": 24.0,
+      "velocity_spacing_cm": 0.5,
+      "ib_support_identical": true,
+      "force_resultant_dyn": [
+        -0.0033024526295577644,
+        -0.0002752453517863751,
+        -429.04458427034297
+      ],
+      "tentative_divergence_dual_l2": 0.005866490950538721,
+      "chorin_divergence_dual_l2": 0.0003889621540963949,
+      "schur_divergence_dual_l2": 8.227472866549105e-15,
+      "chorin_solid_velocity_nodal_norm_cm_per_s": 0.0012531104104985561,
+      "schur_solid_velocity_nodal_norm_cm_per_s": 0.0010763172911207528,
+      "chorin_vs_schur_solid_velocity_relative": 0.21166444089803446,
+      "reconstructed_vs_schur_solid_velocity_relative": 0.2116644408085284,
+      "chorin_vs_reconstructed_solid_velocity_relative": 1.1510790155669157e-10,
+      "chorin_solver_max_residual_ratio": 0.9751425558297093,
+      "schur_solver_residual_ratio": 0.8227331340294485,
+      "free_gradient_plus_divergence_transpose_relative": 1.4848156260414916e-15,
+      "laplacian_multiplier_residual_relative": 8.319392425815683e-11,
+      "laplacian_multiplier_schur_residual_relative": 0.06630235304046071,
+      "chorin_vs_reconstructed_full_velocity_relative": 9.701459703668486e-09,
+      "reconstructed_divergence_dual_l2": 0.0003889621541112863
+    }
+  },
+  "completed": true,
+  "full_cycle_ready": false,
+  "scope": "frozen preloaded LV, zero initial fluid velocity, one pressure-projection attribution",
+  "response_file": "results\\projection_gap\\responses.npz"
+}

@@ -1,0 +1,169 @@
+{
+  "device": "cuda",
+  "torch": "2.14.0+cu130",
+  "gpu": "NVIDIA GeForce RTX 4090",
+  "units": {
+    "length": "cm",
+    "volume": "cm^3 (mL)",
+    "time": "s",
+    "mass": "g",
+    "force": "dyn",
+    "stress": "dyn/cm^2",
+    "pressure": "dyn/cm^2",
+    "energy": "erg",
+    "spring_coefficient": "dyn/cm^3"
+  },
+  "preload": {
+    "checkpoint_sha256": "f1b21532517fc0c5da41326c31a873fbfc329793a98d368223e7904f3d74fc09",
+    "report_sha256": "f7d1248397f05a793b66eaaebd332c7edc658a5019edcaa0d1fcc5c8d89f2247",
+    "legacy_tag_reconstruction": true,
+    "recomputed_force_norm_dyn": 6.730984090966169e-08,
+    "force_tolerance_dyn": 1.0431008380956108e-05,
+    "reference_rebased": false,
+    "equilibrium_resolved": false,
+    "reference_nodes": 554,
+    "reference_cells": 260
+  },
+  "levels": [
+    12,
+    18,
+    24
+  ],
+  "velocity_spacing_cm": 0.5,
+  "epsilon_cm": 1.0,
+  "kernel_dilation": 2,
+  "dt_s": 5e-05,
+  "pressure_increment_mmhg": 0.02,
+  "incremental_force_norm_dyn": 209.34781587097416,
+  "load_path": "Q2 density: M_f H^T g / delta_V",
+  "chorin_solver_options": {
+    "rtol": 1e-10,
+    "atol": 1e-12,
+    "max_iterations": 4000,
+    "recompute_every": 200
+  },
+  "schur_solver_options": {
+    "rtol": 1e-12,
+    "atol": 1e-14,
+    "max_iterations": 4000,
+    "recompute_every": 200
+  },
+  "cases": {
+    "12": {
+      "box_length_cm": 12.0,
+      "origin_cm": [
+        -6.0,
+        -6.0,
+        -8.0
+      ],
+      "velocity_spacing_cm": 0.5,
+      "ib_support_identical": true,
+      "ib_support_min_wall_distance_cm": 0.48872881973260895,
+      "density_resultant_dyn": [
+        -0.0033024526295072354,
+        -0.00027524535149214824,
+        -429.0445842703428
+      ],
+      "chorin_solid_velocity_nodal_norm_cm_per_s": 0.0011270664251669849,
+      "schur_solid_velocity_nodal_norm_cm_per_s": 0.0009305646731335973,
+      "chorin_vs_schur_absolute_nodal_l2_cm_per_s": 0.00023856282968073107,
+      "chorin_vs_schur_relative_to_schur": 0.2563635140773086,
+      "chorin_divergence_dual_l2": 0.000391857287232152,
+      "schur_divergence_dual_l2": 8.073266193411026e-15,
+      "chorin_solver_max_residual_ratio": 0.9187561493788448,
+      "schur_solver_residual_ratio": 0.8072644623802727
+    },
+    "18": {
+      "box_length_cm": 18.0,
+      "origin_cm": [
+        -9.0,
+        -9.0,
+        -11.0
+      ],
+      "velocity_spacing_cm": 0.5,
+      "ib_support_identical": true,
+      "ib_support_min_wall_distance_cm": 3.488728819732609,
+      "density_resultant_dyn": [
+        -0.003302452629483643,
+        -0.00027524535148315543,
+        -429.0445842703428
+      ],
+      "chorin_solid_velocity_nodal_norm_cm_per_s": 0.0012324631424665547,
+      "schur_solid_velocity_nodal_norm_cm_per_s": 0.001052771835832356,
+      "chorin_vs_schur_absolute_nodal_l2_cm_per_s": 0.0002286211502043736,
+      "chorin_vs_schur_relative_to_schur": 0.21716115726406965,
+      "chorin_divergence_dual_l2": 0.0003890447927816044,
+      "schur_divergence_dual_l2": 7.544841104474796e-15,
+      "chorin_solver_max_residual_ratio": 0.8994777432178616,
+      "schur_solver_residual_ratio": 0.7544755842305936
+    },
+    "24": {
+      "box_length_cm": 24.0,
+      "origin_cm": [
+        -12.0,
+        -12.0,
+        -14.0
+      ],
+      "velocity_spacing_cm": 0.5,
+      "ib_support_identical": true,
+      "ib_support_min_wall_distance_cm": 6.488728819732609,
+      "density_resultant_dyn": [
+        -0.003302452629484698,
+        -0.0002752453514993647,
+        -429.04458427034274
+      ],
+      "chorin_solid_velocity_nodal_norm_cm_per_s": 0.0012531104104985557,
+      "schur_solid_velocity_nodal_norm_cm_per_s": 0.0010763172911207525,
+      "chorin_vs_schur_absolute_nodal_l2_cm_per_s": 0.00022781809765396084,
+      "chorin_vs_schur_relative_to_schur": 0.21166444089803424,
+      "chorin_divergence_dual_l2": 0.0003889621540963947,
+      "schur_divergence_dual_l2": 8.227442821392298e-15,
+      "chorin_solver_max_residual_ratio": 0.9751425560951296,
+      "schur_solver_residual_ratio": 0.8227286085775222
+    }
+  },
+  "box_comparisons": {
+    "chorin": {
+      "12_to_18": {
+        "absolute_nodal_l2_cm_per_s": 0.0001878670305049792,
+        "relative_to_small": 0.16668674206770467,
+        "relative_to_large": 0.15243216939453208
+      },
+      "12_to_24": {
+        "absolute_nodal_l2_cm_per_s": 0.00022734100701594129,
+        "relative_to_small": 0.2017103889704271,
+        "relative_to_large": 0.18142136966645472
+      },
+      "18_to_24": {
+        "absolute_nodal_l2_cm_per_s": 4.097972052881983e-05,
+        "relative_to_small": 0.03325026048795767,
+        "relative_to_large": 0.03270240210718213
+      }
+    },
+    "schur": {
+      "12_to_18": {
+        "absolute_nodal_l2_cm_per_s": 0.0002053817950451065,
+        "relative_to_small": 0.22070663219301115,
+        "relative_to_large": 0.19508671115116305
+      },
+      "12_to_24": {
+        "absolute_nodal_l2_cm_per_s": 0.0002469953473514382,
+        "relative_to_small": 0.2654252353248081,
+        "relative_to_large": 0.2294819096460355
+      },
+      "18_to_24": {
+        "absolute_nodal_l2_cm_per_s": 4.346896325116283e-05,
+        "relative_to_small": 0.04129001344037175,
+        "relative_to_large": 0.04038675547607274
+      }
+    }
+  },
+  "completed": true,
+  "full_cycle_ready": false,
+  "scope": "frozen preloaded LV, zero initial fluid velocity, one incremental-force step",
+  "adjacent_change_ratio": {
+    "chorin": 0.21813151790746865,
+    "schur": 0.21164954392192387
+  },
+  "response_file": "results/ib_box_projection/responses.npz"
+}
