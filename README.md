@@ -10,6 +10,7 @@
 git pull --ff-only
 conda activate afsi-torch
 python -m pip install -e ".[test,geometry]"
+CUDA_VISIBLE_DEVICES=0 python -m pytest -q
 CUDA_VISIBLE_DEVICES=0 python validation/compare_coupled_ib.py --preload results/lv_equilibrium --device cuda --fluid-levels 6 12 18 --steps 20 --output results/coupled_ib_factors
 ```
 

@@ -7,11 +7,14 @@
 ```bash
 conda activate afsi-torch
 python -m pip install -e ".[test,geometry]"
+CUDA_VISIBLE_DEVICES=0 python -m pytest -q
 CUDA_VISIBLE_DEVICES=0 python validation/compare_coupled_ib.py \
   --preload results/lv_equilibrium --device cuda \
   --fluid-levels 6 12 18 --steps 20 \
   --output results/coupled_ib_factors
 ```
+
+先确认 `pytest` 的 CUDA 测试确实执行且全部通过，再运行正式对照。`CUDA_VISIBLE_DEVICES=0` 指定使用第一张 RTX 4090；CPU-only 环境会跳过 CUDA 测试，不能把这种结果当作目标 GPU 验证。
 
 默认每轴 6/12/18 个 Q2 流体单元，每步 `5e-5 s`，运行 20 步至 `1 ms`；原腔压 `0.20 mmHg`，短程扰动目标 `0.22 mmHg`。固定核的物理宽度为 `1 cm`。因为本诊断的整数膨胀核必须保持零次和一次矩，所选网格对应膨胀倍数 1/2/3；在 6³ 上固定核与原核完全相同。每档流体网格的四个方法为：
 
