@@ -2,6 +2,10 @@
 
 目标是在 GPU 上实现 AFSI 的非线性固体、背景流体与 IB 耦合，算例采用程序生成的厘米制理想左心室。当前已具备 P2 固体、Q2/Q1 流体、Chorin 求解及显式耦合时间步，并通过独立 DOLFINx/NumPy 对照；完整心动周期、收敛和长期稳定性仍待验收。
 
+## 0.24.0：非线性固体参与的 AFSI 原生多步对照
+
+在已通过的给定节点力单步对照之后，新增小型 P2 固体的原生 AFSI C++ IB/Chorin + DOLFINx Guccione 力多步导出，以及 PyTorch/CUDA 逐步比较器。每步核对流体、固体运动和更新后的非线性力，并报告首个分歧阶段；默认六步。当前 Windows 本地回归 **179 passed、101 CUDA skipped、1 warning**；原生 CPU 导出和 RTX 4090 GPU 对照需在 Linux 环境运行。[实验说明与命令](docs/AFSI_NONLINEAR_TRAJECTORY.md)。这仍是数值对齐实验，不是理想左心室完整周期。
+
 ## 0.23.0：AFSI 原生 IB/Chorin 单步对齐
 
 新增直接调用 AFSI C++ IB 扩展与 Chorin 类的 CPU 参考导出，并在 PyTorch GPU 上对同一小网格逐项比较 IB 力密度、Q2 弱载荷、流体三步和固体速度/位置。实验采用 AFSI 随速度节点间距缩放的四点核，报告第一个产生差异的阶段。固体非线性装配仍由已有独立 DOLFINx 检验覆盖。[运行环境、命令和 torchcor 组装/求解设计对照](docs/AFSI_NATIVE_ALIGNMENT.md)。原生 AFSI 参考需要在安装了 dolfinx、petsc4py 和 afsic 扩展的环境中生成。
@@ -424,3 +428,4 @@ requirements-test.txt          已验证的 NumPy/pytest 版本
 - [PyTorch 安装说明](https://pytorch.org/get-started/locally/)
 - [NVIDIA 驱动兼容说明](https://docs.nvidia.com/deploy/cuda-compatibility/minor-version-compatibility.html)
 - [nvidia-smi 中 CUDA 版本的含义](https://docs.nvidia.com/deploy/nvidia-smi/index.html)
+
