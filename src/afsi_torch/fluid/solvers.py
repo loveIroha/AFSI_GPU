@@ -15,12 +15,13 @@ class SolverOptions:
     atol: float = 1e-12
     max_iterations: int = 1000
     recompute_every: int = 40
+    check_every: int = 1
 
     def __post_init__(self):
         if (not isfinite(self.rtol) or not isfinite(self.atol) or self.rtol < 0 or
                 self.atol < 0 or self.rtol+self.atol == 0):
             raise ValueError('finite nonnegative tolerances, at least one positive, required')
-        for name in ('max_iterations', 'recompute_every'):
+        for name in ('max_iterations', 'recompute_every', 'check_every'):
             n = getattr(self, name)
             if not isinstance(n, int) or isinstance(n, bool) or n < 1:
                 raise ValueError(f'{name} must be a positive integer')
@@ -74,19 +75,31 @@ def pcg(action, rhs, diagonal, *, fixed=None, values=None, initial=None, options
     z = residual/diagonal
     direction = z.clone()
     rz = (residual*z).sum()
+    active = torch.ones((), dtype=torch.bool, device=rhs.device)
+    broken = torch.zeros_like(active)
     for iteration in range(1, options.max_iterations+1):
         Ad = project(action(direction))
         curvature = (direction*Ad).sum()
-        if not torch.isfinite(curvature) or curvature <= 0 or not torch.isfinite(rz) or rz <= 0:
-            raise RuntimeError('PCG breakdown: operator/preconditioner must be positive definite')
-        alpha = rz/curvature
+        valid = torch.isfinite(curvature) & (curvature > 0) & torch.isfinite(rz) & (rz > 0)
+        broken = broken | (active & ~valid)
+        working = active & valid & ~broken
+        alpha = torch.where(working, rz, 0)/torch.where(working, curvature, 1)
         correction = correction+alpha*direction
         residual = residual-alpha*Ad
-        recurrence_norm = norm(residual)
-        if not isfinite(recurrence_norm):
-            raise RuntimeError('nonfinite PCG residual')
-        restart = iteration % options.recompute_every == 0 or recurrence_norm <= tol
-        if restart or iteration == options.max_iterations:
+        recurrence_norm = torch.linalg.vector_norm(residual)
+        broken = broken | ~torch.isfinite(recurrence_norm)
+        active = working & (recurrence_norm > tol)
+        # Freeze a converged recurrence on-device until the next host check.
+        # This prevents 0/0 or spurious breakdown if it converges between checks.
+        restart = iteration % options.recompute_every == 0
+        check_now = restart or iteration % options.check_every == 0 or iteration == options.max_iterations
+        converged = False
+        if check_now:
+            failed, recurrence_value = torch.stack((broken.to(rhs.dtype), recurrence_norm)).tolist()
+            if failed:
+                raise RuntimeError('PCG breakdown: operator/preconditioner must be positive definite and finite')
+            converged = recurrence_value <= tol
+        if restart or converged or iteration == options.max_iterations:
             residual = project(rhs-action(lift+correction))
             true_norm = norm(residual)
             if not isfinite(true_norm):
@@ -94,9 +107,14 @@ def pcg(action, rhs, diagonal, *, fixed=None, values=None, initial=None, options
             if true_norm <= tol:
                 return lift+correction, SolveInfo(iteration, true_norm, rhs_norm, tol)
             restart = True
+            active = torch.ones_like(active)
         z = residual/diagonal
         next_rz = (residual*z).sum()
-        direction = z if restart else z+(next_rz/rz)*direction
+        if restart:
+            direction = z
+        else:
+            beta = next_rz/torch.where(active, rz, 1)
+            direction = torch.where(active, z+beta*direction, 0)
         rz = next_rz
     raise RuntimeError(f'PCG did not converge after {options.max_iterations} iterations: '
                        f'true residual {true_norm:.6e} > tolerance {tol:.6e}')
@@ -113,3 +131,4 @@ def operator_diagonals(op):
             result[('pressure_' if pressure else 'velocity_')+name] = (
                 assembled if pressure else assembled[:, None].expand(-1, 3))
     return result
+

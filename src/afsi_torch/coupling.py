@@ -84,7 +84,7 @@ class ExplicitIBStepper:
         return CoupledState(0,0.,state.x,state.velocity,state.pressure,force.detach().clone(),0.)
 
     @torch.no_grad()
-    def step(self, state, *, boundary_values=None):
+    def step(self, state, *, boundary_values=None, diagnostics=True):
         dt = self.fluid.dt
         if (not isinstance(state.step, int) or state.step < 0 or
                 not isfinite(state.time) or abs(state.time-state.step*dt) > 1e-12*max(1., abs(state.time))):
@@ -97,7 +97,8 @@ class ExplicitIBStepper:
         dual_load = ib.spread_load(state.force, old_stencil) if self.load_path == 'dual' else None
         flow = self.fluid.step(state.velocity, **({'density': density} if dual_load is None else
                                {'nodal_load': dual_load}), boundary_values=boundary_values,
-                               pressure_initial=state.pressure)
+                               pressure_initial=state.pressure,
+                               **({} if diagnostics else {'diagnostics': False}))
         solid_velocity = ib.interpolate(flow.velocity, old_stencil)
         displacement = dt*solid_velocity
         fraction = (displacement.abs()/displacement.new_tensor(self.grid.spacing)).max().item()
@@ -116,21 +117,24 @@ class ExplicitIBStepper:
         next_density = ib.spread_density(new_force, new_stencil)
         if not torch.isfinite(next_density).all():
             raise ValueError('next force density is nonfinite')
-        solid_power = (solid_velocity*state.force).sum()
-        lattice_power = (flow.velocity*density).sum()*self.grid.cell_volume
-        applied_rhs = self.fluid.op.density_load(density) if dual_load is None else dual_load
-        fe_power = (flow.velocity*applied_rhs).sum()
-        diagnostics = dict(fluid=flow.diagnostics, time_s=(state.step+1)*dt,
+        diagnostic = dict(fluid=flow.diagnostics, time_s=(state.step+1)*dt,
             load_path=self.load_path,
             used_force_time_s=state.force_time, next_force_time_s=state.time,
-            applied_force_norm_dyn=torch.linalg.vector_norm(state.force).item(),
-            next_force_norm_dyn=torch.linalg.vector_norm(new_force).item(),
-            max_displacement_cm=torch.linalg.vector_norm(displacement, dim=-1).max().item(),
-            max_grid_displacement=fraction,
-            solid_power_erg_per_s=solid_power.item(), lattice_power_erg_per_s=lattice_power.item(),
-            lattice_power_error=abs((lattice_power-solid_power).item()),
-            fe_power_erg_per_s=fe_power.item(), fe_minus_solid_power=(fe_power-solid_power).item(),
-            spread_force_balance_max_abs=(density.sum(0)*self.grid.cell_volume-state.force.sum(0)).abs().max().item())
+            max_grid_displacement=fraction)
+        if diagnostics:
+            solid_power = (solid_velocity*state.force).sum()
+            lattice_power = (flow.velocity*density).sum()*self.grid.cell_volume
+            applied_rhs = self.fluid.op.density_load(density) if dual_load is None else dual_load
+            fe_power = (flow.velocity*applied_rhs).sum()
+            diagnostic.update(
+                applied_force_norm_dyn=torch.linalg.vector_norm(state.force).item(),
+                next_force_norm_dyn=torch.linalg.vector_norm(new_force).item(),
+                max_displacement_cm=torch.linalg.vector_norm(displacement, dim=-1).max().item(),
+                solid_power_erg_per_s=solid_power.item(), lattice_power_erg_per_s=lattice_power.item(),
+                lattice_power_error=abs((lattice_power-solid_power).item()),
+                fe_power_erg_per_s=fe_power.item(), fe_minus_solid_power=(fe_power-solid_power).item(),
+                spread_force_balance_max_abs=(density.sum(0)*self.grid.cell_volume-state.force.sum(0)).abs().max().item())
         new_state = CoupledState(state.step+1, (state.step+1)*dt, x_new, flow.velocity,
                                  flow.pressure, new_force, state.time)
-        return CoupledResult(new_state, solid_velocity, density, diagnostics)
+        return CoupledResult(new_state, solid_velocity, density, diagnostic)
+

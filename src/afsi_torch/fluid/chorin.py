@@ -38,8 +38,12 @@ class ChorinSolver:
         self.pressure_fixed[pressure_dof] = True
         self.pressure_values = P.new_zeros(len(P))
         self.pressure_values[pressure_dof] = pressure_value
+        self._tentative_matrix = (operators.tentative_matrix(self.rho/self.dt, self.mu)
+                                  if hasattr(operators, 'tentative_matrix') else None)
 
     def tentative_action(self, u):
+        if self._tentative_matrix is not None:
+            return torch.sparse.mm(self._tentative_matrix, u)
         return self.rho/self.dt*self.op.velocity_mass(u)+self.mu*self.op.velocity_stiffness(u)
 
     def divergence_l2(self, u):
@@ -49,7 +53,7 @@ class ChorinSolver:
 
     @torch.no_grad()
     def step(self, velocity, *, density=None, nodal_load=None, boundary_values=None,
-             pressure_initial=None):
+             pressure_initial=None, diagnostics=True):
         """Advance one step; supply either Q2 force density or dual nodal load.
 
         density -> M f follows afsi's density path. nodal_load -> b enters
@@ -89,12 +93,15 @@ class ChorinSolver:
         rhs3 = op.velocity_mass(star)-self.dt/self.rho*op.gradient(pressure)
         corrected, info3 = pcg(op.velocity_mass, rhs3, self.diagonals['velocity_mass'],
             fixed=self.velocity_fixed, values=boundary_values, initial=star, options=self.options)
-        div_corrected = op.divergence(corrected)
         diagnostic = dict(solves={name: asdict(info) for name, info in
-            [('tentative', info1), ('pressure', info2), ('correction', info3)]},
-            pressure_full_residual_norm=torch.linalg.vector_norm(rhs2-op.pressure_stiffness(pressure)).item(),
-            tentative_divergence_dual_norm=torch.linalg.vector_norm(div_star).item(),
-            corrected_divergence_dual_norm=torch.linalg.vector_norm(div_corrected).item(),
-            tentative_divergence_l2=self.divergence_l2(star), corrected_divergence_l2=self.divergence_l2(corrected),
-            net_flux=net_flux, kinetic_energy=.5*self.rho*(corrected*op.velocity_mass(corrected)).sum().item())
+            [('tentative', info1), ('pressure', info2), ('correction', info3)]}, net_flux=net_flux)
+        if diagnostics:
+            div_corrected = op.divergence(corrected)
+            diagnostic.update(
+                pressure_full_residual_norm=torch.linalg.vector_norm(rhs2-op.pressure_stiffness(pressure)).item(),
+                tentative_divergence_dual_norm=torch.linalg.vector_norm(div_star).item(),
+                corrected_divergence_dual_norm=torch.linalg.vector_norm(div_corrected).item(),
+                tentative_divergence_l2=self.divergence_l2(star), corrected_divergence_l2=self.divergence_l2(corrected),
+                kinetic_energy=.5*self.rho*(corrected*op.velocity_mass(corrected)).sum().item())
         return StepResult(corrected, pressure, star, diagnostic)
+

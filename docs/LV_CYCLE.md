@@ -4,6 +4,8 @@
 
 这是**规定压力和主动张力的理想左室 FSI demo**。默认第一周期包含从无载参考构形开始的充盈过程，不是已经达到周期稳态的循环模型。背景流体占据整个盒子，左室基底开口没有瓣膜。`full_cycle_completed` 仅表示接受的时间步覆盖了一个 0.8 s 载荷周期，不表示生理标定、网格收敛或周期稳态已经验收。
 
+从 0.26.0 起，入口默认 `--backend csr --check-every 8`，固定算子组装一次后复用。昂贵诊断改为输出采样，报告的体积、det(F)、速度和 CFL 极值是**采样极值**；真实线性残差、非有限值、构形有效性和 IB 支持/步长限制仍逐步检查。详见 [CSR 运行说明](CSR_RUNTIME.md)。
+
 ## 与 AFSI demo_337 的对应
 
 已核对 [原生示例](https://github.com/loveIroha/afsi/blob/main/afsic/demo/demo_337/fsi_paralell_fibers_contraction.py)（文件 blob `283b23f5155dbc57043edd2aa7280d61c3c8e985`）和 [PressureEndo.py](https://github.com/loveIroha/afsi/blob/main/afsic/demo/demo_337/PressureEndo.py)（blob `8bf2cce74346522f2d10139765ecec0781f1d2a5`）。原示例当前启用的是 1.5 s 线性加载，总时长 2 s；本 demo 按用户要求采用辅助文件中的 0.8 s 周期形状。代码独立表达相同的数学加载关系，不依赖安装 AFSI。
@@ -70,7 +72,7 @@ CUDA_VISIBLE_DEVICES=0 python examples/lv_cycle.py \
 python examples/plot_lv_cycle.py --input results/lv_cycle_080
 ```
 
-- `report.json`：是否完成、已接受步数、达到时间、全程 det(F)/速度/CFL/线性残量极值及运行配置。
+- `report.json`：是否完成、已接受步数、达到时间、采样 det(F)/速度/CFL 极值、逐步线性残量极值及运行配置；`diagnostic_scope` 说明覆盖范围。
 - `history.csv`：位移、壁体积、腔体积、能量、散度、载荷和线性迭代记录；默认每 20 步，并保存终点。
 - `loads.csv`：规定的完整压力/张力时程。
 - `cycle_curves.png`：压力、主动张力、腔体积时间曲线和规定压力—腔容积轨迹。

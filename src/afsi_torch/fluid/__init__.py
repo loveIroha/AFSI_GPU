@@ -3,6 +3,8 @@ from .mesh import BoxMesh, create_box
 from .operators import FluidOperators, prepare_operators
 from .solvers import SolverOptions, pcg
 from .chorin import ChorinSolver
+from .csr import CSRFluidOperators
 
 __all__ = ['BoxMesh', 'create_box', 'FluidOperators', 'prepare_operators',
-           'SolverOptions', 'pcg', 'ChorinSolver']
+           'SolverOptions', 'pcg', 'ChorinSolver', 'CSRFluidOperators']
+

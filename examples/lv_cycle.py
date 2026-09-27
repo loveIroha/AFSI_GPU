@@ -19,7 +19,7 @@ from afsi_torch.coupling import ExplicitIBStepper
 from afsi_torch.coupling_output import CoupledWriter
 from afsi_torch.cycle_checkpoint import atomic_json, load_cycle, save_cycle
 from afsi_torch.cycle_loads import AFSICycleLoads
-from afsi_torch.fluid import ChorinSolver, create_box, prepare_operators
+from afsi_torch.fluid import ChorinSolver, create_box, prepare_operators, CSRFluidOperators
 from afsi_torch.fluid.solvers import SolverOptions
 from afsi_torch.geometry import LVConfig, generate_lv
 from afsi_torch.geometry.output import write_lv
@@ -62,6 +62,12 @@ def _row(model, state, x_start, flow, result=None):
     used_time = None if result is None else result.diagnostics['used_force_time_s']
     diagnostics = {} if result is None else result.diagnostics['fluid']
     solves = diagnostics.get('solves', {}).values()
+    kinetic = diagnostics.get('kinetic_energy')
+    divergence = diagnostics.get('corrected_divergence_l2')
+    if kinetic is None:
+        kinetic = .5*flow.rho*(state.velocity*flow.op.velocity_mass(state.velocity)).sum().item()
+    if divergence is None:
+        divergence = flow.divergence_l2(state.velocity)
     return dict(step=state.step, time_s=state.time,
         prescribed_pressure_mmhg=pressure/MMHG_TO_DYN_PER_CM2,
         prescribed_tension_dyn_per_cm2=tension,
@@ -75,8 +81,8 @@ def _row(model, state, x_start, flow, result=None):
             flow.op.mesh.velocity_grid.spacing)).sum(-1).max()).item(),
         max_grid_displacement=0. if result is None else result.diagnostics['max_grid_displacement'],
         force_norm_dyn=torch.linalg.vector_norm(state.force).item(),
-        kinetic_energy_erg=diagnostics.get('kinetic_energy', 0.),
-        corrected_divergence_l2=diagnostics.get('corrected_divergence_l2', 0.),
+        kinetic_energy_erg=kinetic,
+        corrected_divergence_l2=divergence,
         max_solver_residual_ratio=max((s['residual_norm']/s['tolerance'] for s in solves), default=0.),
         max_solver_iterations=max((s['iterations'] for s in diagnostics.get('solves', {}).values()), default=0))
 
@@ -98,7 +104,11 @@ def _accumulate(summary, row):
 def run(*, device='cuda', output=None, end_time=.8, dt=None, mesh_size=None,
         fluid_cells=None, box_length=None, loads=None, preload=None, resume=None,
         output_every=200, checkpoint_every=200, log_every=100, history_every=20,
-        write_vtk=True):
+        write_vtk=True, backend='csr', check_every=8):
+    if backend not in ('csr', 'quadrature'):
+        raise ValueError('backend must be csr or quadrature')
+    if type(check_every) is not int or check_every < 1:
+        raise ValueError('check_every must be a positive integer')
     if str(device).startswith('cuda') and not torch.cuda.is_available():
         raise RuntimeError('CUDA requested but unavailable; no CPU fallback')
     for value in (output_every, checkpoint_every, log_every, history_every):
@@ -158,7 +168,15 @@ def run(*, device='cuda', output=None, end_time=.8, dt=None, mesh_size=None,
         raise ValueError('requested end time precedes the checkpoint')
     fluid_mesh = create_box((settings['fluid_cells'],)*3, (settings['box_length'],)*3,
                             settings['origin'], device=device)
-    flow = ChorinSolver(prepare_operators(fluid_mesh), dt=dt, rho=settings['rho'], mu=settings['mu'],
+    settings['backend'] = backend
+    settings['solver']['check_every'] = check_every
+    progress.setdefault('execution_segments', []).append(dict(
+        start_step=state.step if resume else 0, backend=backend, check_every=check_every,
+        history_every=history_every, diagnostic_sampling='history/log/checkpoint/output/end'))
+    operators = prepare_operators(fluid_mesh)
+    if backend == 'csr':
+        operators = CSRFluidOperators(operators)
+    flow = ChorinSolver(operators, dt=dt, rho=settings['rho'], mu=settings['mu'],
                         options=SolverOptions(**settings['solver']))
     driver = ExplicitIBStepper(flow, model.force, model.validate)
     if not resume:
@@ -187,7 +205,7 @@ def run(*, device='cuda', output=None, end_time=.8, dt=None, mesh_size=None,
                                resume_time=state.time if resume else None)
         if not writer.frames or writer.frames[-1][0] != state.time:
             writer.write(state)
-    row = progress.get('last', _row(model, state, x_start, flow))
+    row = progress['last'] if 'last' in progress else _row(model, state, x_start, flow)
     if previous_step != state.step:
         journal.writerow(row)
     _accumulate(progress['summary'], row)
@@ -195,8 +213,12 @@ def run(*, device='cuda', output=None, end_time=.8, dt=None, mesh_size=None,
     segment_step = state.step
     previous_elapsed = progress['elapsed_seconds']
     status = 'running'
+    result = None
 
     def save():
+        if progress['last']['step'] != state.step:
+            progress['last'] = _row(model, state, x_start, flow, result)
+            _accumulate(progress['summary'], progress['last'])
         stream.flush()
         progress['elapsed_seconds'] = previous_elapsed + perf_counter()-started
         save_cycle(folder/'checkpoint.npz', model, state, x_start, settings, progress)
@@ -219,6 +241,9 @@ def run(*, device='cuda', output=None, end_time=.8, dt=None, mesh_size=None,
             pressure_volume_curve='prescribed pressure at state time versus cavity volume',
             periodic_steady_state_established=False, circulation_model=False,
             grid_convergence_established=False,
+            diagnostic_scope=dict(expensive_extrema='sampled at history/log/checkpoint/output/end',
+                every_step='true solver residual, finite fields, deformation and IB support/displacement guards',
+                ib_power_diagnostics=False),
             source_alignment=dict(demo='afsic/demo/demo_337/fsi_paralell_fibers_contraction.py',
                 demo_blob='283b23f5155dbc57043edd2aa7280d61c3c8e985',
                 load_shapes='afsic/demo/demo_337/PressureEndo.py',
@@ -239,11 +264,20 @@ def run(*, device='cuda', output=None, end_time=.8, dt=None, mesh_size=None,
               f'{settings["fluid_cells"]}^3 Q2 fluid cells, dt={dt:g} s; '
               f'continuing at step {state.step} toward {steps} ({end_time:g} s)', flush=True)
         for _ in range(state.step, steps):
-            result = driver.step(state)
+            result = driver.step(state, diagnostics=False)
             state = result.state
-            row = _row(model, state, x_start, flow, result)
-            progress['last'] = row
-            _accumulate(progress['summary'], row)
+            solves = result.diagnostics['fluid']['solves'].values()
+            for key, value in (
+                    ('maximum_grid_displacement', result.diagnostics['max_grid_displacement']),
+                    ('maximum_solver_residual_ratio', max(s['residual_norm']/s['tolerance'] for s in solves)),
+                    ('maximum_solver_iterations', max(s['iterations'] for s in solves))):
+                progress['summary'][key] = max(progress['summary'].get(key, value), value)
+            sample = state.step == steps or any(state.step % n == 0 for n in
+                (history_every, log_every, checkpoint_every)) or (writer and state.step % output_every == 0)
+            if sample:
+                row = _row(model, state, x_start, flow, result)
+                progress['last'] = row
+                _accumulate(progress['summary'], row)
             if state.step % history_every == 0 or state.step == steps:
                 journal.writerow(row)
             if writer and (state.step % output_every == 0 or state.step == steps):
@@ -287,6 +321,8 @@ if __name__ == '__main__':
     parser.add_argument('--log-every', type=int, default=100)
     parser.add_argument('--history-every', type=int, default=20)
     parser.add_argument('--no-vtk', action='store_true')
+    parser.add_argument('--backend', choices=('csr', 'quadrature'), default='csr')
+    parser.add_argument('--check-every', type=int, default=8, help='PCG host check interval; true residual verified on return')
     parser.add_argument('--diastole-pressure-mmhg', type=float)
     parser.add_argument('--systole-pressure-mmhg', type=float)
     parser.add_argument('--max-tension', type=float, help='active stress amplitude in dyn/cm^2')
