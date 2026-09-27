@@ -7,13 +7,30 @@ from .fluid.elements import basis, reference_nodes
 
 
 class CoupledWriter:
-    def __init__(self, directory, solid_mesh, fluid_mesh):
+    def __init__(self, directory, solid_mesh, fluid_mesh, *, resume_time=None):
         import meshio
         self.meshio = meshio
         self.directory = Path(directory)
         self.directory.mkdir(parents=True, exist_ok=True)
         self.solid_mesh, self.fluid_mesh = solid_mesh, fluid_mesh
         self.frames = []
+        if resume_time is not None:
+            # Restore only paired, existing frames at or before the accepted
+            # checkpoint; a crash may have left a later output frame behind.
+            collections = []
+            for name in ('solid.pvd', 'fluid.pvd'):
+                path = self.directory/name
+                entries = {}
+                if path.exists():
+                    for entry in ET.parse(path).getroot().iter('DataSet'):
+                        time, filename = float(entry.attrib['timestep']), entry.attrib['file']
+                        if (time <= resume_time and Path(filename).name == filename and
+                                (self.directory/filename).is_file()):
+                            entries[time] = filename
+                collections.append(entries)
+            for time in sorted(collections[0].keys() & collections[1].keys()):
+                self.frames.append((time, collections[0][time], collections[1][time]))
+            self._collections()
 
     @torch.no_grad()
     def write(self, state):
@@ -36,10 +53,17 @@ class CoupledWriter:
         pressure = state.x.new_zeros(len(fm.velocity_coordinates)).index_add(0, indices, local_p.reshape(-1))/count
         self.meshio.write(self.directory/fluid_name, self.meshio.Mesh(array(fm.velocity_coordinates), [('hexahedron', hexa)],
             point_data=dict(velocity_cm_per_s=array(state.velocity), pressure_dyn_per_cm2=array(pressure))))
+        self.frames = [frame for frame in self.frames if frame[0] < state.time]
         self.frames.append((state.time, solid_name, fluid_name))
+        self._collections()
+
+    def _collections(self):
         for index, name in ((1, 'solid.pvd'), (2, 'fluid.pvd')):
             root = ET.Element('VTKFile', type='Collection', version='0.1', byte_order='LittleEndian')
             collection = ET.SubElement(root, 'Collection')
             for frame in self.frames:
                 ET.SubElement(collection, 'DataSet', timestep=str(frame[0]), group='', part='0', file=frame[index])
-            ET.ElementTree(root).write(self.directory/name, encoding='utf-8', xml_declaration=True)
+            temporary = self.directory/(name+'.tmp')
+            ET.ElementTree(root).write(temporary, encoding='utf-8', xml_declaration=True)
+            temporary.replace(self.directory/name)
+

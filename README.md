@@ -2,6 +2,12 @@
 
 目标是在 GPU 上实现 AFSI 的非线性固体、背景流体与 IB 耦合，算例采用程序生成的厘米制理想左心室。当前已具备 P2 固体、Q2/Q1 流体、Chorin 求解及显式耦合时间步，并通过独立 DOLFINx/NumPy 对照；完整心动周期、收敛和长期稳定性仍待验收。
 
+## 0.25.0：生成理想左心室的 0.8 s 周期 demo
+
+新增 `examples/lv_cycle.py`：默认生成椭球左室和纤维，采用 AFSI 辅助函数的 0.8 s 压力/张力周期形状、Guccione、基底弹簧、Chorin 及四点 IB，以 `dt=5e-5 s` 在 PyTorch/CUDA 推进 16000 步。支持预载、定期输出、原子检查点与续算、载荷/腔容积 CSV 及曲线绘制。[运行命令、与 AFSI 的逐项对应和空间设置差别](docs/LV_CYCLE.md)。
+
+本地回归 **189 passed、102 CUDA skipped、1 warning**；生成左室的 CPU 启动先导已运行至 0.01 s。**0.8 s 目标 GPU 实验尚待 Linux 运行**；此 demo 的一个规定载荷周期不等同于周期稳态、网格收敛或完整循环系统验收。
+
 ## 0.24.0：非线性固体参与的 AFSI 原生多步对照
 
 在已通过的给定节点力单步对照之后，新增小型 P2 固体的原生 AFSI C++ IB/Chorin + DOLFINx Guccione 力多步导出，以及 PyTorch/CUDA 逐步比较器。每步核对流体、固体运动和更新后的非线性力，并报告首个分歧阶段；默认六步。当前 Windows 本地回归 **179 passed、101 CUDA skipped、1 warning**；原生 CPU 导出和 RTX 4090 GPU 对照需在 Linux 环境运行。[实验说明与命令](docs/AFSI_NONLINEAR_TRAJECTORY.md)。这仍是数值对齐实验，不是理想左心室完整周期。
