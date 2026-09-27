@@ -20,4 +20,8 @@ CUDA_VISIBLE_DEVICES=0 python validation/compare_coupled_projection.py \
   --output results/coupled_projection
 ```
 
+用户提供的 [RTX 4090 正式报告](coupled-projection-gpu-results-0.21.0.json)已完成 18/24 cm 盒的全部四条、每条 20 步轨迹；检查点哈希与前两轮 GPU 实验相同。两盒的 Schur 相对 Chorin 终点节点位移向量差分别为 **5.93%/5.79%**，腔容积增量差分别为 **11.47%/11.46%**；18→24 cm 同方法节点位移向量差分别为 **3.88%/4.13%**（分母为 18 cm 盒）。各轨迹最小 `det F > 0.99918`，最大求解残差比例低于 1。Schur 的 Q1 弱散度残差低于 `2.3e-14`，但这不意味着点态散度为零。这些结果说明投影选择影响短程耦合响应；它们不构成联合网格或完整周期收敛证明。
+
+GPU 完整 pytest 在 0.21.0 有 **275 passed、1 failed、1 warning**：失败只发生在测试把两次独立的 CUDA 暂定速度求解要求逐位相等，实际仅 2/375 个分量相差最多 `6.8e-21`，相对差最多 `2.1e-16`。0.21.1 将该断言改为严格的浮点容差 `atol=1e-18, rtol=1e-12`；数值算子和正式轨迹均未改动。此修复已通过本地完整回归 **175 passed、101 CUDA skipped、1 warning**，目标 GPU pytest 尚需复跑。
+
 请保留 `results/coupled_projection/report.json` 和各分支 `last_accepted.npz`，后者用于复核节点位移比较。实验完成不等于完整心动周期，也不构成流体/固体网格及时间步联合收敛证明。参考 Schur 分支是数值对照，生产 Chorin 和 AFSI 的原有耦合次序未改变。

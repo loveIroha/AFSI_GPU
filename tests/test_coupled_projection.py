@@ -20,8 +20,10 @@ def test_schur_wrapper_uses_same_tentative_step_and_reference_projection(device)
     wrapped = schur.step(velocity, density=density)
     expected, info = discrete_projection(chorin, baseline.tentative_velocity,
                                          BoxMassInverse(mesh), options=schur.options)
+    # GPU index_add/einsum accumulation can vary by a few float64 ulps across
+    # repeated solves; the two tentative fields must agree numerically.
     torch.testing.assert_close(wrapped.tentative_velocity, baseline.tentative_velocity,
-                               atol=0, rtol=0)
+                               atol=1e-18, rtol=1e-12)
     torch.testing.assert_close(wrapped.velocity, expected, atol=1e-12, rtol=1e-10)
     torch.testing.assert_close(wrapped.pressure, baseline.pressure, atol=1e-12, rtol=1e-10)
     assert wrapped.diagnostics['corrected_divergence_dual_norm'] == pytest.approx(
