@@ -11,7 +11,9 @@ ENDO, EPI, BASE = 1, 2, 3
 
 @dataclass(frozen=True)
 class LVConfig:
-    """Lengths in centimetres; keep z <= center_z + base_height. Apex is -z.
+    """Lengths in centimetres; local z <= base_height, with apex at local -z.
+
+    long_axis='x' rotates local (x,y,z) to world (z,x,y) before translation.
 
     Defaults are numerical example parameters, not a calibrated patient model.
     The two concentric ellipsoids need not be homothetic.
@@ -21,8 +23,11 @@ class LVConfig:
     base_height: float = 1.5
     mesh_size: float = 1.2
     center: tuple[float, float, float] = (0., 0., 0.)
+    long_axis: str = 'z'  # axes above are local (short, short, long)
 
     def __post_init__(self):
+        if self.long_axis not in ('x', 'z'):
+            raise ValueError('long_axis must be x or z')
         for name in ('inner_axes', 'outer_axes', 'center'):
             data = tuple(float(v) for v in getattr(self, name))
             if len(data) != 3 or not all(isfinite(v) for v in data):
@@ -177,6 +182,8 @@ def generate_lv(config=None, *, device='cpu') -> LVMesh:
         version = gmsh.__version__
     finally:
         gmsh.finalize()
+    if config.long_axis == 'x':
+        points = points[:, [2, 0, 1]]  # proper rotation: local z becomes world x
     vertices = torch.from_numpy(points*scale+np.array(config.center))
     X, p2_cells = promote_p1(vertices, torch.from_numpy(cells))
     faces = extract_boundary(X, p2_cells)
@@ -185,3 +192,4 @@ def generate_lv(config=None, *, device='cpu') -> LVMesh:
         raise RuntimeError('CAD surface tags and tetrahedral exterior disagree')
     facet_tags = torch.tensor([labels[key] for key in keys], dtype=torch.int64)
     return LVMesh(config, X, p2_cells, faces, facet_tags, len(vertices), version).to(device)
+

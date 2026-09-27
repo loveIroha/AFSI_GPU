@@ -50,17 +50,20 @@ class PreloadedLoads:
 
 
 class LVSolid:
-    def __init__(self, mesh, *, loads=None, beta=5e5, parameters=None):
+    def __init__(self, mesh, *, loads=None, beta=5e5, parameters=None, fibers=None,
+                 volume_quadrature=None, surface_quadrature=None, fiber_metadata=None):
         if not isfinite(beta) or beta < 0:
             raise ValueError('nonnegative finite beta required')
         self.mesh, self.beta = mesh, beta
         self.loads = RampLoads() if loads is None else loads
         self.parameters = GuccioneParameters() if parameters is None else parameters
-        self.geometry = solid.prepare_p2(mesh.X, mesh.cells)
-        self.fibers = rule_based_fibers(mesh.X, mesh.config)
+        self.volume_quadrature, self.surface_quadrature = volume_quadrature, surface_quadrature
+        self.fiber_metadata = {} if fiber_metadata is None else fiber_metadata
+        self.geometry = solid.prepare_p2(mesh.X, mesh.cells, quadrature=volume_quadrature)
+        self.fibers = rule_based_fibers(mesh.X, mesh.config) if fibers is None else fibers
         self.fields = prepare_reference_fields(self.geometry, self.fibers.fiber, self.fibers.sheet, 0.)
-        self.endo = bd.prepare_surface(mesh.X, mesh.surface(ENDO))
-        self.base = bd.prepare_surface(mesh.X, mesh.surface(BASE))
+        self.endo = bd.prepare_surface(mesh.X, mesh.surface(ENDO), quadrature=surface_quadrature)
+        self.base = bd.prepare_surface(mesh.X, mesh.surface(BASE), quadrature=surface_quadrature)
         self.cavity = prepare_cavity(mesh.X, mesh.surface(ENDO))
 
     def validate(self, x):
@@ -87,3 +90,4 @@ class LVSolid:
             passive_energy_erg=(W*self.geometry.weights).sum().item(),
             spring_energy_erg=bd.spring_energy(x, self.base, self.beta).item(),
             max_total_displacement_cm=torch.linalg.vector_norm(x-self.mesh.X, dim=-1).max().item())
+

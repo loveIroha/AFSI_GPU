@@ -31,6 +31,8 @@ def rule_based_fibers(X, config, *, endo_angle=60., epi_angle=-60., apical_width
     if not all(isfinite(v) for v in (endo_angle, epi_angle, apical_width)) or not 0 < apical_width < 1:
         raise ValueError('angles must be finite and apical_width must lie in (0,1)')
     y = X-X.new_tensor(config.center)
+    if config.long_axis == 'x':
+        y = y[:, [1, 2, 0]]
     radius = torch.linalg.vector_norm(y, dim=-1)
     if (radius <= torch.finfo(X.dtype).eps*max(config.outer_axes)).any():
         raise ValueError('fiber frame undefined at ellipsoid center (outside wall domain)')
@@ -63,4 +65,7 @@ def rule_based_fibers(X, config, *, endo_angle=60., epi_angle=-60., apical_width
     cosine = (radial*f).sum(-1)
     sheet = e1+torch.linalg.cross(v, e1)+torch.linalg.cross(v, torch.linalg.cross(v, e1))/(1+cosine[:, None])
     sheet = sheet/torch.linalg.vector_norm(sheet, dim=-1, keepdim=True)
+    if config.long_axis == 'x':
+        f, sheet = f[:, [2, 0, 1]], sheet[:, [2, 0, 1]]
     return FiberField(f, sheet, t, angle, escape)
+

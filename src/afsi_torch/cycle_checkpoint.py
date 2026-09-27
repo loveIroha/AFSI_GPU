@@ -12,6 +12,8 @@ from .coupling import CoupledState
 from .cycle_loads import AFSICycleLoads
 from .geometry import LVConfig
 from .geometry.ellipsoid import LVMesh
+from .geometry.fibers import FiberField
+from .afsi337 import AFSI337Loads
 from .lv_model import LVSolid
 from .materials import GuccioneParameters
 from .units import CGS_UNITS
@@ -35,7 +37,14 @@ def save_cycle(path, model, state, x_start, settings, progress):
         facet_tags=array(mesh.facet_tags), fiber=array(model.fibers.fiber),
         sheet=array(model.fibers.sheet), x_start=array(x_start))
     data.update({name: array(getattr(state, name)) for name in ('x', 'velocity', 'pressure', 'force')})
-    metadata = dict(schema=1, producer='afsi-torch-lv-cycle', units=CGS_UNITS,
+    data.update({name: array(getattr(model.fibers, name)) for name in
+                 ('transmural', 'helix_angle', 'apical_weight')})
+    for name in ('volume_quadrature', 'surface_quadrature'):
+        rule = getattr(model, name)
+        if rule is not None:
+            data[name+'_points'], data[name+'_weights'] = map(array, rule)
+    metadata = dict(schema=2, producer='afsi-torch-lv-cycle', units=CGS_UNITS,
+        load_type=type(model.loads).__name__, fiber_metadata=model.fiber_metadata,
         geometry=asdict(mesh.config), vertex_count=mesh.vertex_count, gmsh=mesh.gmsh_version,
         material=asdict(model.parameters), beta=model.beta, loads=asdict(model.loads),
         step=state.step, time=state.time, force_time=state.force_time,
@@ -62,7 +71,7 @@ def load_cycle(path, device='cpu'):
         digest.update(data[name].tobytes())
     if digest.hexdigest() != saved_digest:
         raise ValueError('cycle checkpoint checksum mismatch')
-    if (metadata['schema'] != 1 or metadata['producer'] != 'afsi-torch-lv-cycle' or
+    if (metadata['schema'] not in (1, 2) or metadata['producer'] != 'afsi-torch-lv-cycle' or
             metadata['units'] != CGS_UNITS):
         raise ValueError('unsupported cycle checkpoint')
     for name, value in data.items():
@@ -76,8 +85,20 @@ def load_cycle(path, device='cpu'):
             tags.shape != (len(faces),) or set(tags.cpu().tolist()) != {1, 2, 3}):
         raise ValueError('invalid cycle checkpoint boundary')
     mesh = LVMesh(config, X, cells, faces, tags, metadata['vertex_count'], metadata['gmsh'])
-    model = LVSolid(mesh, loads=AFSICycleLoads(**metadata['loads']), beta=metadata['beta'],
-                    parameters=GuccioneParameters(**metadata['material']))
+    extra = {}
+    if metadata['schema'] == 2:
+        extra['fibers'] = FiberField(*(tensor(name) for name in
+            ('fiber', 'sheet', 'transmural', 'helix_angle', 'apical_weight')))
+        extra['fiber_metadata'] = metadata['fiber_metadata']
+        for name in ('volume_quadrature', 'surface_quadrature'):
+            if name+'_points' in data:
+                extra[name] = (tensor(name+'_points'), tensor(name+'_weights'))
+    load_types = {'AFSICycleLoads': AFSICycleLoads, 'AFSI337Loads': AFSI337Loads}
+    load_type = metadata.get('load_type', 'AFSICycleLoads')
+    if load_type not in load_types:
+        raise ValueError('unsupported checkpoint load protocol')
+    model = LVSolid(mesh, loads=load_types[load_type](**metadata['loads']), beta=metadata['beta'],
+                    parameters=GuccioneParameters(**metadata['material']), **extra)
     for name in ('fiber', 'sheet'):
         expected = tensor(name)
         actual = getattr(model.fibers, name)

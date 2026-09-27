@@ -101,10 +101,18 @@ def _accumulate(summary, row):
 
 
 @torch.no_grad()
-def run(*, device='cuda', output=None, end_time=.8, dt=None, mesh_size=None,
+def run(*, device='cuda', output=None, end_time=None, dt=None, mesh_size=None,
         fluid_cells=None, box_length=None, loads=None, preload=None, resume=None,
         output_every=200, checkpoint_every=200, log_every=100, history_every=20,
-        write_vtk=True, backend='csr', check_every=8):
+        write_vtk=True, backend='csr', check_every=8, profile=None, solid_input=None):
+    if profile not in (None, 'cycle', 'afsi337'):
+        raise ValueError('unknown LV profile')
+    if not resume:
+        profile = 'cycle' if profile is None else profile
+    if solid_input and (profile != 'afsi337' or mesh_size is not None):
+        raise ValueError('solid-input requires afsi337 and preserves its mesh size')
+    if profile == 'afsi337' and (loads is not None or preload is not None):
+        raise ValueError('afsi337 starts unloaded with its prescribed ramp; no cycle loads/preload')
     if backend not in ('csr', 'quadrature'):
         raise ValueError('backend must be csr or quadrature')
     if type(check_every) is not int or check_every < 1:
@@ -114,28 +122,41 @@ def run(*, device='cuda', output=None, end_time=.8, dt=None, mesh_size=None,
     for value in (output_every, checkpoint_every, log_every, history_every):
         if type(value) is not int or value < 1:
             raise ValueError('output/checkpoint/log/history intervals must be positive integers')
-    if not isfinite(end_time) or end_time <= 0:
-        raise ValueError('end_time must be positive and finite')
     started = perf_counter()
-    folder = Path(output) if output is not None else Path(resume).parent if resume else Path('results/lv_cycle')
+    folder = Path(output) if output is not None else Path(resume).parent if resume else Path(
+        'results/lv_afsi337' if profile == 'afsi337' else 'results/lv_cycle')
     if resume:
-        if any(v is not None for v in (dt, mesh_size, fluid_cells, box_length, loads, preload)):
+        if any(v is not None for v in (dt, mesh_size, fluid_cells, box_length, loads, preload, solid_input)):
             raise ValueError('resume restores physical settings; do not also specify mesh, dt, loads or preload')
         if folder.resolve() != Path(resume).resolve().parent:
             raise ValueError('resume in the checkpoint directory to preserve the output history')
         model, state, x_start, settings, progress = load_cycle(resume, device)
+        stored_profile = settings.get('profile', 'cycle')
+        if profile is not None and profile != stored_profile:
+            raise ValueError('resume profile disagrees with checkpoint')
+        profile = stored_profile
         progress['resumptions'] += 1
         progress.pop('failure', None)
     else:
         if (folder/'checkpoint.npz').exists() or (folder/'report.json').exists():
             raise ValueError('output contains a run; use --resume or choose a new output directory')
         dt = 5e-5 if dt is None else dt
-        fluid_cells = 24 if fluid_cells is None else fluid_cells
-        box_length = 12. if box_length is None else box_length
+        fluid_cells = (32 if profile == 'afsi337' else 24) if fluid_cells is None else fluid_cells
+        box_length = (5. if profile == 'afsi337' else 12.) if box_length is None else box_length
         if (not isfinite(dt) or dt <= 0 or type(fluid_cells) is not int or fluid_cells < 2 or
                 not isfinite(box_length) or box_length <= 0):
             raise ValueError('positive dt/box length and integer fluid_cells >= 2 required')
-        if preload:
+        if profile == 'afsi337':
+            from afsi_torch.afsi337 import generated_model
+            if solid_input:
+                from afsi_torch.afsi337_io import load_native_solid
+                model = load_native_solid(solid_input, device=device)
+            else:
+                model = generated_model(mesh_size=.1 if mesh_size is None else mesh_size, device=device)
+            x_start = model.mesh.X.clone()
+            provenance = dict(initialization='AFSI337 unloaded reference and zero-force bootstrap',
+                              solid_input=None if solid_input is None else str(solid_input))
+        elif preload:
             if mesh_size is not None:
                 raise ValueError('preload preserves its mesh; do not specify mesh-size')
             model, x_start, tolerance, provenance = load_preload(preload, device)
@@ -155,11 +176,14 @@ def run(*, device='cuda', output=None, end_time=.8, dt=None, mesh_size=None,
         config = model.mesh.config
         center = list(config.center)
         center[2] += .5*(config.base_height-config.outer_axes[2])
-        settings = dict(dt=dt, fluid_cells=fluid_cells, box_length=box_length,
-            origin=[value-box_length/2 for value in center], rho=1., mu=1.,
+        settings = dict(profile=profile, dt=dt, fluid_cells=fluid_cells, box_length=box_length,
+            origin=[0.,0.,0.] if profile == 'afsi337' else [value-box_length/2 for value in center], rho=1., mu=1.,
             solver=asdict(SolverOptions(max_iterations=4000, recompute_every=200)))
         progress = dict(initial=model.diagnostics(x_start), summary={}, provenance=provenance,
                         elapsed_seconds=0., resumptions=0)
+    end_time = (2. if profile == 'afsi337' else .8) if end_time is None else end_time
+    if not isfinite(end_time) or end_time <= 0:
+        raise ValueError('end_time must be positive and finite')
     dt = settings['dt']
     steps = round(end_time/dt)
     if steps < 1 or abs(steps*dt-end_time) > 1e-10*max(1., end_time):
@@ -222,10 +246,11 @@ def run(*, device='cuda', output=None, end_time=.8, dt=None, mesh_size=None,
         stream.flush()
         progress['elapsed_seconds'] = previous_elapsed + perf_counter()-started
         save_cycle(folder/'checkpoint.npz', model, state, x_start, settings, progress)
-        report = dict(schema=1, demo='generated-ideal-lv-prescribed-cycle', status=status,
-            completed=state.step == steps, full_cycle_completed=state.time+1e-12 >= model.loads.period,
+        period = getattr(model.loads, 'period', None)
+        report = dict(schema=1, demo='afsi337-ramp-hold' if profile == 'afsi337' else 'generated-ideal-lv-prescribed-cycle', status=status,
+            completed=state.step == steps, full_cycle_completed=period is not None and state.time+1e-12 >= period,
             requested_end_time_s=end_time, reached_time_s=state.time, accepted_steps=state.step,
-            requested_steps=steps, period_s=model.loads.period, device=str(device), torch=torch.__version__,
+            requested_steps=steps, period_s=period, device=str(device), torch=torch.__version__,
             gpu=torch.cuda.get_device_name(device) if str(device).startswith('cuda') else None,
             cuda_peak_allocated_bytes=torch.cuda.max_memory_allocated(device) if str(device).startswith('cuda') else None,
             units=CGS_UNITS, settings=settings, solid_config=asdict(model.mesh.config),
@@ -255,6 +280,12 @@ def run(*, device='cuda', output=None, end_time=.8, dt=None, mesh_size=None,
                     '8 mmHg diastolic level follows helper; pressure/tension amplitudes follow demo',
                     'larger fluid box contains this generated LV; report records actual mesh spacing']),
             **progress)
+        if profile == 'afsi337':
+            from afsi_torch.afsi337 import alignment
+            report.update(source_alignment=alignment(model, settings),
+                load_protocol='ramp-and-hold', reference_load_completed=state.time+1e-12 >= 1.5,
+                reference_horizon_completed=state.time+1e-12 >= 2.,
+                static_equilibrium_established=False)
         atomic_json(folder/'report.json', report)
         return report
 
@@ -305,10 +336,12 @@ def run(*, device='cuda', output=None, end_time=.8, dt=None, mesh_size=None,
         stream.close()
 
 
-if __name__ == '__main__':
+def main(default_profile=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--device', default='cuda')
-    parser.add_argument('--end-time', type=float, default=.8)
+    parser.add_argument('--end-time', type=float, help='default: 2 s for afsi337, 0.8 s for cycle')
+    parser.add_argument('--profile', choices=('cycle', 'afsi337'), default=default_profile)
+    parser.add_argument('--solid-input', help='optional native AFSI337 numeric export; otherwise generate geometry')
     parser.add_argument('--dt', type=float)
     parser.add_argument('--mesh-size', type=float)
     parser.add_argument('--fluid-cells', type=int)
@@ -347,4 +380,8 @@ if __name__ == '__main__':
     print(json.dumps(dict(status=report['status'], reached_time_s=report['reached_time_s'],
                          full_cycle_completed=report['full_cycle_completed'],
                          summary=report['summary']), indent=2))
+
+
+if __name__ == '__main__':
+    main()
 
