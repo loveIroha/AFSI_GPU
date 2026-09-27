@@ -1,0 +1,180 @@
+{
+  "schema": 1,
+  "demo": "generated-ideal-lv-prescribed-cycle",
+  "status": "completed",
+  "completed": true,
+  "full_cycle_completed": true,
+  "requested_end_time_s": 0.8,
+  "reached_time_s": 0.8,
+  "accepted_steps": 16000,
+  "requested_steps": 16000,
+  "period_s": 0.8,
+  "device": "cuda",
+  "torch": "2.14.0+cu130",
+  "gpu": "NVIDIA GeForce RTX 4090",
+  "cuda_peak_allocated_bytes": 1994001920,
+  "units": {
+    "length": "cm",
+    "volume": "cm^3 (mL)",
+    "time": "s",
+    "mass": "g",
+    "force": "dyn",
+    "stress": "dyn/cm^2",
+    "pressure": "dyn/cm^2",
+    "energy": "erg",
+    "spring_coefficient": "dyn/cm^3"
+  },
+  "settings": {
+    "dt": 5e-05,
+    "fluid_cells": 24,
+    "box_length": 12.0,
+    "origin": [
+      -6.0,
+      -6.0,
+      -8.0
+    ],
+    "rho": 1.0,
+    "mu": 1.0,
+    "solver": {
+      "rtol": 1e-10,
+      "atol": 1e-12,
+      "max_iterations": 4000,
+      "recompute_every": 200,
+      "check_every": 8
+    },
+    "backend": "csr"
+  },
+  "solid_config": {
+    "inner_axes": [
+      2.5,
+      2.5,
+      4.5
+    ],
+    "outer_axes": [
+      3.5,
+      3.5,
+      5.5
+    ],
+    "base_height": 1.5,
+    "mesh_size": 1.2,
+    "center": [
+      0.0,
+      0.0,
+      0.0
+    ]
+  },
+  "loads": {
+    "period": 0.8,
+    "filling_end": 0.2,
+    "systole_start": 0.5,
+    "initial_pressure": 0.0,
+    "diastole_pressure": 10665.78947368,
+    "systole_pressure": 150000.0,
+    "max_tension": 600000.0,
+    "pressure_width": 0.004,
+    "tension_width": 0.005
+  },
+  "material": {
+    "C": 20000.0,
+    "bf": 8.0,
+    "bt": 2.0,
+    "bfs": 4.0,
+    "kappa": 500000.0
+  },
+  "beta": 500000.0,
+  "solid_nodes": 1276,
+  "solid_cells": 616,
+  "fluid_velocity_nodes": 117649,
+  "fluid_pressure_nodes": 15625,
+  "fluid_element_size_cm": 0.5,
+  "velocity_lattice_spacing_cm": [
+    0.25,
+    0.25,
+    0.25
+  ],
+  "ib_kernel": "AFSI four-point Peskin, epsilon equals velocity lattice spacing",
+  "force_path": "integrated solid force -> IB density -> Q2 consistent mass",
+  "force_order": "flow(g_n), interpolate at x_n, update x, force(x_new,t_n)",
+  "pressure_output": "background Chorin pressure is distinct from prescribed endocardial traction",
+  "pressure_volume_curve": "prescribed pressure at state time versus cavity volume",
+  "periodic_steady_state_established": false,
+  "circulation_model": false,
+  "grid_convergence_established": false,
+  "diagnostic_scope": {
+    "expensive_extrema": "sampled at history/log/checkpoint/output/end",
+    "every_step": "true solver residual, finite fields, deformation and IB support/displacement guards",
+    "ib_power_diagnostics": false
+  },
+  "source_alignment": {
+    "demo": "afsic/demo/demo_337/fsi_paralell_fibers_contraction.py",
+    "demo_blob": "283b23f5155dbc57043edd2aa7280d61c3c8e985",
+    "load_shapes": "afsic/demo/demo_337/PressureEndo.py",
+    "load_shapes_blob": "8bf2cce74346522f2d10139765ecec0781f1d2a5",
+    "original_dt": 5e-05,
+    "original_fluid_element_size_cm": 0.15625,
+    "differences": [
+      "generated geometry and rule-based fibers replace external files",
+      "0.8 s helper waveform replaces active demo 1.5 s linear ramp",
+      "initial filling ramp occurs only once to avoid pressure jump on later cycles",
+      "8 mmHg diastolic level follows helper; pressure/tension amplitudes follow demo",
+      "larger fluid box contains this generated LV; report records actual mesh spacing"
+    ]
+  },
+  "initial": {
+    "cavity_volume_ml": 82.75809228453294,
+    "wall_volume_cm3": 108.9239477537798,
+    "minimum_detF": 0.9999999999999902,
+    "maximum_detF": 1.000000000000015,
+    "passive_energy_erg": 7.397264829303499e-23,
+    "spring_energy_erg": 0.0,
+    "max_total_displacement_cm": 0.0
+  },
+  "summary": {
+    "minimum_detF": 0.3869529745260712,
+    "maximum_detF": 1.3727895090348385,
+    "minimum_cavity_volume_ml": 82.75809228453294,
+    "maximum_cavity_volume_ml": 163.13683591164133,
+    "maximum_fluid_speed_cm_per_s": 92.90372755659237,
+    "maximum_fluid_courant": 0.025997116416102906,
+    "maximum_grid_displacement": 0.006557459636836256,
+    "maximum_solver_residual_ratio": 0.9999993740786298,
+    "maximum_solver_iterations": 144
+  },
+  "provenance": {
+    "initialization": "generated unloaded reference, AFSI zero-force bootstrap"
+  },
+  "elapsed_seconds": 1959.7217835504562,
+  "resumptions": 0,
+  "execution_segments": [
+    {
+      "start_step": 0,
+      "backend": "csr",
+      "check_every": 8,
+      "history_every": 20,
+      "diagnostic_sampling": "history/log/checkpoint/output/end"
+    }
+  ],
+  "last": {
+    "step": 16000,
+    "time_s": 0.8,
+    "prescribed_pressure_mmhg": 8.0,
+    "prescribed_tension_dyn_per_cm2": 0.0,
+    "applied_force_time_s": 0.7999,
+    "applied_pressure_mmhg": 8.000261272804423,
+    "next_force_time_s": 0.79995,
+    "cavity_volume_ml": 153.0234945108715,
+    "wall_volume_cm3": 109.3250519077709,
+    "minimum_detF": 0.9202151061138767,
+    "maximum_detF": 1.0556016894458349,
+    "max_incremental_displacement_cm": 1.479930551847855,
+    "max_fluid_speed_cm_per_s": 92.90372755659237,
+    "fluid_courant": 0.024453632268647534,
+    "max_grid_displacement": 0.005531668440837499,
+    "force_norm_dyn": 31958.499816755273,
+    "kinetic_energy_erg": 53251.248012179014,
+    "corrected_divergence_l2": 1030.3861822005838,
+    "max_solver_residual_ratio": 0.9634733094578135,
+    "max_solver_iterations": 128
+  }
+}
+

@@ -1,0 +1,286 @@
+{
+  "source_history_sha256": "c2ec72700778c44133f28b03b93e167ee3e34747f9fc7bafb0ce1548c6804c28",
+  "sampled_rows": 801,
+  "sampling_every_steps": 20,
+  "phases": [
+    {
+      "step": 0,
+      "time_s": 0,
+      "prescribed_pressure_mmhg": 0,
+      "prescribed_tension_dyn_per_cm2": 0,
+      "cavity_volume_ml": 82.75809228453294,
+      "wall_volume_cm3": 108.9239477537798,
+      "minimum_detF": 0.9999999999999902,
+      "maximum_detF": 1.000000000000015,
+      "max_incremental_displacement_cm": 0,
+      "max_fluid_speed_cm_per_s": 0,
+      "fluid_courant": 0,
+      "force_norm_dyn": 0,
+      "kinetic_energy_erg": 0,
+      "corrected_divergence_l2": 0,
+      "max_solver_residual_ratio": 0,
+      "max_solver_iterations": 0
+    },
+    {
+      "step": 2000,
+      "time_s": 0.1,
+      "prescribed_pressure_mmhg": 4,
+      "prescribed_tension_dyn_per_cm2": 0,
+      "cavity_volume_ml": 99.64742934797056,
+      "wall_volume_cm3": 108.93807585996129,
+      "minimum_detF": 0.985251181486699,
+      "maximum_detF": 1.0108274392476893,
+      "max_incremental_displacement_cm": 0.2658304153230695,
+      "max_fluid_speed_cm_per_s": 26.6396328055242,
+      "fluid_courant": 0.007988414670036468,
+      "force_norm_dyn": 4449.144833772716,
+      "kinetic_energy_erg": 17879.939663496578,
+      "corrected_divergence_l2": 138.588619683566,
+      "max_solver_residual_ratio": 0.9011378914569713,
+      "max_solver_iterations": 128
+    },
+    {
+      "step": 4000,
+      "time_s": 0.2,
+      "prescribed_pressure_mmhg": 8,
+      "prescribed_tension_dyn_per_cm2": 0,
+      "cavity_volume_ml": 133.24056230079216,
+      "wall_volume_cm3": 109.04281897412403,
+      "minimum_detF": 0.9576293883636915,
+      "maximum_detF": 1.0361185077451445,
+      "max_incremental_displacement_cm": 0.935475195520873,
+      "max_fluid_speed_cm_per_s": 28.235188116217685,
+      "fluid_courant": 0.007421760769178496,
+      "force_norm_dyn": 3101.5697706246137,
+      "kinetic_energy_erg": 18062.13150884527,
+      "corrected_divergence_l2": 83.58658331131895,
+      "max_solver_residual_ratio": 0.9087156043601471,
+      "max_solver_iterations": 128
+    },
+    {
+      "step": 6000,
+      "time_s": 0.3,
+      "prescribed_pressure_mmhg": 8,
+      "prescribed_tension_dyn_per_cm2": 0,
+      "cavity_volume_ml": 131.93629322400471,
+      "wall_volume_cm3": 109.02379850672634,
+      "minimum_detF": 0.958851371847697,
+      "maximum_detF": 1.0346732020441707,
+      "max_incremental_displacement_cm": 0.8883936948611828,
+      "max_fluid_speed_cm_per_s": 10.931250535970769,
+      "fluid_courant": 0.003429132560013868,
+      "force_norm_dyn": 1790.7899052557543,
+      "kinetic_energy_erg": 3367.15903827709,
+      "corrected_divergence_l2": 81.76403079625496,
+      "max_solver_residual_ratio": 0.7960227959797104,
+      "max_solver_iterations": 128
+    },
+    {
+      "step": 8000,
+      "time_s": 0.4,
+      "prescribed_pressure_mmhg": 8,
+      "prescribed_tension_dyn_per_cm2": 0,
+      "cavity_volume_ml": 128.5135696490435,
+      "wall_volume_cm3": 108.98957611016104,
+      "minimum_detF": 0.9605462423766931,
+      "maximum_detF": 1.0318871139084171,
+      "max_incremental_displacement_cm": 0.8277816390913165,
+      "max_fluid_speed_cm_per_s": 10.448731964184509,
+      "fluid_courant": 0.002096657023609722,
+      "force_norm_dyn": 1803.7388557256847,
+      "kinetic_energy_erg": 607.0185564330332,
+      "corrected_divergence_l2": 63.84368303758334,
+      "max_solver_residual_ratio": 0.9372636612799999,
+      "max_solver_iterations": 128
+    },
+    {
+      "step": 10000,
+      "time_s": 0.5,
+      "prescribed_pressure_mmhg": 8,
+      "prescribed_tension_dyn_per_cm2": 0,
+      "cavity_volume_ml": 131.25125513819245,
+      "wall_volume_cm3": 109.0176453893506,
+      "minimum_detF": 0.9588024946980497,
+      "maximum_detF": 1.0341716295687355,
+      "max_incremental_displacement_cm": 0.8862384006310972,
+      "max_fluid_speed_cm_per_s": 7.432434540302135,
+      "fluid_courant": 0.0015045083205981358,
+      "force_norm_dyn": 892.9437215848702,
+      "kinetic_energy_erg": 224.37319228784486,
+      "corrected_divergence_l2": 26.596741809133835,
+      "max_solver_residual_ratio": 0.9128905477658068,
+      "max_solver_iterations": 128
+    },
+    {
+      "step": 11000,
+      "time_s": 0.55,
+      "prescribed_pressure_mmhg": 56.569480669559354,
+      "prescribed_tension_dyn_per_cm2": 236081.60417242028,
+      "cavity_volume_ml": 135.86742959394405,
+      "wall_volume_cm3": 105.69168779133744,
+      "minimum_detF": 0.7688284895050937,
+      "maximum_detF": 1.1326916647577878,
+      "max_incremental_displacement_cm": 1.6858272616878889,
+      "max_fluid_speed_cm_per_s": 58.37037028632838,
+      "fluid_courant": 0.01332009613089179,
+      "force_norm_dyn": 24704.702097114645,
+      "kinetic_energy_erg": 89271.95716910725,
+      "corrected_divergence_l2": 508.3325779967867,
+      "max_solver_residual_ratio": 0.9772177735839694,
+      "max_solver_iterations": 136
+    },
+    {
+      "step": 12000,
+      "time_s": 0.6,
+      "prescribed_pressure_mmhg": 103.93061056576575,
+      "prescribed_tension_dyn_per_cm2": 518798.8300580323,
+      "cavity_volume_ml": 161.86051325141202,
+      "wall_volume_cm3": 102.47473728989394,
+      "minimum_detF": 0.47580806703710915,
+      "maximum_detF": 1.2335083894915773,
+      "max_incremental_displacement_cm": 2.221798075369303,
+      "max_fluid_speed_cm_per_s": 40.60874638634505,
+      "fluid_courant": 0.011899619396302357,
+      "force_norm_dyn": 27739.623407023962,
+      "kinetic_energy_erg": 32612.46739499289,
+      "corrected_divergence_l2": 741.7110343292478,
+      "max_solver_residual_ratio": 0.9338293668004191,
+      "max_solver_iterations": 136
+    },
+    {
+      "step": 13000,
+      "time_s": 0.65,
+      "prescribed_pressure_mmhg": 112.13233318857102,
+      "prescribed_tension_dyn_per_cm2": 593334.6020770547,
+      "cavity_volume_ml": 132.06061114550798,
+      "wall_volume_cm3": 101.07855157936214,
+      "minimum_detF": 0.38730673537257737,
+      "maximum_detF": 1.3369993344920919,
+      "max_incremental_displacement_cm": 1.9101343915130868,
+      "max_fluid_speed_cm_per_s": 47.06162095977539,
+      "fluid_courant": 0.013799372763586757,
+      "force_norm_dyn": 16136.099009481186,
+      "kinetic_energy_erg": 59259.1436944391,
+      "corrected_divergence_l2": 696.3636512023868,
+      "max_solver_residual_ratio": 0.8413683505891442,
+      "max_solver_iterations": 128
+    },
+    {
+      "step": 14000,
+      "time_s": 0.7000000000000001,
+      "prescribed_pressure_mmhg": 103.93061056576575,
+      "prescribed_tension_dyn_per_cm2": 518798.8300580323,
+      "cavity_volume_ml": 109.9633013368805,
+      "wall_volume_cm3": 101.385568722622,
+      "minimum_detF": 0.436458017649309,
+      "maximum_detF": 1.3500009231485488,
+      "max_incremental_displacement_cm": 1.6181426402264656,
+      "max_fluid_speed_cm_per_s": 30.229267354240083,
+      "fluid_courant": 0.009912513955823946,
+      "force_norm_dyn": 24104.326534322656,
+      "kinetic_energy_erg": 10395.90511325537,
+      "corrected_divergence_l2": 543.8238098734005,
+      "max_solver_residual_ratio": 0.9110719581700568,
+      "max_solver_iterations": 128
+    },
+    {
+      "step": 15000,
+      "time_s": 0.75,
+      "prescribed_pressure_mmhg": 56.569480669559354,
+      "prescribed_tension_dyn_per_cm2": 236081.60417242028,
+      "cavity_volume_ml": 148.637959371221,
+      "wall_volume_cm3": 105.8244640152082,
+      "minimum_detF": 0.7713901399070464,
+      "maximum_detF": 1.1266010161711801,
+      "max_incremental_displacement_cm": 1.8230806701378002,
+      "max_fluid_speed_cm_per_s": 71.94634014179566,
+      "fluid_courant": 0.020010558460165997,
+      "force_norm_dyn": 12609.393854938606,
+      "kinetic_energy_erg": 135307.12871446827,
+      "corrected_divergence_l2": 701.0753308365462,
+      "max_solver_residual_ratio": 0.76067932519033,
+      "max_solver_iterations": 136
+    },
+    {
+      "step": 16000,
+      "time_s": 0.8,
+      "prescribed_pressure_mmhg": 8,
+      "prescribed_tension_dyn_per_cm2": 0,
+      "cavity_volume_ml": 153.0234945108715,
+      "wall_volume_cm3": 109.3250519077709,
+      "minimum_detF": 0.9202151061138767,
+      "maximum_detF": 1.0556016894458349,
+      "max_incremental_displacement_cm": 1.479930551847855,
+      "max_fluid_speed_cm_per_s": 92.90372755659237,
+      "fluid_courant": 0.024453632268647534,
+      "force_norm_dyn": 31958.499816755273,
+      "kinetic_energy_erg": 53251.248012179014,
+      "corrected_divergence_l2": 1030.3861822005838,
+      "max_solver_residual_ratio": 0.9634733094578135,
+      "max_solver_iterations": 128
+    }
+  ],
+  "sampled_extrema": {
+    "cavity_volume_ml": {
+      "minimum": {
+        "time_s": 0,
+        "value": 82.75809228453294
+      },
+      "maximum": {
+        "time_s": 0.5930000000000001,
+        "value": 163.13683591164133
+      }
+    },
+    "wall_volume_cm3": {
+      "minimum": {
+        "time_s": 0.666,
+        "value": 100.95952509807339
+      },
+      "maximum": {
+        "time_s": 0.797,
+        "value": 109.34048978226647
+      }
+    },
+    "minimum_detF": {
+      "minimum": {
+        "time_s": 0.651,
+        "value": 0.3869529745260712
+      },
+      "maximum": {
+        "time_s": 0,
+        "value": 0.9999999999999902
+      }
+    },
+    "max_fluid_speed_cm_per_s": {
+      "minimum": {
+        "time_s": 0,
+        "value": 0
+      },
+      "maximum": {
+        "time_s": 0.8,
+        "value": 92.90372755659237
+      }
+    },
+    "corrected_divergence_l2": {
+      "minimum": {
+        "time_s": 0,
+        "value": 0
+      },
+      "maximum": {
+        "time_s": 0.794,
+        "value": 1085.7305310218844
+      }
+    },
+    "max_incremental_displacement_cm": {
+      "minimum": {
+        "time_s": 0,
+        "value": 0
+      },
+      "maximum": {
+        "time_s": 0.612,
+        "value": 2.2911698768230333
+      }
+    }
+  }
+}
+

@@ -47,5 +47,5 @@ CUDA_VISIBLE_DEVICES=0 python examples/lv_cycle.py \
 
 Windows CPU：194 passed、106 CUDA skipped、2 warnings（TorchScript 弃用和 PyTorch CSR beta 提示）。新测试覆盖非立方网格全部固定算子、组合矩阵、非零边界的多步 Chorin、非线性固体 IB 轨迹、检查间隔内提前收敛、失败/真实残差，以及采样间隔内失败的报告状态。已有续算、载荷和其他回归全部通过。
 
-另用生成左室 mesh-size=1.8 cm、6³ 流体网格、dt=5e-5 s 跑完 CPU 200 步到 0.01 s（无 VTK）。报告内耗时 8.37 s，终点腔容积 77.558550933 mL、最小 det(F)=0.999139299。[先导报告](lv-cycle-csr-cpu-pilot-0.26.0.json)。这个小网格 CPU 结果仅验证入口和运行，不能用它宣称 RTX 4090 的加速倍数。目标 GPU 全周期耗时与显存尚待用户运行。
+另用生成左室 mesh-size=1.8 cm、6³ 流体网格、dt=5e-5 s 跑完 CPU 200 步到 0.01 s（无 VTK）。报告内耗时 8.37 s，终点腔容积 77.558550933 mL、最小 det(F)=0.999139299。[先导报告](lv-cycle-csr-cpu-pilot-0.26.0.json)。这个小网格 CPU 结果仅验证入口和运行。用户随后完成同参数 RTX 4090 的 0.8 s 正式运行；[GPU 报告及与旧版比较](LV_CYCLE_CSR_GPU_0.26.0.md)。
 
