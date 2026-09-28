@@ -101,15 +101,18 @@ def test_generated_geometry_harmonic_field_and_nonzero_force(device):
 def test_aligned_driver_restart_preserves_load_frame_and_quadrature(tmp_path,device):
     pytest.importorskip('gmsh')
     common = dict(device=device,profile='afsi337',mesh_size=.4,fluid_cells=8,
-                  write_vtk=False,history_every=1,log_every=100,checkpoint_every=2)
+                  write_vtk=False,history_every=1,log_every=100,checkpoint_every=2,timing=True)
     whole = run(**common,output=tmp_path/'whole',end_time=.0003)
     run(**common,output=tmp_path/'split',end_time=.00015)
     resumed = run(device=device,profile='afsi337',resume=tmp_path/'split'/'checkpoint.npz',
-                  end_time=.0003,write_vtk=False,history_every=1)
+                  end_time=.0003,write_vtk=False,history_every=1,timing=True)
     assert resumed['load_protocol'] == 'ramp-and-hold'
     assert resumed['period_s'] is None and not resumed['full_cycle_completed']
     assert not resumed['reference_load_completed']
     assert resumed['settings']['origin'] == [0.,0.,0.]
+    assert whole['timing']['measured_steps'] == resumed['timing']['measured_steps'] == 6
+    assert all(resumed['timing']['stage_seconds'][name] > 0 for name in
+               ('ib_stencil', 'ib_spread', 'fluid_step', 'ib_interpolation', 'solid_force'))
     assert not whole['source_alignment']['fluid_mesh_matched']
     a,sa,*_ = load_cycle(tmp_path/'whole'/'checkpoint.npz',device)
     b,sb,*_ = load_cycle(tmp_path/'split'/'checkpoint.npz',device)
@@ -139,4 +142,3 @@ def test_native_import_preserves_coefficients_and_rejects_bad_tags(tmp_path):
     np.savez_compressed(path,metadata=json.dumps(metadata),**data)
     with pytest.raises(ValueError,match='exactly'):
         load_native_solid(path)
-

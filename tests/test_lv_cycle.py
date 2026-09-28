@@ -109,10 +109,11 @@ def test_cycle_failure_saves_last_accepted_state(tmp_path, monkeypatch):
     monkeypatch.setattr(ExplicitIBStepper, 'step', fail_at_third)
     with pytest.raises(RuntimeError, match='injected'):
         run(device='cpu', output=tmp_path, end_time=.0003, mesh_size=2.5,
-            fluid_cells=3, write_vtk=False, checkpoint_every=10, history_every=1)
+            fluid_cells=3, write_vtk=False, checkpoint_every=10, history_every=1,
+            timing=True)
     report = json.loads((tmp_path/'report.json').read_text(encoding='utf-8'))
     assert report['status'] == 'failed' and not report['completed']
     assert report['accepted_steps'] == 2
+    assert report['timing']['measured_steps'] == 2
     _, state, _, _, progress = load_cycle(tmp_path/'checkpoint.npz')
     assert state.step == 2 and progress['failure']['message'] == 'injected step failure'
-

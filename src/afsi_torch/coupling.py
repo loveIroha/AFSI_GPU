@@ -84,22 +84,34 @@ class ExplicitIBStepper:
         return CoupledState(0,0.,state.x,state.velocity,state.pressure,force.detach().clone(),0.)
 
     @torch.no_grad()
-    def step(self, state, *, boundary_values=None, diagnostics=True):
+    def step(self, state, *, boundary_values=None, diagnostics=True, timing=None):
+        if timing is not None:
+            timing.begin()
         dt = self.fluid.dt
         if (not isinstance(state.step, int) or state.step < 0 or
                 not isfinite(state.time) or abs(state.time-state.step*dt) > 1e-12*max(1., abs(state.time))):
             raise ValueError('state time/step inconsistent with this fixed dt')
         self.validate(state.x)
+        if timing is not None:
+            timing.mark('solid_validation')
         old_stencil = self.stencil_factory(state.x, self.grid)
+        if timing is not None:
+            timing.mark('ib_stencil')
         if not torch.isfinite(state.force).all():
             raise ValueError('stored solid force must be finite')
         density = ib.spread_density(state.force, old_stencil)
         dual_load = ib.spread_load(state.force, old_stencil) if self.load_path == 'dual' else None
+        if timing is not None:
+            timing.mark('ib_spread')
         flow = self.fluid.step(state.velocity, **({'density': density} if dual_load is None else
                                {'nodal_load': dual_load}), boundary_values=boundary_values,
                                pressure_initial=state.pressure,
                                **({} if diagnostics else {'diagnostics': False}))
+        if timing is not None:
+            timing.mark('fluid_step')
         solid_velocity = ib.interpolate(flow.velocity, old_stencil)
+        if timing is not None:
+            timing.mark('ib_interpolation')
         displacement = dt*solid_velocity
         fraction = (displacement.abs()/displacement.new_tensor(self.grid.spacing)).max().item()
         if not isfinite(fraction) or fraction > self.max_grid_displacement:
@@ -107,8 +119,14 @@ class ExplicitIBStepper:
                              f'{self.max_grid_displacement}; reduce dt (step not accepted)')
         x_new = state.x+displacement
         self.validate(x_new)
+        if timing is not None:
+            timing.mark('solid_update_and_validation')
         new_stencil = self.stencil_factory(x_new, self.grid)
+        if timing is not None:
+            timing.mark('ib_stencil')
         new_force = self.force(x_new, state.time)
+        if timing is not None:
+            timing.mark('solid_force')
         if (new_force.shape != x_new.shape or new_force.device != x_new.device or
                 new_force.dtype != x_new.dtype or not torch.isfinite(new_force).all()):
             raise ValueError('force callback must return finite integrated (N,3) nodal forces')
@@ -117,6 +135,8 @@ class ExplicitIBStepper:
         next_density = ib.spread_density(new_force, new_stencil)
         if not torch.isfinite(next_density).all():
             raise ValueError('next force density is nonfinite')
+        if timing is not None:
+            timing.mark('ib_spread_and_validation')
         diagnostic = dict(fluid=flow.diagnostics, time_s=(state.step+1)*dt,
             load_path=self.load_path,
             used_force_time_s=state.force_time, next_force_time_s=state.time,
@@ -136,5 +156,6 @@ class ExplicitIBStepper:
                 spread_force_balance_max_abs=(density.sum(0)*self.grid.cell_volume-state.force.sum(0)).abs().max().item())
         new_state = CoupledState(state.step+1, (state.step+1)*dt, x_new, flow.velocity,
                                  flow.pressure, new_force, state.time)
+        if timing is not None:
+            timing.finish()
         return CoupledResult(new_state, solid_velocity, density, diagnostic)
-

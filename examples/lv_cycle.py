@@ -25,6 +25,7 @@ from afsi_torch.geometry import LVConfig, generate_lv
 from afsi_torch.geometry.output import write_lv
 from afsi_torch.lv_model import LVSolid
 from afsi_torch.preload import load_preload
+from afsi_torch.step_timing import StepTimingRecorder
 from afsi_torch.units import CGS_UNITS, MMHG_TO_DYN_PER_CM2
 
 
@@ -104,7 +105,8 @@ def _accumulate(summary, row):
 def run(*, device='cuda', output=None, end_time=None, dt=None, mesh_size=None,
         fluid_cells=None, box_length=None, loads=None, preload=None, resume=None,
         output_every=200, checkpoint_every=200, log_every=100, history_every=20,
-        write_vtk=True, backend='csr', check_every=8, profile=None, solid_input=None):
+        write_vtk=True, backend='csr', check_every=8, profile=None, solid_input=None,
+        timing=False):
     if profile not in (None, 'cycle', 'afsi337'):
         raise ValueError('unknown LV profile')
     if not resume:
@@ -196,13 +198,15 @@ def run(*, device='cuda', output=None, end_time=None, dt=None, mesh_size=None,
     settings['solver']['check_every'] = check_every
     progress.setdefault('execution_segments', []).append(dict(
         start_step=state.step if resume else 0, backend=backend, check_every=check_every,
-        history_every=history_every, diagnostic_sampling='history/log/checkpoint/output/end'))
+        history_every=history_every, timing=bool(timing),
+        diagnostic_sampling='history/log/checkpoint/output/end'))
     operators = prepare_operators(fluid_mesh)
     if backend == 'csr':
         operators = CSRFluidOperators(operators)
     flow = ChorinSolver(operators, dt=dt, rho=settings['rho'], mu=settings['mu'],
                         options=SolverOptions(**settings['solver']))
     driver = ExplicitIBStepper(flow, model.force, model.validate)
+    timer = StepTimingRecorder(device, progress.get('timing')) if timing else None
     if not resume:
         state = (driver.initialize_equilibrium(x_start, force_tolerance=tolerance)
                  if preload else driver.initialize(x_start))
@@ -244,6 +248,8 @@ def run(*, device='cuda', output=None, end_time=None, dt=None, mesh_size=None,
             progress['last'] = _row(model, state, x_start, flow, result)
             _accumulate(progress['summary'], progress['last'])
         stream.flush()
+        if timer is not None:
+            progress['timing'] = timer.snapshot()
         progress['elapsed_seconds'] = previous_elapsed + perf_counter()-started
         save_cycle(folder/'checkpoint.npz', model, state, x_start, settings, progress)
         period = getattr(model.loads, 'period', None)
@@ -268,7 +274,9 @@ def run(*, device='cuda', output=None, end_time=None, dt=None, mesh_size=None,
             grid_convergence_established=False,
             diagnostic_scope=dict(expensive_extrema='sampled at history/log/checkpoint/output/end',
                 every_step='true solver residual, finite fields, deformation and IB support/displacement guards',
-                ib_power_diagnostics=False),
+                ib_power_diagnostics=False,
+                timing='CUDA events on GPU or perf_counter on CPU, read at report saves'
+                if timing else 'disabled'),
             source_alignment=dict(demo='afsic/demo/demo_337/fsi_paralell_fibers_contraction.py',
                 demo_blob='283b23f5155dbc57043edd2aa7280d61c3c8e985',
                 load_shapes='afsic/demo/demo_337/PressureEndo.py',
@@ -295,7 +303,12 @@ def run(*, device='cuda', output=None, end_time=None, dt=None, mesh_size=None,
               f'{settings["fluid_cells"]}^3 Q2 fluid cells, dt={dt:g} s; '
               f'continuing at step {state.step} toward {steps} ({end_time:g} s)', flush=True)
         for _ in range(state.step, steps):
-            result = driver.step(state, diagnostics=False)
+            try:
+                result = driver.step(state, diagnostics=False, timing=timer)
+            except BaseException:
+                if timer is not None:
+                    timer.abort()
+                raise
             state = result.state
             solves = result.diagnostics['fluid']['solves'].values()
             for key, value in (
@@ -356,6 +369,7 @@ def main(default_profile=None):
     parser.add_argument('--no-vtk', action='store_true')
     parser.add_argument('--backend', choices=('csr', 'quadrature'), default='csr')
     parser.add_argument('--check-every', type=int, default=8, help='PCG host check interval; true residual verified on return')
+    parser.add_argument('--timing', action='store_true', help='record cumulative IB, solid and fluid stage timings')
     parser.add_argument('--diastole-pressure-mmhg', type=float)
     parser.add_argument('--systole-pressure-mmhg', type=float)
     parser.add_argument('--max-tension', type=float, help='active stress amplitude in dyn/cm^2')
@@ -384,4 +398,3 @@ def main(default_profile=None):
 
 if __name__ == '__main__':
     main()
-
