@@ -34,8 +34,7 @@ class FETransfer:
             size, device=W.device, dtype=W.dtype, check_invariants=True).coalesce().to_sparse_csr()
         self.diagonal = W.new_zeros(geometry.node_count).index_add(0, cells.reshape(-1),
             local.diagonal(dim1=-2,dim2=-1).reshape(-1))[:,None].expand(-1,3)
-        axis = torch.arange(4, device=W.device)
-        self.offsets = torch.cartesian_prod(axis,axis,axis)
+        self.axis_offsets = torch.arange(4, device=W.device)
 
     def _nodal(self, value):
         g = self.geometry
@@ -70,12 +69,20 @@ class FETransfer:
         for c in range(3):
             scaled = (points-points.new_tensor(self.grid.face_origin(c)))/points.new_tensor(self.grid.spacing)
             base = torch.floor(scaled-1).to(torch.int64)
-            nodes = base[:,None,:]+self.offsets[None,:,:]
+            # Evaluate each one-dimensional kernel only four times per axis.
+            # The previous (points,64,3) construction repeated every phi value
+            # 16 times and materialized large coordinate/sqrt temporaries.
+            nodes = base[:,:,None]+self.axis_offsets[None,None,:]
             shape = self.grid.face_shape(c)
-            if (nodes < 0).any() or (nodes >= nodes.new_tensor(shape)).any():
+            if (nodes < 0).any() or (nodes >= nodes.new_tensor(shape)[None,:,None]).any():
                 raise ValueError('incomplete MAC interaction support')
-            indices.append((nodes[...,0]*shape[1]+nodes[...,1])*shape[2]+nodes[...,2])
-            weights.append(peskin4(scaled[:,None,:]-nodes.to(points.dtype)).prod(-1))
+            phi = peskin4(scaled[:,:,None]-nodes.to(points.dtype))
+            # Cartesian order is unchanged: z varies fastest, then y, then x.
+            ids = ((nodes[:,0,:,None,None]*shape[1]+nodes[:,1,None,:,None])
+                   *shape[2]+nodes[:,2,None,None,:])
+            kernel = (phi[:,0,:,None,None]*phi[:,1,None,:,None])*phi[:,2,None,None,:]
+            indices.append(ids.reshape(-1,64))
+            weights.append(kernel.reshape(-1,64))
         return MACStencil(tuple(indices), tuple(weights))
 
     @torch.no_grad()

@@ -13,6 +13,32 @@ from afsi_torch.tetrahedron import reference_nodes
 DEVICES = ['cpu',pytest.param('cuda',marks=pytest.mark.skipif(not torch.cuda.is_available(),reason='CUDA unavailable'))]
 
 
+@pytest.mark.parametrize('device', DEVICES)
+def test_separable_stencil_matches_expanded_kernel_on_shifted_anisotropic_grid(device):
+    from afsi_torch.ib import peskin4
+    X = .6*reference_nodes(device=device)-.2
+    geometry = prepare_p2(X, torch.arange(10, device=device).reshape(1,10))
+    grid = MACGrid((16,20,24), (4.,6.,8.), (-2.,-3.,-4.))
+    transfer = FETransfer(grid, geometry)
+    offsets = torch.cartesian_prod(*(torch.arange(4, device=device),)*3)
+    # Exercise subcell offsets and curved P2 elements on all staggered lattices.
+    for shift in (0., .125, -.31):
+        x = X+shift
+        x[4:] += .01*torch.sin(3*x[4:])
+        stencil = transfer.prepare(x)
+        points = transfer.interaction_points(x)
+        for c in range(3):
+            scaled = (points-points.new_tensor(grid.face_origin(c)))/points.new_tensor(grid.spacing)
+            nodes = torch.floor(scaled-1).long()[:,None,:]+offsets[None,:,:]
+            shape = grid.face_shape(c)
+            ids = (nodes[...,0]*shape[1]+nodes[...,1])*shape[2]+nodes[...,2]
+            weights = peskin4(scaled[:,None,:]-nodes.to(X.dtype)).prod(-1)
+            torch.testing.assert_close(stencil.indices[c], ids, rtol=0, atol=0)
+            torch.testing.assert_close(stencil.weights[c], weights, rtol=1e-14, atol=1e-16)
+            torch.testing.assert_close(stencil.weights[c].sum(-1), torch.ones_like(points[:,0]),
+                                       rtol=1e-14, atol=1e-14)
+
+
 @pytest.mark.parametrize('device',DEVICES)
 def test_neumann_mac_operator_and_summation_by_parts(device):
     grid=MACGrid((8,8,8),(2.,3.,4.))
