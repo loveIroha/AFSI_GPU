@@ -22,7 +22,11 @@ class MGOptions:
 
 
 class GeometricMultigrid:
-    def __init__(self, grid, *, device='cpu', dtype=torch.float64, options=None):
+    def __init__(self, grid, *, device='cpu', dtype=torch.float64, options=None, backend='torch'):
+        if backend not in ('torch', 'fused'):
+            raise ValueError('pressure backend must be torch or fused')
+        self.backend = 'torch'
+        self.workspace = None
         self.options = MGOptions() if options is None else options
         self.shapes, self.spacings, self.diagonals = [], [], []
         shape, spacing = grid.shape, grid.spacing
@@ -51,6 +55,10 @@ class GeometricMultigrid:
             for row, col, value in ((a,a,w),(b,b,w),(a,b,-w),(b,a,-w)):
                 A.index_put_((row, col), value, accumulate=True)
         self.coarse_inverse = torch.linalg.inv(A+torch.ones_like(A)/count)
+        if backend == 'fused':
+            from .mg_workspace import MGWorkspace
+            self.workspace = MGWorkspace(self)
+            self.backend = self.workspace.kernels.name
 
     def _smooth(self, level, p, rhs):
         for _ in range(self.options.smooth):
@@ -85,13 +93,18 @@ class GeometricMultigrid:
         tolerance = max(self.options.atol, self.options.rtol*torch.linalg.vector_norm(rhs).item())
         residual = torch.linalg.vector_norm(rhs-negative_laplacian(p, self.spacings[0])).item()
         if residual <= tolerance:
-            return p, dict(cycles=0, residual_norm=residual, tolerance=tolerance)
+            return p, dict(cycles=0, residual_norm=residual, tolerance=tolerance, backend=self.backend)
+        if self.workspace is not None:
+            self.workspace.initialize(p, rhs)
         for cycle in range(1, self.options.max_cycles+1):
-            p = self._cycle(0, p, rhs)
+            p = (self._cycle(0, p, rhs) if self.workspace is None else self.workspace.cycle())
             if cycle % self.options.check_every == 0 or cycle == self.options.max_cycles:
                 residual = torch.linalg.vector_norm(rhs-negative_laplacian(p, self.spacings[0])).item()
                 if not isfinite(residual):
                     raise RuntimeError('nonfinite multigrid residual')
                 if residual <= tolerance:
-                    return p, dict(cycles=cycle, residual_norm=residual, tolerance=tolerance)
+                    # The result belongs to the caller, not to reusable work storage.
+                    result = p if self.workspace is None else p.clone()
+                    return result, dict(cycles=cycle, residual_norm=residual,
+                                        tolerance=tolerance, backend=self.backend)
         raise RuntimeError(f'pressure multigrid did not converge: {residual:g} > {tolerance:g}')

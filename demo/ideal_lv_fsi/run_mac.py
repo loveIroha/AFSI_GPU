@@ -34,6 +34,8 @@ def main(argv=None):
     parser.add_argument('--checkpoint-every', type=int, default=1000)
     parser.add_argument('--warm-start', action=argparse.BooleanOptionalAction, default=None,
                         help='reuse previous IB mass-solve coefficients (experimental)')
+    parser.add_argument('--pressure-backend', choices=('torch','fused'), default=None,
+                        help='pressure V-cycle execution; fused uses Triton on CUDA (experimental)')
     options = vars(parser.parse_args(argv))
     if options['output'] is None and options['resume'] is None:
         options['output'] = 'results/demo_ideal_lv/mac'

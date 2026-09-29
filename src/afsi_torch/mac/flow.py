@@ -14,7 +14,8 @@ class MACFlowResult:
 
 
 class MACFlow:
-    def __init__(self, grid, *, dt, rho=1., mu=1., device='cpu', dtype=torch.float64, options=None):
+    def __init__(self, grid, *, dt, rho=1., mu=1., device='cpu', dtype=torch.float64,
+                 options=None, pressure_backend='torch'):
         if any(not isfinite(v) or v <= 0 for v in (dt, rho, mu)):
             raise ValueError('this explicit-viscous MAC scheme requires positive dt/rho/mu')
         self.grid, self.dt, self.rho, self.mu = grid, float(dt), float(rho), float(mu)
@@ -22,7 +23,8 @@ class MACFlow:
         # Boundary-adjacent tangential unknowns have a larger diagonal.
         if self.viscous_number > .25:
             raise ValueError('explicit viscous time step too large; reduce dt')
-        self.pressure_solver = GeometricMultigrid(grid, device=device, dtype=dtype, options=options)
+        self.pressure_solver = GeometricMultigrid(grid, device=device, dtype=dtype,
+                                                  options=options, backend=pressure_backend)
 
     @torch.no_grad()
     def project(self, tentative, initial=None):
