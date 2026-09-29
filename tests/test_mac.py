@@ -120,6 +120,32 @@ def transfer_setup(device):
 
 
 @pytest.mark.parametrize('device',DEVICES)
+def test_mass_transfer_warm_start_preserves_solve_and_can_reset(device):
+    X, geometry, grid, cold = transfer_setup(device)
+    warm = FETransfer(grid, geometry, warm_start=True)
+    with pytest.raises(ValueError, match='warm_start'):
+        FETransfer(grid, geometry, warm_start=1)
+    x = X.clone()
+    x[4:] += .01*torch.sin(3*x[4:])
+    stencil = cold.prepare(x)
+    velocity = zero_normal(tuple(torch.sin(grid.coordinates(c,device=device).sum(-1))
+                                 for c in range(3)))
+    for k in range(3):
+        force = torch.sin(2*X)+k*.0001*torch.cos(X)
+        density_cold, _ = cold.spread(force,stencil)
+        density_warm, force_info = warm.spread(force,stencil)
+        U_cold, _ = cold.interpolate(velocity,stencil)
+        U_warm, velocity_info = warm.interpolate(velocity,stencil)
+        for a,b in zip(density_cold,density_warm):
+            torch.testing.assert_close(a,b,rtol=1e-8,atol=1e-8)
+        torch.testing.assert_close(U_cold,U_warm,rtol=1e-8,atol=1e-8)
+        assert force_info.residual_norm <= force_info.tolerance
+        assert velocity_info.residual_norm <= velocity_info.tolerance
+    warm.reset_warm_start()
+    assert warm._force_coefficient is None and warm._velocity_coefficient is None
+
+
+@pytest.mark.parametrize('device',DEVICES)
 def test_quadrature_transfer_force_torque_power_and_constant_velocity(device):
     X,geo,grid,transfer=transfer_setup(device)
     x=X.clone()

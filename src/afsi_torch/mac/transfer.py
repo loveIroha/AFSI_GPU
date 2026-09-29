@@ -17,8 +17,13 @@ class MACStencil:
 
 
 class FETransfer:
-    def __init__(self, grid, geometry, *, options=None):
+    def __init__(self, grid, geometry, *, options=None, warm_start=False):
         self.grid, self.geometry = grid, geometry
+        if type(warm_start) is not bool:
+            raise ValueError('warm_start must be a bool')
+        self.warm_start = warm_start
+        self._force_coefficient = None
+        self._velocity_coefficient = None
         if (geometry.weights <= 0).any():
             raise ValueError('positive interaction quadrature weights required')
         self.options = (SolverOptions(rtol=1e-12, atol=1e-13, max_iterations=500,
@@ -35,6 +40,11 @@ class FETransfer:
         self.diagonal = W.new_zeros(geometry.node_count).index_add(0, cells.reshape(-1),
             local.diagonal(dim1=-2,dim2=-1).reshape(-1))[:,None].expand(-1,3)
         self.axis_offsets = torch.arange(4, device=W.device)
+
+    def reset_warm_start(self):
+        """Discard cached PCG initial guesses when starting a new trajectory."""
+        self._force_coefficient = None
+        self._velocity_coefficient = None
 
     def _nodal(self, value):
         g = self.geometry
@@ -88,7 +98,11 @@ class FETransfer:
     @torch.no_grad()
     def spread(self, nodal_force, stencil):
         self._nodal(nodal_force)
-        coefficient, info = pcg(self.mass_action, nodal_force, self.diagonal, options=self.options)
+        coefficient, info = pcg(self.mass_action, nodal_force, self.diagonal,
+                                initial=self._force_coefficient if self.warm_start else None,
+                                options=self.options)
+        if self.warm_start:
+            self._force_coefficient = coefficient
         force_q = (self.evaluate(coefficient)*self.geometry.weights[...,None]).reshape(-1,3)
         fields = []
         for c,(ids,weights) in enumerate(zip(stencil.indices,stencil.weights)):
@@ -109,4 +123,9 @@ class FETransfer:
         W,N,cells = self.geometry.weights,self.geometry.values,self.geometry.cells
         local = torch.einsum('qa,eq,eqi->eai',N,W,point_velocity.reshape(*W.shape,3))
         rhs = W.new_zeros((self.geometry.node_count,3)).index_add(0,cells.reshape(-1),local.reshape(-1,3))
-        return pcg(self.mass_action,rhs,self.diagonal,options=self.options)
+        result, info = pcg(self.mass_action, rhs, self.diagonal,
+                           initial=self._velocity_coefficient if self.warm_start else None,
+                           options=self.options)
+        if self.warm_start:
+            self._velocity_coefficient = result
+        return result, info

@@ -149,11 +149,14 @@ def benchmark(checkpoint, *, device='cuda', steps=20, warmup=3):
     geometry = (model.geometry if degree is None else
                 prepare_p2(model.mesh.X, model.mesh.cells, degree=degree))
     variants, final_states = {}, {}
-    for name, cls in [('expanded', ExpandedTransfer), ('separable', FETransfer)]:
+    for name, cls, warm_start in [('expanded', ExpandedTransfer, False),
+                                   ('separable', FETransfer, False),
+                                   ('separable_warm', FETransfer, True)]:
         flow = MACFlow(grid, dt=settings['dt'], rho=settings['rho'], mu=settings['mu'], device=device)
-        transfer = cls(grid, geometry)
+        transfer = cls(grid, geometry, warm_start=warm_start)
         driver = MACIBStepper(flow, transfer, model.force, model.validate)
         replay(driver, initial, warmup, device)
+        transfer.reset_warm_start()
         # All replays start from the same checkpoint, including the warmup.
         # The uninstrumented pass is the throughput result.
         if device.type == 'cuda':
@@ -162,6 +165,7 @@ def benchmark(checkpoint, *, device='cuda', steps=20, warmup=3):
         end, plain = replay(driver, initial, steps, device)
         peak = torch.cuda.max_memory_allocated(device) if device.type == 'cuda' else None
         final_states[name] = end
+        transfer.reset_warm_start()
         recorder = PhaseRecorder(device)
         with record_phases(driver, recorder):
             profiled, measured = replay(driver, initial, steps, device)
@@ -189,6 +193,7 @@ def benchmark(checkpoint, *, device='cuda', steps=20, warmup=3):
             print(f"  {phase}: {values['ms_per_step']:.3f} ms/step", flush=True)
         del driver, transfer, flow, profiled, end_stencil, density, solid_velocity
     differences = compare_states(final_states['expanded'], final_states['separable'])
+    warm_differences = compare_states(final_states['separable'], final_states['separable_warm'])
     return dict(schema=1, benchmark='mac-checkpoint-short-replay',
         checkpoint=str(Path(checkpoint).resolve()), device=str(device), torch=torch.__version__,
         gpu=torch.cuda.get_device_name(device) if device.type == 'cuda' else None,
@@ -199,7 +204,9 @@ def benchmark(checkpoint, *, device='cuda', steps=20, warmup=3):
         interaction_points=geometry.weights.numel(),
         interaction_links=geometry.weights.numel()*3*64,
         variants=variants, equivalence_max_abs=differences,
+        warm_start_equivalence_max_abs=warm_differences,
         measured_speedup=variants['expanded']['wall_seconds']/variants['separable']['wall_seconds'],
+        warm_start_speedup=variants['separable']['wall_seconds']/variants['separable_warm']['wall_seconds'],
         notes=[
             'No input checkpoint or simulation output is modified.',
             'Setup, final diagnostics, logging and checkpoint I/O are excluded from throughput.',
@@ -208,6 +215,7 @@ def benchmark(checkpoint, *, device='cuda', steps=20, warmup=3):
             'Phase events measure stream elapsed time, including possible host-launch gaps, not kernel busy time.',
             'Remaining step time includes additional guards, support checks and Python dispatch.',
             'A final 2 s checkpoint samples only the held-load tail, not the full loading trajectory.',
+            'separable_warm uses the previous mass-solve result as the initial guess; it retains the same true residual tolerance.',
             'Short replay speedup is not a measured full-horizon speedup.'])
 
 
@@ -226,7 +234,9 @@ def main():
     output.parent.mkdir(parents=True, exist_ok=True)
     atomic_json(output, report)
     print(json.dumps(dict(report=str(output), measured_speedup=report['measured_speedup'],
-                         equivalence_max_abs=report['equivalence_max_abs']), indent=2))
+                         warm_start_speedup=report['warm_start_speedup'],
+                         equivalence_max_abs=report['equivalence_max_abs'],
+                         warm_start_equivalence_max_abs=report['warm_start_equivalence_max_abs']), indent=2))
 
 
 if __name__ == '__main__':
