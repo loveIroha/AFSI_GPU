@@ -21,11 +21,13 @@ from afsi_torch.solid import prepare_p2
 
 @torch.no_grad()
 def run(*,device='cuda',output=None,end_time=.005,dt=None,fluid_cells=None,mesh_size=None,
-        interaction_degree=None,log_every=20,checkpoint_every=200,resume=None):
+        interaction_degree=None,log_every=20,checkpoint_every=200,resume=None,warm_start=None):
     if str(device).startswith('cuda') and not torch.cuda.is_available():
         raise RuntimeError('CUDA requested but unavailable')
     if any(type(n) is not int or n<1 for n in (log_every,checkpoint_every)):
         raise ValueError('positive integer log/checkpoint intervals required')
+    if warm_start is not None and type(warm_start) is not bool:
+        raise ValueError('warm_start must be a bool or None')
     started=perf_counter()
     folder=Path(output) if output else Path(resume).parent if resume else Path('results/lv_mac')
     if resume:
@@ -34,6 +36,7 @@ def run(*,device='cuda',output=None,end_time=.005,dt=None,fluid_cells=None,mesh_
         if folder.resolve()!=Path(resume).resolve().parent:
             raise ValueError('resume in the checkpoint directory')
         model,state,settings,progress=load_mac(resume,device)
+        settings['warm_start']=(settings.get('warm_start',False) if warm_start is None else warm_start)
     else:
         if (folder/'report.json').exists() or (folder/'checkpoint.npz').exists():
             raise ValueError('output contains a run; choose a new folder or resume')
@@ -42,7 +45,8 @@ def run(*,device='cuda',output=None,end_time=.005,dt=None,fluid_cells=None,mesh_
         mesh_size=.1 if mesh_size is None else mesh_size
         model=generated_model(mesh_size=mesh_size,device=device)
         settings=dict(dt=dt,fluid_cells=fluid_cells,box_length=5.,rho=1.,mu=1.,
-                      interaction_degree=interaction_degree)
+                      interaction_degree=interaction_degree,
+                      warm_start=False if warm_start is None else warm_start)
         progress=dict(elapsed_seconds=0.,segments=[],summary={})
     dt=settings['dt']
     if not isfinite(end_time) or end_time<=0 or not isfinite(dt) or dt<=0:
@@ -57,7 +61,7 @@ def run(*,device='cuda',output=None,end_time=.005,dt=None,fluid_cells=None,mesh_
         raise ValueError('interaction degree must be >=4 for the P2 consistent mass')
     geometry=(model.geometry if degree is None else
               prepare_p2(model.mesh.X,model.mesh.cells,degree=degree))
-    transfer=FETransfer(grid,geometry)
+    transfer=FETransfer(grid,geometry,warm_start=settings['warm_start'])
     driver=MACIBStepper(flow,transfer,model.force,model.validate)
     if resume:
         if state.step>steps:
@@ -75,7 +79,8 @@ def run(*,device='cuda',output=None,end_time=.005,dt=None,fluid_cells=None,mesh_
             history=[r for r in csv.DictReader(stream) if int(r['step'])<=state.step]
     previous_elapsed=progress['elapsed_seconds']
     progress.pop('failure',None)
-    progress['segments'].append(dict(start_step=state.step,device=str(device),log_every=log_every))
+    progress['segments'].append(dict(start_step=state.step,device=str(device),log_every=log_every,
+                                      warm_start=settings['warm_start']))
     info={}
 
     def row():
@@ -153,6 +158,8 @@ def main():
     parser.add_argument('--log-every',type=int,default=20)
     parser.add_argument('--checkpoint-every',type=int,default=200)
     parser.add_argument('--resume')
+    parser.add_argument('--warm-start',action=argparse.BooleanOptionalAction,default=None,
+                        help='reuse previous IB mass-solve coefficients as PCG initial guesses')
     args=parser.parse_args()
     report=run(**vars(args))
     print(f'{report["status"]}: elapsed_seconds={report["elapsed_seconds"]:.3f}',flush=True)

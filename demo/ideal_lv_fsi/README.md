@@ -11,6 +11,16 @@
 
 MAC 完整算例若需定位运行耗时，可从已有检查点做 20 步短程回放，比较 IB 核优化前后的结果与各阶段耗时；见 [MAC 性能检查说明](../../docs/MAC_PERFORMANCE.md)。
 
+MAC 的 `--warm-start` 可让两次 IB 一致质量矩阵求解使用上一步结果作为迭代初值；实测 4090 加载末期短程回放约从 103.7 降到 87.2 ms/步。开关默认为关闭，选项和检查点一起保存，续算时可以用 `--warm-start` 或 `--no-warm-start` 改变它。长时间加载阶段的性能及累计数值差异仍需单独验证。
+
+先检查加载初期的 0.005 s（100 步），使用新的输出目录，不覆盖已完成的 2 s 结果：
+
+```bash
+CUDA_VISIBLE_DEVICES=0 python -u demo/ideal_lv_fsi/run_mac.py \
+  --device cuda --warm-start --end-time 0.005 \
+  --output results/lv_mac_warm_early
+```
+
 ## 环境与前台运行
 
 在仓库根目录运行：

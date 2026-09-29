@@ -32,6 +32,8 @@ def main(argv=None):
                         help='fresh quadrature only; default: 14-point rule')
     parser.add_argument('--log-every', type=int, default=200)
     parser.add_argument('--checkpoint-every', type=int, default=1000)
+    parser.add_argument('--warm-start', action=argparse.BooleanOptionalAction, default=None,
+                        help='reuse previous IB mass-solve coefficients (experimental)')
     options = vars(parser.parse_args(argv))
     if options['output'] is None and options['resume'] is None:
         options['output'] = 'results/demo_ideal_lv/mac'

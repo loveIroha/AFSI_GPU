@@ -195,15 +195,18 @@ def test_mac_fe_coupling_keeps_lag_and_nonzero_motion(device):
 
 
 @pytest.mark.parametrize('device',DEVICES)
-def test_mac_lv_checkpoint_resume_matches_uninterrupted(tmp_path,device):
+@pytest.mark.parametrize('warm_start',[False,True])
+def test_mac_lv_checkpoint_resume_matches_uninterrupted(tmp_path,device,warm_start):
     pytest.importorskip('gmsh')
     from examples.lv_mac import run
     from afsi_torch.mac.checkpoint import load_mac
-    common=dict(device=device,mesh_size=.4,fluid_cells=16,log_every=2,checkpoint_every=2)
+    common=dict(device=device,mesh_size=.4,fluid_cells=16,log_every=2,checkpoint_every=2,
+                warm_start=warm_start)
     whole=run(**common,output=tmp_path/'whole',end_time=.0003)
     run(**common,output=tmp_path/'split',end_time=.00015)
     resumed=run(device=device,resume=tmp_path/'split'/'checkpoint.npz',end_time=.0003,log_every=2)
     assert resumed['accepted_steps']==whole['accepted_steps']==6
+    assert resumed['settings']['warm_start'] is warm_start
     _,a,_,_=load_mac(tmp_path/'whole'/'checkpoint.npz',device)
     _,b,_,_=load_mac(tmp_path/'split'/'checkpoint.npz',device)
     for name in ('x','force','pressure'):
