@@ -58,6 +58,12 @@ class FETransfer:
     def mass_action(self, value):
         return torch.sparse.mm(self.mass, value)
 
+    def solve_mass(self,rhs,initial):
+        return pcg(self.mass_action,rhs,self.diagonal,initial=initial,options=self.options)
+
+    def weighted_force(self,value):
+        return (self.evaluate(value)*self.geometry.weights[...,None]).reshape(-1,3)
+
     def interaction_points(self, x):
         self._nodal(x)
         return self.evaluate(x).reshape(-1,3)
@@ -98,19 +104,28 @@ class FETransfer:
     @torch.no_grad()
     def spread(self, nodal_force, stencil):
         self._nodal(nodal_force)
-        coefficient, info = pcg(self.mass_action, nodal_force, self.diagonal,
-                                initial=self._force_coefficient if self.warm_start else None,
-                                options=self.options)
+        coefficient, info = self.solve_mass(nodal_force,self._force_coefficient if self.warm_start else None)
         if self.warm_start:
             self._force_coefficient = coefficient
-        force_q = (self.evaluate(coefficient)*self.geometry.weights[...,None]).reshape(-1,3)
+        return self.spread_grid(self.weighted_force(coefficient),stencil),info
+
+    def spread_grid(self,force_q,stencil):
         fields = []
         for c,(ids,weights) in enumerate(zip(stencil.indices,stencil.weights)):
-            out = nodal_force.new_zeros(self.grid.face_shape(c))
+            out = force_q.new_zeros(self.grid.face_shape(c))
             out.reshape(-1).index_add_(0,ids.reshape(-1),
                 (weights*force_q[:,c,None]/self.grid.volume).reshape(-1))
             fields.append(out)
-        return tuple(fields), info
+        return tuple(fields)
+
+    def gather_grid(self,velocity,stencil):
+        return torch.stack([(u.reshape(-1)[ids]*weights).sum(-1)
+            for u,ids,weights in zip(velocity,stencil.indices,stencil.weights)],-1)
+
+    def assemble_velocity(self,point_velocity):
+        W,N,cells = self.geometry.weights,self.geometry.values,self.geometry.cells
+        local = torch.einsum('qa,eq,eqi->eai',N,W,point_velocity.reshape(*W.shape,3))
+        return W.new_zeros((self.geometry.node_count,3)).index_add(0,cells.reshape(-1),local.reshape(-1,3))
 
     @torch.no_grad()
     def interpolate(self, velocity, stencil):
@@ -118,14 +133,8 @@ class FETransfer:
         if any(u.device != self.geometry.weights.device or u.dtype != self.geometry.weights.dtype
                or not torch.isfinite(u).all() for u in velocity):
             raise ValueError('invalid MAC interpolation field')
-        point_velocity = torch.stack([(u.reshape(-1)[ids]*weights).sum(-1)
-            for u,ids,weights in zip(velocity,stencil.indices,stencil.weights)],-1)
-        W,N,cells = self.geometry.weights,self.geometry.values,self.geometry.cells
-        local = torch.einsum('qa,eq,eqi->eai',N,W,point_velocity.reshape(*W.shape,3))
-        rhs = W.new_zeros((self.geometry.node_count,3)).index_add(0,cells.reshape(-1),local.reshape(-1,3))
-        result, info = pcg(self.mass_action, rhs, self.diagonal,
-                           initial=self._velocity_coefficient if self.warm_start else None,
-                           options=self.options)
+        rhs = self.assemble_velocity(self.gather_grid(velocity,stencil))
+        result, info = self.solve_mass(rhs,self._velocity_coefficient if self.warm_start else None)
         if self.warm_start:
             self._velocity_coefficient = result
         return result, info

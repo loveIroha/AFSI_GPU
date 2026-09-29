@@ -12,17 +12,16 @@ from time import perf_counter
 import torch
 from afsi_torch.afsi337 import generated_model
 from afsi_torch.cycle_checkpoint import atomic_json
-from afsi_torch.mac import MACGrid,MACFlow,divergence
-from afsi_torch.mac.transfer import FETransfer
-from afsi_torch.mac.coupling import MACIBStepper
+from afsi_torch.mac import MACGrid,divergence
 from afsi_torch.mac.checkpoint import save_mac,load_mac
-from afsi_torch.solid import prepare_p2
 
 
 @torch.no_grad()
 def run(*,device='cuda',output=None,end_time=.005,dt=None,fluid_cells=None,mesh_size=None,
         interaction_degree=None,log_every=20,checkpoint_every=200,resume=None,warm_start=None,
-        pressure_backend=None):
+        pressure_backend=None,execution_backend=None):
+    if execution_backend is not None and execution_backend not in ('torch','fused'):
+        raise ValueError('execution_backend must be torch or fused')
     if str(device).startswith('cuda') and not torch.cuda.is_available():
         raise RuntimeError('CUDA requested but unavailable')
     if any(type(n) is not int or n<1 for n in (log_every,checkpoint_every)):
@@ -42,6 +41,8 @@ def run(*,device='cuda',output=None,end_time=.005,dt=None,fluid_cells=None,mesh_
         settings['warm_start']=(settings.get('warm_start',False) if warm_start is None else warm_start)
         settings['pressure_backend']=(settings.get('pressure_backend','torch')
                                       if pressure_backend is None else pressure_backend)
+        settings['execution_backend']=(settings.get('execution_backend','torch')
+                                       if execution_backend is None else execution_backend)
     else:
         if (folder/'report.json').exists() or (folder/'checkpoint.npz').exists():
             raise ValueError('output contains a run; choose a new folder or resume')
@@ -52,7 +53,8 @@ def run(*,device='cuda',output=None,end_time=.005,dt=None,fluid_cells=None,mesh_
         settings=dict(dt=dt,fluid_cells=fluid_cells,box_length=5.,rho=1.,mu=1.,
                       interaction_degree=interaction_degree,
                       warm_start=False if warm_start is None else warm_start,
-                      pressure_backend='torch' if pressure_backend is None else pressure_backend)
+                      pressure_backend='torch' if pressure_backend is None else pressure_backend,
+                      execution_backend='torch' if execution_backend is None else execution_backend)
         progress=dict(elapsed_seconds=0.,segments=[],summary={})
     dt=settings['dt']
     if not isfinite(end_time) or end_time<=0 or not isfinite(dt) or dt<=0:
@@ -61,15 +63,13 @@ def run(*,device='cuda',output=None,end_time=.005,dt=None,fluid_cells=None,mesh_
     if steps<1 or abs(steps*dt-end_time)>1e-12:
         raise ValueError('end time must be an integer multiple of dt')
     grid=MACGrid((settings['fluid_cells'],)*3,(settings['box_length'],)*3)
-    flow=MACFlow(grid,dt=dt,rho=settings['rho'],mu=settings['mu'],device=device,
-                 pressure_backend=settings['pressure_backend'])
     degree=settings['interaction_degree']
     if degree is not None and (type(degree) is not int or degree<4):
         raise ValueError('interaction degree must be >=4 for the P2 consistent mass')
-    geometry=(model.geometry if degree is None else
-              prepare_p2(model.mesh.X,model.mesh.cells,degree=degree))
-    transfer=FETransfer(grid,geometry,warm_start=settings['warm_start'])
-    driver=MACIBStepper(flow,transfer,model.force,model.validate)
+    from afsi_torch.mac.execution import build_driver
+    driver=build_driver(model,settings,device)
+    flow,transfer=driver.flow,driver.transfer
+    geometry=transfer.geometry
     if resume:
         if state.step>steps:
             raise ValueError('end time precedes checkpoint')
@@ -88,6 +88,7 @@ def run(*,device='cuda',output=None,end_time=.005,dt=None,fluid_cells=None,mesh_
     progress.pop('failure',None)
     progress['segments'].append(dict(start_step=state.step,device=str(device),log_every=log_every,
                                       warm_start=settings['warm_start'],
+                                      execution_backend=settings['execution_backend'],
                                       pressure_backend=flow.pressure_solver.backend))
     info={}
 
@@ -117,6 +118,7 @@ def run(*,device='cuda',output=None,end_time=.005,dt=None,fluid_cells=None,mesh_
             fluid_velocity_dofs=sum(u.numel() for u in state.velocity),fluid_pressure_cells=state.pressure.numel(),
             fluid_spacing_cm=grid.spacing,mg_levels=flow.pressure_solver.shapes,
             pressure_backend=flow.pressure_solver.backend,
+            execution_backend=settings['execution_backend'],
             interaction_points=geometry.weights.numel(),interaction_rule='fixed; increase --interaction-degree for refinement',
             coupling='Griffith-Luo unified quadrature transfer with consistent FE mass solves',
             pressure_gauge='zero mean, homogeneous Neumann, A=-D G',
@@ -171,6 +173,8 @@ def main():
                         help='reuse previous IB mass-solve coefficients as PCG initial guesses')
     parser.add_argument('--pressure-backend',choices=('torch','fused'),default=None,
                         help='pressure V-cycle execution; fused uses Triton on CUDA')
+    parser.add_argument('--execution-backend',choices=('torch','fused'),default=None,
+                        help='fused: compact IB, buffered CSR PCG and compiled fluid/solid kernels')
     args=parser.parse_args()
     report=run(**vars(args))
     print(f'{report["status"]}: elapsed_seconds={report["elapsed_seconds"]:.3f}',flush=True)

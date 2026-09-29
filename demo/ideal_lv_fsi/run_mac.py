@@ -36,6 +36,8 @@ def main(argv=None):
                         help='reuse previous IB mass-solve coefficients (experimental)')
     parser.add_argument('--pressure-backend', choices=('torch','fused'), default=None,
                         help='pressure V-cycle execution; fused uses Triton on CUDA (experimental)')
+    parser.add_argument('--execution-backend', choices=('torch','fused'), default=None,
+                        help='fused: compact IB, buffered CSR PCG and compiled fluid/solid kernels')
     options = vars(parser.parse_args(argv))
     if options['output'] is None and options['resume'] is None:
         options['output'] = 'results/demo_ideal_lv/mac'

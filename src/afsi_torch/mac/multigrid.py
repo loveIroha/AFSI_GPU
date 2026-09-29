@@ -27,6 +27,8 @@ class GeometricMultigrid:
             raise ValueError('pressure backend must be torch or fused')
         self.backend = 'torch'
         self.workspace = None
+        self._rhs_metrics = None
+        self._residual_norm = lambda rhs,p: torch.linalg.vector_norm(rhs-negative_laplacian(p,self.spacings[0]))
         self.options = MGOptions() if options is None else options
         self.shapes, self.spacings, self.diagonals = [], [], []
         shape, spacing = grid.shape, grid.spacing
@@ -60,6 +62,13 @@ class GeometricMultigrid:
             self.workspace = MGWorkspace(self)
             self.backend = self.workspace.kernels.name
 
+    def enable_tensor_fusion(self):
+        from .execution import tensor_kernel
+        device=self.diagonals[0].device
+        self._rhs_metrics=tensor_kernel(lambda rhs:torch.stack((torch.isfinite(rhs).all().to(rhs.dtype),
+            rhs.mean(),rhs.abs().mean())),device)
+        self._residual_norm=tensor_kernel(self._residual_norm,device)
+
     def _smooth(self, level, p, rhs):
         for _ in range(self.options.smooth):
             p = p+(2/3)*(rhs-negative_laplacian(p, self.spacings[level]))/self.diagonals[level]
@@ -81,9 +90,17 @@ class GeometricMultigrid:
     @torch.no_grad()
     def solve(self, rhs, initial=None):
         if (rhs.shape != self.shapes[0] or rhs.device != self.diagonals[0].device or
-                rhs.dtype != self.diagonals[0].dtype or not torch.isfinite(rhs).all()):
+                rhs.dtype != self.diagonals[0].dtype):
             raise ValueError('invalid pressure RHS')
-        if abs(rhs.mean().item()) > 1e-12+1e-10*rhs.abs().mean().item():
+        if self._rhs_metrics is None:
+            if not torch.isfinite(rhs).all():
+                raise ValueError('invalid pressure RHS')
+            mean,absolute_mean=rhs.mean().item(),rhs.abs().mean().item()
+        else:
+            finite,mean,absolute_mean=self._rhs_metrics(rhs).tolist()
+            if not finite:
+                raise ValueError('invalid pressure RHS')
+        if abs(mean)>1e-12+1e-10*absolute_mean:
             raise ValueError('incompatible Neumann pressure RHS: net flux must vanish')
         rhs = rhs-rhs.mean()
         p = torch.zeros_like(rhs) if initial is None else initial.clone()
@@ -91,7 +108,7 @@ class GeometricMultigrid:
             raise ValueError('invalid initial pressure')
         p -= p.mean()
         tolerance = max(self.options.atol, self.options.rtol*torch.linalg.vector_norm(rhs).item())
-        residual = torch.linalg.vector_norm(rhs-negative_laplacian(p, self.spacings[0])).item()
+        residual = self._residual_norm(rhs,p).item()
         if residual <= tolerance:
             return p, dict(cycles=0, residual_norm=residual, tolerance=tolerance, backend=self.backend)
         if self.workspace is not None:
@@ -99,7 +116,7 @@ class GeometricMultigrid:
         for cycle in range(1, self.options.max_cycles+1):
             p = (self._cycle(0, p, rhs) if self.workspace is None else self.workspace.cycle())
             if cycle % self.options.check_every == 0 or cycle == self.options.max_cycles:
-                residual = torch.linalg.vector_norm(rhs-negative_laplacian(p, self.spacings[0])).item()
+                residual = self._residual_norm(rhs,p).item()
                 if not isfinite(residual):
                     raise RuntimeError('nonfinite multigrid residual')
                 if residual <= tolerance:

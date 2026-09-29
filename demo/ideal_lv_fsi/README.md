@@ -1,5 +1,7 @@
 # 理想左心室 2 s IB/FEM 流固耦合 demo
 
+保持当前积分点 IB、CSR 一致质量矩阵与 P2 固体算法的执行优化，使用 `--execution-backend fused` 启用，包含紧凑 IB 内核、PCG 工作数组复用和流体/固体张量编译。完整说明与短程 GPU 对照命令见 [执行性能优化](../../docs/MAC_EXECUTION_PERFORMANCE.md)。首次 GPU 编译时间单独计入基准的预热阶段；完整算例运行不会启用分项计时。
+
 MAC 新增可选的 `--pressure-backend fused`，以 Triton 融合压力多重网格内核并复用工作数组；默认仍为 `torch`。请先完成 [GPU 正确性与短程性能对照](../../docs/MAC_MULTIGRID_PERFORMANCE.md)，再用于完整 2 s 计算。后端选择支持断点恢复，生产运行不启用分阶段计时。
 
 两个入口共享 AFSI `demo_337` 对齐的程序生成左心室、纤维、Guccione 本构、主动张力、内膜压力和基底弹簧。压力与主动张力在前 **1.5 s** 线性升至 150000 和 600000 dyn/cm²，随后保持到 **2 s**。这是加载—保持算例，不是 0.8 s 心动周期，也不含瓣膜和循环系统。
