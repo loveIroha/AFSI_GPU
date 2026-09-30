@@ -91,6 +91,8 @@ cat results/demo_ideal_valve/mac/runtime_3s.txt
 
 ## 输出和结果判读
 
+原版 AFSI 容器 `afsi_dev_ljy` 的相同固体网格对照、后台运行与计时见 [CPU 对照说明](../../docs/AFSI340_CPU_COMPARISON.md)。
+
 - `report.json`：设置、实际步数、物理时间、求解器信息、累计运行时间和失败原因。
 - `history.csv`：上下瓣尖位移、探针间隙、面积、`detF`、入口/出口流量、散度及采样时点的功率误差。上瓣尖探针沿用源程序的参考位置 `(1.9894,0.9101)`；探针间隙不是两瓣叶全局最短距离或接触判据。
 - `checkpoint.npz`：可校验完整状态；失败时尽量保存最后接受的时间步，不跳过异常继续计算。
