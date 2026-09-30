@@ -38,7 +38,12 @@ driver; use the unchanged reference solid kernels for torch.func derivatives.
 No node coupling, mass lumping, altered integration rule, precision reduction,
 new preconditioner, relaxed tolerance or different time-stepping scheme is used.
 Floating-point reduction order can change; equivalence is tolerance-based.
-CUDA Graphs are disabled to preserve ownership of returned state tensors.
+General compiled kernels keep automatic CUDA Graphs disabled to preserve
+ownership of returned states. Optional `--mass-backend graph` explicitly
+captures only PCG blocks in fixed workspaces and clones results to the caller.
+Optional `--solid-backend pointwise` fuses scalar 3x3 constitutive algebra.
+Both require fused execution and persist across checkpoint resume; see the
+[demo experiment commands](../demo/ideal_lv_fsi/README.md).
 
 ## Validation and performance measurement
 

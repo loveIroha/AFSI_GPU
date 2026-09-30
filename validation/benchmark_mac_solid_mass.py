@@ -12,20 +12,13 @@ from benchmark_mac_pressure import comparison
 from afsi_torch.cycle_checkpoint import atomic_json
 from afsi_torch.mac.checkpoint import load_mac
 from afsi_torch.mac.execution import build_driver,tensor_kernel
-from afsi_torch.mac.mass_graph import GraphMassSolver
-from afsi_torch.mac.solid_pointwise import PointwiseSolidExecution
 from afsi_torch.mac.grid import divergence
 
 
 def experiment_driver(model,settings,device,variant):
-    driver=build_driver(model,settings,device)
-    if variant in ('pointwise','combined'):
-        solid=PointwiseSolidExecution(model)
-        driver.force,driver.validate=solid.force,solid.validate
-    if variant in ('pcg_graph','combined'):
-        t=driver.transfer
-        t.mass_solver=GraphMassSolver(t.mass,t.diagonal,t.options)
-    return driver
+    return build_driver(model,dict(settings,
+        solid_backend='pointwise' if variant in ('pointwise','combined') else 'reference',
+        mass_backend='graph' if variant in ('pcg_graph','combined') else 'pcg'),device)
 
 
 @contextmanager

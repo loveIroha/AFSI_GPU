@@ -18,8 +18,16 @@ def build_driver(model, settings, device):
     from .coupling import MACIBStepper
     from ..solid import prepare_p2
     backend = settings.get('execution_backend', 'torch')
+    solid_backend = settings.get('solid_backend', 'reference')
+    mass_backend = settings.get('mass_backend', 'pcg')
     if backend not in ('torch', 'fused'):
         raise ValueError('execution backend must be torch or fused')
+    if solid_backend not in ('reference','pointwise'):
+        raise ValueError('solid backend must be reference or pointwise')
+    if mass_backend not in ('pcg','graph'):
+        raise ValueError('mass backend must be pcg or graph')
+    if backend!='fused' and (solid_backend!='reference' or mass_backend!='pcg'):
+        raise ValueError('pointwise solid and graph mass backends require execution_backend=fused')
     grid = MACGrid((settings['fluid_cells'],)*3, (settings['box_length'],)*3)
     flow = MACFlow(grid, dt=settings['dt'], rho=settings['rho'], mu=settings['mu'],
                    device=device, pressure_backend=settings.get('pressure_backend','torch'),
@@ -29,8 +37,13 @@ def build_driver(model, settings, device):
     if backend == 'fused':
         from .compact_transfer import CompactFETransfer
         from .solid_execution import SolidExecution
-        transfer = CompactFETransfer(grid,geometry,warm_start=settings.get('warm_start',False))
-        solid = SolidExecution(model)
+        transfer = CompactFETransfer(grid,geometry,warm_start=settings.get('warm_start',False),
+                                     mass_backend=mass_backend)
+        if solid_backend=='pointwise':
+            from .solid_pointwise import PointwiseSolidExecution
+            solid = PointwiseSolidExecution(model)
+        else:
+            solid = SolidExecution(model)
     else:
         transfer = FETransfer(grid,geometry,warm_start=settings.get('warm_start',False))
         solid = model

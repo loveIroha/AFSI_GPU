@@ -38,6 +38,10 @@ def main(argv=None):
                         help='pressure V-cycle execution; fused uses Triton on CUDA (experimental)')
     parser.add_argument('--execution-backend', choices=('torch','fused'), default=None,
                         help='fused: compact IB, buffered CSR PCG and compiled fluid/solid kernels')
+    parser.add_argument('--solid-backend', choices=('reference','pointwise'), default=None,
+                        help='pointwise: fused scalar Guccione stress; requires fused execution')
+    parser.add_argument('--mass-backend', choices=('pcg','graph'), default=None,
+                        help='graph: captured CSR-PCG blocks; requires fused execution')
     options = vars(parser.parse_args(argv))
     if options['output'] is None and options['resume'] is None:
         options['output'] = 'results/demo_ideal_lv/mac'

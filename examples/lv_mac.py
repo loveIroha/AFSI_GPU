@@ -19,9 +19,13 @@ from afsi_torch.mac.checkpoint import save_mac,load_mac
 @torch.no_grad()
 def run(*,device='cuda',output=None,end_time=.005,dt=None,fluid_cells=None,mesh_size=None,
         interaction_degree=None,log_every=20,checkpoint_every=200,resume=None,warm_start=None,
-        pressure_backend=None,execution_backend=None):
+        pressure_backend=None,execution_backend=None,solid_backend=None,mass_backend=None):
     if execution_backend is not None and execution_backend not in ('torch','fused'):
         raise ValueError('execution_backend must be torch or fused')
+    if solid_backend is not None and solid_backend not in ('reference','pointwise'):
+        raise ValueError('solid_backend must be reference or pointwise')
+    if mass_backend is not None and mass_backend not in ('pcg','graph'):
+        raise ValueError('mass_backend must be pcg or graph')
     if str(device).startswith('cuda') and not torch.cuda.is_available():
         raise RuntimeError('CUDA requested but unavailable')
     if any(type(n) is not int or n<1 for n in (log_every,checkpoint_every)):
@@ -43,6 +47,10 @@ def run(*,device='cuda',output=None,end_time=.005,dt=None,fluid_cells=None,mesh_
                                       if pressure_backend is None else pressure_backend)
         settings['execution_backend']=(settings.get('execution_backend','torch')
                                        if execution_backend is None else execution_backend)
+        settings['solid_backend']=(settings.get('solid_backend','reference')
+                                   if solid_backend is None else solid_backend)
+        settings['mass_backend']=(settings.get('mass_backend','pcg')
+                                  if mass_backend is None else mass_backend)
     else:
         if (folder/'report.json').exists() or (folder/'checkpoint.npz').exists():
             raise ValueError('output contains a run; choose a new folder or resume')
@@ -54,7 +62,9 @@ def run(*,device='cuda',output=None,end_time=.005,dt=None,fluid_cells=None,mesh_
                       interaction_degree=interaction_degree,
                       warm_start=False if warm_start is None else warm_start,
                       pressure_backend='torch' if pressure_backend is None else pressure_backend,
-                      execution_backend='torch' if execution_backend is None else execution_backend)
+                      execution_backend='torch' if execution_backend is None else execution_backend,
+                      solid_backend='reference' if solid_backend is None else solid_backend,
+                      mass_backend='pcg' if mass_backend is None else mass_backend)
         progress=dict(elapsed_seconds=0.,segments=[],summary={})
     dt=settings['dt']
     if not isfinite(end_time) or end_time<=0 or not isfinite(dt) or dt<=0:
@@ -89,6 +99,7 @@ def run(*,device='cuda',output=None,end_time=.005,dt=None,fluid_cells=None,mesh_
     progress['segments'].append(dict(start_step=state.step,device=str(device),log_every=log_every,
                                       warm_start=settings['warm_start'],
                                       execution_backend=settings['execution_backend'],
+                                      solid_backend=settings['solid_backend'],mass_backend=settings['mass_backend'],
                                       pressure_backend=flow.pressure_solver.backend))
     info={}
 
@@ -119,6 +130,8 @@ def run(*,device='cuda',output=None,end_time=.005,dt=None,fluid_cells=None,mesh_
             fluid_spacing_cm=grid.spacing,mg_levels=flow.pressure_solver.shapes,
             pressure_backend=flow.pressure_solver.backend,
             execution_backend=settings['execution_backend'],
+            solid_backend=settings['solid_backend'],mass_backend=settings['mass_backend'],
+            mass_cuda_graphs=len(getattr(getattr(transfer,'mass_solver',None),'graphs',{})),
             interaction_points=geometry.weights.numel(),interaction_rule='fixed; increase --interaction-degree for refinement',
             coupling='Griffith-Luo unified quadrature transfer with consistent FE mass solves',
             pressure_gauge='zero mean, homogeneous Neumann, A=-D G',
@@ -135,6 +148,8 @@ def run(*,device='cuda',output=None,end_time=.005,dt=None,fluid_cells=None,mesh_
         save('running')
         print(f'MAC LV: {device}, grid={grid.shape}, solid nodes={len(state.x)}, '
               f'interaction points={geometry.weights.numel()}, dt={dt:g}; steps {state.step}->{steps}',flush=True)
+        print(f'Execution: {settings["execution_backend"]}; solid={settings["solid_backend"]}, '
+              f'mass={settings["mass_backend"]}, pressure={flow.pressure_solver.backend}',flush=True)
         for _ in range(state.step,steps):
             sample=(state.step+1)%log_every==0 or state.step+1==steps
             state,info=driver.step(state,diagnostics=sample)
@@ -175,6 +190,10 @@ def main():
                         help='pressure V-cycle execution; fused uses Triton on CUDA')
     parser.add_argument('--execution-backend',choices=('torch','fused'),default=None,
                         help='fused: compact IB, buffered CSR PCG and compiled fluid/solid kernels')
+    parser.add_argument('--solid-backend',choices=('reference','pointwise'),default=None,
+                        help='pointwise: fused scalar 3x3 Guccione algebra; requires fused execution')
+    parser.add_argument('--mass-backend',choices=('pcg','graph'),default=None,
+                        help='graph: CUDA Graph PCG blocks; requires fused execution')
     args=parser.parse_args()
     report=run(**vars(args))
     print(f'{report["status"]}: elapsed_seconds={report["elapsed_seconds"]:.3f}',flush=True)

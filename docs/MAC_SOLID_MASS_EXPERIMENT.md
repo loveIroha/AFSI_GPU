@@ -21,7 +21,10 @@ CUDA Graph 采用侧流预热、固定输入/输出缓冲区和显式 capture/re
 [PyTorch CUDA Graph 文档](https://docs.pytorch.org/docs/stable/notes/cuda.html#cuda-graphs)。
 CPU 执行同样的分段递推用于验证，但不能验证 GPU 捕获或速度。
 
-实验选项只在基准脚本中启用。完整 demo 继续使用已有的后端配置。
+实验优化已接入完整 demo 的可选配置：`--solid-backend pointwise`
+与 `--mass-backend graph`，两者要求 `--execution-backend fused`。
+默认仍为既有固体执行与 PCG；检查点保存配置，续算继承或显式覆盖。
+从旧检查点恢复时，缺失字段按原实现解释。
 
 ## Linux GPU 命令
 
@@ -62,4 +65,7 @@ Graph 组不插入这些内部事件，避免改变已捕获图。
 或从完全融合的固体力耗时中扣除。它用于判断本构与组装哪个更值得下一轮优化。
 
 2 s checkpoint 测量的是保持载荷末段，不能代表加载段或完整 2 s 的收益。
-完成 GPU 对照并分析后，再决定哪些实验优化进入完整 demo。
+四组 4090 对照已通过，固体力约 12.94→1.33 ms/步，质量矩阵求解
+约 12.17→8.45 ms/步，整步约 42.24→21.84 ms；这是 20 步保持载荷末段的
+实测结果。加载初段、完整 2 s 后台实验和续算命令见
+[demo 说明](../demo/ideal_lv_fsi/README.md#本次固体质量矩阵优化实验)。

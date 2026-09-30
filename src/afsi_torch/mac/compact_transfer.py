@@ -39,8 +39,11 @@ def _assemble(point_velocity,N,cells,W,template):
 
 
 class CompactFETransfer(FETransfer):
-    def __init__(self,*args,**kwargs):
+    def __init__(self,*args,mass_backend='pcg',**kwargs):
+        if mass_backend not in ('pcg','graph'):
+            raise ValueError('mass backend must be pcg or graph')
         super().__init__(*args,**kwargs)
+        self.mass_backend=mass_backend
         device=self.geometry.weights.device
         self.execution_backend='triton+compile' if device.type=='cuda' else 'buffered-cpu'
         self._prepare_kernel=tensor_kernel(_prepare,device)
@@ -54,7 +57,11 @@ class CompactFETransfer(FETransfer):
         self.spacing=cast(self.grid.spacing)
         self.origin=cast(self.grid.origin)
         self.limits=cast(self.grid.shape)-2
-        self.mass_solver=MassSolver(self.mass,self.diagonal,self.options)
+        if mass_backend=='graph':
+            from .mass_graph import GraphMassSolver
+            self.mass_solver=GraphMassSolver(self.mass,self.diagonal,self.options)
+        else:
+            self.mass_solver=MassSolver(self.mass,self.diagonal,self.options)
 
     def _support_flags(self,points):
         scaled=(points-self.origin)/self.spacing
