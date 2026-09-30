@@ -1,462 +1,378 @@
-# AFSI_GPU：PyTorch IB/FEM 流固耦合
+# AFSI_GPU
 
-**项目结构与公共配置接口：**三个 demo 主程序顶部集中定义 `CONFIG`，支持
-Python 配置、JSON 文件和命令行覆盖。可以设置流体网格及域尺寸、时间步、
-固体几何/材料、载荷、求解器容差和输出频率；每次运行保存实际
-`configuration.json`。可复用 runner 位于 `src/afsi_torch/simulation/`。
-[接口、运行示例及续算规则](docs/CONFIGURATION.md)。
+**GPU fluid–structure interaction with PyTorch, nonlinear finite elements, and immersed-boundary coupling.**
 
-**2 s 理想左心室 demo：**[运行说明与 MAC/FEM 两种流体入口](demo/ideal_lv_fsi/README.md)。保留 MAC 有限差分＋几何多重网格和 Q2/Q1 有限元流体两种入口。
+[Description](#description) · [Documentation](#documentation) · [Installation](#installation) · [Quick start](#quick-start) · [Configuration](#configuration) · [PyTorch implementation](#pytorch-implementation) · [GPU performance](#gpu-performance)
 
-**三维 MAC 执行迁移：**新增压力 CUDA Graph、残差/粗化融合与合并耦合检查，保持全 Neumann 边界、零均值、原容差和载荷次序；支持旧检查点切换及只读短程 A/B。[GPU 验证及完整 2 s 运行说明](docs/LV_MAC_GRAPH_EXECUTION.md)。本地相关回归 70 passed、60 CUDA skipped，三维 GPU 加速待测。
+## Description
 
-**3 s 二维理想瓣膜 demo_340：**[物理设置、离散差别及 GPU 后台运行说明](demo/ideal_valve_fsi/README.md)。程序生成双瓣叶 P2 网格，使用 FRH 材料、±45° 纤维、根部弹簧、周期入口和二维 MAC/多重网格/积分点 IB。用户已完成旧版 GPU 3 s 运行（1094.143 s）。新执行版加入二维压力固定工作区、Triton 融合模板、CUDA Graph、跨步 IB 缓存与合并检查，保持数值方法和容差；[GPU 测试、只读短程 A/B 及优化版运行说明](docs/VALVE_GPU_EXECUTION.md)。目标 GPU 加速幅度待验证。
+AFSI_GPU is a research implementation of immersed-boundary fluid–structure interaction (IB-FSI) built around PyTorch. It couples a deformable Lagrangian finite-element solid to an Eulerian fluid grid, with geometry generation, transient simulation, checkpoint restart, and ParaView output in a single workflow.
 
-目标是在 GPU 上实现 AFSI 的非线性固体、背景流体与 IB 耦合，算例采用程序生成的厘米制理想左心室。当前已具备 P2 固体、Q2/Q1 流体、Chorin 求解及显式耦合时间步，并通过小规模独立 DOLFINx/NumPy 对照。已有 GPU 0.8 s 加载轨迹；当前优先对齐 AFSI demo_337 实际启用的 2 s 加载—保持算例，平衡、收敛和长期稳定性仍待验收。
+The project brings together three ideas: the cardiac and valve examples in [AFSI](https://github.com/loveIroha/afsi), the use of PyTorch tensors and sparse operators for GPU finite elements demonstrated by [torchcor](https://github.com/sagebei/torchcor), and a staggered-grid fluid solver suited to GPU stencil computation. The implementation provides:
 
-## 0.27.1：对齐 demo_337 的加载—保持算例与原版输入生成
+- **Nonlinear finite-element solids:** quadratic tetrahedra in 3D and quadratic triangles in 2D; anisotropic constitutive models, boundary tractions, and spring constraints.
+- **Two fluid discretizations:** MAC staggered finite differences with geometric multigrid, and a 3D Q2/Q1 finite-element Chorin solver with assembled CSR operators.
+- **GPU IB coupling:** quadrature-based force spreading and velocity interpolation for the MAC solvers, using an assembled consistent FE mass matrix and adjoint transfer operators.
+- **Execution optimizations:** compiled tensor kernels, Triton stencil and transfer kernels, reusable workspaces, CUDA Graph replay, and warm-started iterative solves.
+- **Reusable case configuration:** Python configuration objects, JSON files, command-line overrides, recorded effective parameters, and restartable simulations.
 
-新入口 `examples/lv_afsi337.py`：压力和主动张力前 1.5 s 同时线性升至 150000、600000 dyn/cm²，保持至 2 s；不采用 0.8 s 周期。使用配套基准尺寸及 x 长轴生成左室、Laplace 椭球纤维 ±90°、Basix degree-4 固体积分规则，以及 `[0,5]^3` cm 的 32³ Q2/Q1 流体网格。Guccione、基底弹簧、Chorin、IB 与载荷时序沿用已核对形式。另提供原始外部网格/纤维的可选导出导入，以保留其逐节点系数；默认生成模式不会冒称网格完全一致。
+### Included demos
 
-若原版 AFSI 容器没有 `337_ideal_left_ventricle`，可用 `validation/generate_afsi337_source.py` 和 `validation/write_afsi337_native_inputs.py` 将本项目生成的同一几何/纤维写成原版需要的 XDMF、边界标签和 P2 文本。容器内的真实写出仍需按[操作说明](docs/AFSI337_ALIGNMENT.md)验证。
+| Demo | Solid | Fluid | Default grid | Simulated time |
+| --- | --- | --- | --- | --- |
+| Ideal left ventricle, MAC | P2 tetrahedra; Guccione material, active tension, endocardial pressure | 3D MAC + geometric multigrid | 64 × 64 × 64 | 2 s; 40,000 steps |
+| Ideal left ventricle, FEM | Same generated LV model | Q2/Q1 FEM + Chorin projection | 32 × 32 × 32 elements | 2 s; 40,000 steps |
+| Ideal two-leaflet valve | P2 triangles; FRH material and root springs | 2D MAC + geometric multigrid | 256 × 64 | 3 s; 48,000 steps |
 
-本地完整回归 **203 passed、109 CUDA skipped、2 warnings**，包括新加载、纤维、积分、短程推进、续算及原版数据桥接的数值检查。用户的完整 2 s GPU 运行已结束，结果有待分析；容器内的 DOLFINx XDMF 写出尚待验证。[参数对照、差异范围与 Linux/Docker 命令](docs/AFSI337_ALIGNMENT.md)。
+The left-ventricle demos follow the **loading-and-holding protocol** of AFSI `demo_337`: pressure and active tension rise linearly over 1.5 s and remain constant until 2 s. The valve demo follows the geometry, material, and periodic inlet of AFSI `demo_340`. Geometry is generated with Gmsh; the shipped cases do not require external patient meshes or fiber files.
 
-## 0.26.0：CSR 流体求解与低开销周期运行
+Lengths, time, density, viscosity, and stress use **cm–g–s units**. The 2D case assumes unit out-of-plane thickness. Mesh generation runs on the CPU; with `--device cuda`, solid force evaluation, sparse mass solves, IB transfer, and fluid advancement use GPU tensors. Logging, mesh generation, convergence decisions, and file output still involve the host.
 
-周期入口现默认将固定流体质量、刚度、梯度、散度算子一次组装为 PyTorch CSR，并缓存暂定速度系统矩阵。PCG 默认每 8 次迭代检查一次主机收敛，返回前仍验证真实残差；周期运行关闭 IB 功率诊断，体积、能量与散度只在输出采样点计算。没有改变本构、载荷、网格或时间步，也没有放宽求解容差。[实现说明、运行命令和诊断采样范围](docs/CSR_RUNTIME.md)。
+## Documentation
 
-本地完整回归 **194 passed、106 CUDA skipped、2 warnings**；生成左室 CPU 200 步至 0.01 s 已完成。用户 RTX 4090 在相同物理与网格设置下完成 0.8 s、16000 步：报告内耗时由 107.4 分钟降至 32.7 分钟，约 **3.29 倍**；已对照的关键时点腔容积与旧版在浮点精度内一致。[正式 GPU 结果和比较范围](docs/LV_CYCLE_CSR_GPU_0.26.0.md)。
+| Topic | Guide |
+| --- | --- |
+| Public configuration API, parameter units, and project structure | [Configuration guide](docs/CONFIGURATION.md) |
+| Left-ventricle MAC/FEM demos, restart, and VTK output | [Ideal LV demo](demo/ideal_lv_fsi/README.md) |
+| Two-dimensional valve demo and boundary conditions | [Ideal valve demo](demo/ideal_valve_fsi/README.md) |
+| AFSI `demo_337` material, loading, geometry, and reference differences | [AFSI337 alignment](docs/AFSI337_ALIGNMENT.md) |
+| Finite-element constitutive formulation | [Guccione model](docs/GUCCIONE.md) |
+| Compact IB kernels and tensor execution | [MAC execution design](docs/MAC_EXECUTION_PERFORMANCE.md) |
+| Fused pressure multigrid | [Multigrid implementation](docs/MAC_MULTIGRID_PERFORMANCE.md) |
+| Solid force and consistent-mass optimization | [Solid/mass implementation](docs/MAC_SOLID_MASS_EXPERIMENT.md) |
+| Three-dimensional pressure graphs and coupling caches | [LV execution design](docs/LV_MAC_GRAPH_EXECUTION.md) |
+| Two-dimensional GPU execution | [Valve execution design](docs/VALVE_GPU_EXECUTION.md) |
 
-## 0.25.0：生成理想左心室的 0.8 s 周期 demo
+Detailed guides currently use Chinese. Some contain historical experiment records and test counts; the configuration files shipped with each demo define the current runnable presets.
 
-新增 `examples/lv_cycle.py`：默认生成椭球左室和纤维，采用 AFSI 辅助函数的 0.8 s 压力/张力周期形状、Guccione、基底弹簧、Chorin 及四点 IB，以 `dt=5e-5 s` 在 PyTorch/CUDA 推进 16000 步。支持预载、定期输出、原子检查点与续算、载荷/腔容积 CSV 及曲线绘制。[运行命令、与 AFSI 的逐项对应和空间设置差别](docs/LV_CYCLE.md)。
+## Installation
 
-本地回归 **189 passed、102 CUDA skipped、1 warning**；生成左室的 CPU 启动先导已运行至 0.01 s。用户 RTX 4090 实验现已完成全部 **16000 步、0.8 s**，耗时约 **107.4 分钟**（外部墙钟约 110 分钟）。[结果与判读](docs/LV_CYCLE_GPU_0.25.0.md)；一个规定载荷周期不等同于周期稳态、网格收敛或完整循环系统验收。
+### Requirements
 
-## 0.24.0：非线性固体参与的 AFSI 原生多步对照
+The optimized GPU path targets **Linux with an NVIDIA CUDA-capable GPU**. Development GPU runs have used an RTX 4090. Use Python **3.12** for the documented setup; the package metadata permits Python 3.10 or newer. CPU execution is available for small examples and verification. CUDA Graph performance and the Linux Triton path require a compatible GPU environment.
 
-在已通过的给定节点力单步对照之后，新增小型 P2 固体的原生 AFSI C++ IB/Chorin + DOLFINx Guccione 力多步导出，以及 PyTorch/CUDA 逐步比较器。每步核对流体、固体运动和更新后的非线性力，并报告首个分歧阶段；默认六步。当前 Windows 本地回归 **179 passed、101 CUDA skipped、1 warning**；原生 CPU 导出和 RTX 4090 GPU 对照需在 Linux 环境运行。[实验说明与命令](docs/AFSI_NONLINEAR_TRAJECTORY.md)。这仍是数值对齐实验，不是理想左心室完整周期。
+Install a working NVIDIA driver first and verify that `nvidia-smi` recognizes the GPU. Select a compatible PyTorch build using the [official PyTorch installation instructions](https://pytorch.org/get-started/locally/). The CUDA build installed with PyTorch and the maximum CUDA version displayed by `nvidia-smi` need not have identical version numbers.
 
-## 0.23.0：AFSI 原生 IB/Chorin 单步对齐
+### 1. Install system dependencies
 
-新增直接调用 AFSI C++ IB 扩展与 Chorin 类的 CPU 参考导出，并在 PyTorch GPU 上对同一小网格逐项比较 IB 力密度、Q2 弱载荷、流体三步和固体速度/位置。实验采用 AFSI 随速度节点间距缩放的四点核，报告第一个产生差异的阶段。固体非线性装配仍由已有独立 DOLFINx 检验覆盖。[运行环境、命令和 torchcor 组装/求解设计对照](docs/AFSI_NATIVE_ALIGNMENT.md)。原生 AFSI 参考需要在安装了 dolfinx、petsc4py 和 afsic 扩展的环境中生成。
-
-## 0.22.0：固定空间网格的耦合时间步对照
-
-以 AFSI 理想左室收缩算例的 `dt=5e-5 s` 为粗步长，在同一 24 cm 流体盒上将时间步减半，比较 20/40 步达到相同 1 ms 终点的 Chorin 与参考 Schur 轨迹。可复用 0.21.0 已完成的粗步 GPU 结果，只新增两条 40 步轨迹；程序检查预加载检查点、空间设定与连续时间加载日程，并报告共同时间点和终点差异。[实验说明与命令](docs/COUPLED_TIMESTEP.md)。AFSI 原算例的流体单元边长为 `0.15625 cm`；当前 24 cm 盒的单元边长为 `1 cm`，空间加密仍需单独研究。
-
-## 0.21.1：GPU 测试浮点容差修复
-
-[RTX 4090 正式短程耦合报告](docs/coupled-projection-gpu-results-0.21.0.json)已完成 18/24 cm 四条、每条 20 步轨迹；两盒 Schur 相对 Chorin 的终点节点位移向量差约 5.9%，腔容积增量差约 11.46%。0.21.0 GPU pytest 的唯一失败来自对两次 CUDA 浮点归约要求逐位相等（最大绝对差 `6.8e-21`）。0.21.1 仅将该测试断言改为严格数值容差，正式实验代码与结果不变。本地完整回归 **175 passed、101 CUDA skipped、1 warning**；目标 GPU pytest 尚待复跑。[详情](docs/COUPLED_PROJECTION.md)。
-
-## 第二十一步：投影差异进入短程耦合轨迹
-
-版本 **0.21.0** 将 Chorin 与参考 Schur 投影放入同一预加载理想左室的显式 IB/FEM 时间推进，默认比较 18/24 cm 流体盒、每条轨迹 20 步（1 ms）。固体模型、1 cm IB 核、密度载荷、压力日程及时间步完全相同；生产 Chorin 保持原状。参考 Schur 只替换修正后的流体速度，报告终点节点位移、腔容积增量和盒子敏感性。[实验定义与运行命令](docs/COUPLED_PROJECTION.md)。本地 CPU 12 cm、20 步先导完成，Chorin 基准重现 0.17.0 同盒结果；两种投影的节点位移向量和腔容积增量分别相差 6.94% 和 11.78%。本地回归 **175 passed、101 CUDA skipped、1 warning**。目标 RTX 4090 的 18/24 cm 正式对照仍需运行；完整周期尚未验收。
+On Ubuntu/Debian, the following system packages provide Git, native compilation tools, the GLU library used by Gmsh wheels, and the runtime utility used in the background-run example:
 
 ```bash
-git pull --ff-only
-conda activate afsi-torch
-python -m pip install -e ".[test,geometry]"
-CUDA_VISIBLE_DEVICES=0 python -m pytest -q
-CUDA_VISIBLE_DEVICES=0 python validation/compare_coupled_projection.py --preload results/lv_equilibrium --device cuda --levels 18 24 --steps 20 --output results/coupled_projection
+sudo apt-get update
+sudo apt-get install -y git build-essential libglu1-mesa time
 ```
 
-## 第二十步：定位压力投影差异
+On a managed cluster, use the corresponding installed modules or ask the administrator for missing system libraries.
 
-版本 **0.20.0** 接续 [0.19.0 RTX 4090 三盒报告](docs/ib-box-projection-gpu-results-0.19.0.json)：24 cm 盒内 Chorin 与参考 Schur 的左室单步响应仍相差 21.17%。新实验以同一个暂定流速重建 Chorin 修正，并与参考 Schur 比较，区分压力算子差异与梯度/边界/质量矩阵求解差异。[实验原理与运行命令](docs/PROJECTION_GAP.md)。本地 CPU 与[目标 GPU 报告](docs/projection-gap-gpu-results-0.20.0.json)一致：重建与 Chorin 的左室速度相对差低于 `3e-10`，与 Schur 仍相差 21.72%/21.17%。本地回归 **172 passed、100 CUDA skipped、1 warning**。本阶段继续推进理想左室 GPU IB/FEM 流固耦合目标，仍不构成完整周期验收。
+### 2. Clone the repository
 
-```bash
-git pull --ff-only
-conda activate afsi-torch
-python -m pip install -e ".[test,geometry]"
-CUDA_VISIBLE_DEVICES=0 python -m pytest -q
-CUDA_VISIBLE_DEVICES=0 python validation/diagnose_projection_gap.py --preload results/lv_equilibrium --device cuda --levels 18 24 --output results/projection_gap/report.json
-```
-
-## 第十九步：流体边界与投影的定距对照
-
-版本 **0.19.0** 延续 [0.18.0 的 RTX 4090 报告](docs/ib-weak-reference-gpu-results-0.18.0.json)：保留对独立 Q2 弱式参考收敛的密度载荷，固定 0.5 cm 流体速度节点间距与 1 cm IB 核宽度，用同一预加载左室增量力比较 12/18/24 cm 流体盒。每盒在相同暂定速度上分别计算 Chorin 与参考 Schur 投影，报告全部左室节点速度的逐对差异及求解残差。[实验说明与命令](docs/IB_BOX_PROJECTION.md)。[本地 CPU 单步先导](docs/ib-box-projection-cpu-results-0.19.0.json)及[用户 RTX 4090 报告](docs/ib-box-projection-gpu-results-0.19.0.json)一致：Chorin 盒子差从 16.67% 降到 3.33%，但 24 cm 盒的 Chorin/Schur 差仍有 21.17%。本地回归 **170 passed、99 CUDA skipped、1 warning**；本轮仍不是完整周期。
+The HTTPS URL works without configuring a GitHub SSH key:
 
 ```bash
-git pull --ff-only
-conda activate afsi-torch
-python -m pip install -e ".[test,geometry]"
-CUDA_VISIBLE_DEVICES=0 python -m pytest -q
-CUDA_VISIBLE_DEVICES=0 python validation/compare_ib_box_projection.py --preload results/lv_equilibrium --device cuda --levels 12 18 24 --output results/ib_box_projection/report.json
-```
-
-## 第十八步：固定宽度 IB 力的独立弱式验证
-
-版本 **0.18.0** 针对上一阶段看似收敛的“固定核＋直接弱式载荷”进行独立检查。固定物理宽度 `1 cm` 时，NumPy 分段高阶积分给出正则化力的 Q2 弱式参考：原密度载荷的相对误差从 6³ 的 10.2% 降到 24³ 的 0.4%，直接 `Hᵀg` 则约为 45%–51%。同格距左室增量力盒子对照还显示密度路径的外边界与投影影响不可忽略。本地完整回归 **167 passed、99 CUDA skipped**；直接载荷的代数功率配对不能作为替换生产载荷的充分依据。[验证方法、运行及限制](docs/IB_WEAK_REFERENCE.md)；[本地参考结果](docs/ib-weak-reference-results-0.18.0.json)；[上一阶段 RTX 4090 耦合报告](docs/coupled-ib-gpu-results-0.17.0.json)。
-
-```bash
-git pull --ff-only
-conda activate afsi-torch
-python -m pip install -e ".[test,geometry]"
-CUDA_VISIBLE_DEVICES=0 python -m pytest -q
-CUDA_VISIBLE_DEVICES=0 python validation/verify_ib_weak.py --device cuda --preload results/lv_equilibrium --output results/ib_weak_reference/report.json
-```
-
-## 第十七步：短程耦合的核宽度与载荷路径对照
-
-版本 **0.17.0** 在同一预加载左室上，将原 IB 核/固定 1 cm 核与原密度载荷/直接弱式载荷组成四组短程耦合对照。原路径仍是默认生产方法。运行要求和解释边界见 [试验说明](docs/COUPLED_IB_FACTORS.md)。本地 CPU 的 6³/12³、8 步先导试验完成，完整回归 **162 passed、98 CUDA skipped**；[先导数值](docs/coupled-ib-pilot-results-0.17.0.json)使用旧本地预加载检查点。用户随后提供的 [RTX 4090 正式对照报告](docs/coupled-ib-gpu-results-0.17.0.json)完成全部 12 条、每条 20 步的轨迹：“固定核＋直接弱式载荷”在 12³→18³ 通过 5% 筛选，但在 6³→12³ 未通过；0.18.0 的独立弱式参考进一步表明不能仅凭这一筛选替换生产方法。用户报告未附 0.17.0 的 pytest 计数。
-
-```bash
-git pull --ff-only
-conda activate afsi-torch
-python -m pip install -e ".[test,geometry]"
-CUDA_VISIBLE_DEVICES=0 python -m pytest -q
-CUDA_VISIBLE_DEVICES=0 python validation/compare_coupled_ib.py --preload results/lv_equilibrium --device cuda --fluid-levels 6 12 18 --steps 20 --output results/coupled_ib_factors
-```
-
-## 第十六步：定位 IB 位置、载荷功率与压力投影差异
-
-版本 **0.16.0** 接续第十五步预加载研究，在固定构形下测量 IB 相互作用点相对背景格点的位置、原密度载荷与流体有限元弱式功率的差异，并汇总已有 Chorin/Schur 投影对照；生产耦合算法未改变。详见 [试验定义及限制](docs/PHASE_POWER_IB.md)。
-
-```bash
-git pull --ff-only
-conda activate afsi-torch
-python -m pip install -e ".[test,geometry]"
-CUDA_VISIBLE_DEVICES=0 python validation/phase_power_ib.py --study results/preloaded_ib_study --device cuda --output results/preloaded_ib_phase
-```
-
-本地 CPU **32 组试验全部完成**：12³ 原核+密度路径在三轴各偏移半格距后，固体速度向量变化 43.6%；固定 1 cm 核约 3.5%。格点功率恒等式仍成立，但原密度载荷进入 Q2 弱式后出现非零功率差；直接弱式载荷为单独的诊断离散。[数值记录](docs/phase-power-results-0.16.0.json)。[Linux 自动验证](https://github.com/loveIroha/AFSI_GPU/actions/runs/36192329164) **158 passed、96 CUDA skipped**，32 组诊断结果与本地一致。用户随后提供的 [RTX 4090 报告](docs/phase-power-gpu-results-0.16.0.json)也完成了全部 32 组诊断；完整周期仍未验收。
-
-## 第十五步：预加载左室的流体/IB 网格研究
-
-版本 **0.15.0** 复用已收敛的 0.2 mmHg 左室预加载，分别运行固定位置单步因素对照和 0.02 mmHg 增压的短时耦合网格研究。生产 IB、Chorin 和力滞后顺序保持一致；诊断替代方法只用于分析。详见 [实验、指标及限制](docs/PRELOADED_IB_STUDY.md)。
-
-```bash
-git pull --ff-only
-conda activate afsi-torch
-python -m pip install -e ".[test,geometry]"
-CUDA_VISIBLE_DEVICES=0 python -m pytest -q
-CUDA_VISIBLE_DEVICES=0 python validation/study_preloaded_ib.py --preload results/lv_equilibrium --device cuda --output results/preloaded_ib_study
-```
-
-本地 CPU **158 passed、96 CUDA skipped**。三档固定位置和 6³/8³/10³ 短时耦合算例完成，但网格敏感性**未通过筛选**：8³→10³ 增量腔体积差 38.6%、最大增量位移差 45.6%。[数值记录](docs/preloaded-ib-results-0.15.0.json)保留完整对照。[Linux 自动验证](https://github.com/loveIroha/AFSI_GPU/actions/runs/36189135178)同样通过 158 项 CPU 测试并复现该敏感性。全部算例完成不表示网格敏感性合格；用户已提供 RTX 4090 的 12 组固定位置诊断和 3 组耦合报告，均完成且重复相同敏感性，见 [GPU 记录](docs/preloaded-ib-gpu-results-0.15.0.json)；未提供本版 pytest 计数。本阶段不构成完整周期验收。
-
-## 第十四步：预加载接入与保持测试
-
-当前版本 **0.14.0** 可直接读取第十三步的收敛结果，保留原参考网格和预应力，以实际平衡节点力初始化 IB，然后分别执行恒压保持和小幅增压。无需重新求解已有预加载。详见 [运行方法、检查点与压力定义](docs/PRELOAD_STARTUP.md)。
-
-```bash
-git pull --ff-only
-conda activate afsi-torch
-python -m pip install -e ".[test,geometry]"
-CUDA_VISIBLE_DEVICES=0 python -m pytest -q
-CUDA_VISIBLE_DEVICES=0 python examples/preloaded_lv.py --preload results/lv_equilibrium --device cuda --output results/preloaded_lv
-```
-
-本地 CPU **155 passed、96 CUDA skipped**；用户报告 RTX 4090 上 **251 passed、1 warning，447.18 s**，且两组预加载启动报告均通过，见 [GPU 结果](docs/preload-startup-gpu-results-0.14.0.json)。默认两组各 20 步、dt=5e-5 s，仅验证 1 ms 的启动。腔压仍是固体的给定随动载荷，背景流体压力初值为零；这不是已建立生理腔压的完整流体初场，也不是完整周期验收。
-
-[0.14.0 Linux 自动验证已通过](https://github.com/loveIroha/AFSI_GPU/actions/runs/36184599813)：155 passed、96 CUDA skipped，独立参考对照和预加载启动均通过；[完整结果](docs/preload-startup-results-0.14.0.json)。
-
-## 第十三步：GPU 非线性固体平衡
-
-版本 **0.13.0** 新增 Newton–GMRES、自动微分 JVP、节点块预条件与构形检查/回溯，已完成 P2 仿射平衡、随动压力平衡和生成左室低压预加载的本地验证。现有显式 IB 时间推进保持不变；详见 [非线性算法、运行与限制](docs/NONLINEAR.md)。
-
-```bash
-git pull --ff-only
-conda activate afsi-torch
-python -m pip install -e ".[test,geometry]"
-CUDA_VISIBLE_DEVICES=0 python -m pytest -q
-CUDA_VISIBLE_DEVICES=0 python examples/nonlinear_patch.py --device cuda --output results/nonlinear_patch
-CUDA_VISIBLE_DEVICES=0 python examples/lv_equilibrium.py --device cuda --mesh-size 1.8 --pressure-mmhg 0.2 --load-steps 2 --output results/lv_equilibrium
-```
-
-本地 CPU **138 passed、94 CUDA skipped**，完整测试共 **232 项**。用户已提供 GPU 小块和左室非线性报告，均收敛，见 [GPU 记录](docs/nonlinear-gpu-results-0.13.0.json)；未提供这一版的完整 pytest 计数。左室示例是 0.2 mmHg 小载荷数值验证，不是已验收的生理预加载或完整周期。
-
-[0.13.0 Linux 自动验证已通过](https://github.com/loveIroha/AFSI_GPU/actions/runs/36147461337)：独立 UFL/DOLFINx 平衡解坐标差约 1.77e-15 cm，左室两级加载均收敛；[完整结果](docs/nonlinear-results-0.13.0.json)。
-
-## 第十二步：定位流体/IB 网格敏感性
-
-版本 **0.12.0** 增加冻结左室的核宽度、载荷路径与压力投影对照，生产耦合算法保持不变。已发现多项离散选择共同影响响应，不能只缩小时间步或只换投影。详见 [实验设置、实测结果与限制](docs/IB_DIAGNOSIS.md)。
-
-```bash
-git pull --ff-only
-conda activate afsi-torch
-python -m pip install -e ".[test,geometry]"
-CUDA_VISIBLE_DEVICES=0 python -m pytest -q
-CUDA_VISIBLE_DEVICES=0 python validation/diagnose_ib.py --device cuda --output results/ib_diagnosis
-```
-
-本地 CPU **127 passed、87 CUDA skipped**，完整目标 GPU 测试共 **214 项**；本版 GPU 尚待执行。用户已提供 0.11.0 的 **201 passed** 和 RTX 4090 的完整 11 组研究报告，CPU/GPU 数值结论一致，见 [GPU 记录](docs/lv-study-gpu-results-0.11.0.json)。
-
-[0.12.0 Linux 自动验证已通过](https://github.com/loveIroha/AFSI_GPU/actions/runs/36143192861)：原独立参考对照、完整回归和 12 组新诊断均完成；[数值报告](docs/ib-diagnosis-results-0.12.0.json)。完成诊断不等于全耦合解已经收敛。
-
-## 第十一步：时间步、网格和时长研究
-
-版本 **0.11.0** 增加 11 组受控研究、失败状态保存和汇总图。**研究发现当前流体网格敏感性仍明显，尚不能宣称完整周期可靠。** 保持已有物理方程和耦合顺序不变，见 [研究设置与实测结论](docs/STABILITY.md)。
-
-```bash
-git pull --ff-only
-conda activate afsi-torch
-python -m pip install -e ".[test,geometry]"
-CUDA_VISIBLE_DEVICES=0 python -m pytest -q
-CUDA_VISIBLE_DEVICES=0 python validation/study_lv.py --device cuda --output results/lv_study
-```
-
-本地 CPU 测试为 **120 passed、81 CUDA skipped**，完整 GPU 环境应执行 **201 项**。研究的运行完成与响应收敛分别记录；应阅读 `study.json` 的 `assessment`，不能把退出码 0 当作收敛证明。本版目标 GPU 尚待验证。
-
-[0.11.0 Linux 自动验证已完成](https://github.com/loveIroha/AFSI_GPU/actions/runs/36116534841)：120 passed、81 CUDA skipped，独立参考对照通过，11 组研究全部运行完成；时间和流体网格敏感性检查仍未通过。见 [可复核的数值报告](docs/lv-study-results-0.11.0.json)。
-
-## 第十步：完整显式耦合与生成左室短程运行
-
-0.10.0 连接固体力、IB 密度散布、流体求解、速度插值与坐标更新。左室位移现在来自耦合计算，默认运行 10 步、共 0.001 s，尚不是完整心动周期。见 [耦合顺序、单位、输出与验收限制](docs/COUPLING.md)。
-
-```bash
-git pull --ff-only
-conda activate afsi-torch
-python -m pip install -e ".[test,geometry]"
-CUDA_VISIBLE_DEVICES=0 python examples/coupled_lv.py --device cuda --steps 10 --dt 1e-4 --output results/coupled_lv
-CUDA_VISIBLE_DEVICES=0 python -m pytest -q
-```
-
-本地 CPU **108 passed、80 CUDA skipped**；目标 GPU 环境应执行 **188 项**。可用 ParaView 打开输出的 `solid.pvd` 和 `fluid.pvd`；数值曲线在 `history.csv`，残量、散度与功率差在 `report.json`。沿用现有依赖。本版 GPU 验证尚待执行。
-
-[0.10.0 Linux 自动验证已通过](https://github.com/loveIroha/AFSI_GPU/actions/runs/36027419539)：三步完整耦合的 15 组数组与独立参考一致，生成左室的 10 步运行也通过。
-
-## 第九步：GPU 流体三步求解
-
-0.9.0 增加 Jacobi-PCG、非零速度边界提升、单点压力基准及完整 Chorin 三步法。现在可求解流体速度和压力，但尚未接入固体运动。详见 [求解器、边界条件与验证限制](docs/CHORIN.md)。无需新增依赖。
-
-```bash
-git pull --ff-only
-conda activate afsi-torch
-python -m pip install -e ".[test,geometry]"
-CUDA_VISIBLE_DEVICES=0 python examples/chorin_box.py --device cuda --cells 4 --steps 5 --output results/chorin_box.json
-CUDA_VISIBLE_DEVICES=0 python -m pytest -q
-```
-
-本地 CPU **100 passed, 74 CUDA skipped**，目标 GPU 环境应为 **174 passed**。上一版 0.8.0 已由用户反馈 **155 passed**。此版本尚待目标 GPU 验证。三步分别检查真实残量，并报告校正前后散度；方程收敛不表示严格无散或完整耦合稳定。
-
-[0.9.0 Linux 自动验证已通过](https://github.com/loveIroha/AFSI_GPU/actions/runs/36024695559)：36 组实际 DOLFINx/PETSc 三步解场对照通过，最大绝对差 1.71e-10，散度诊断同样通过。目标 GPU 本版仍需执行上述命令。
-
-## 第八步：Q2/Q1 流体算子
-
-0.8.0 增加规则六面体流体网格、一致质量、黏性、压力 Laplacian、梯度、散度和非线性对流的 PyTorch 算子。支持 CUDA 和自动微分，详见 [流体数学、IB 载荷接口及独立验证](docs/FLUID.md)。此阶段尚未求解流体方程或推进时间。
-
-```bash
-git pull --ff-only
-conda activate afsi-torch
-python -m pip install -e ".[test,geometry]"
-CUDA_VISIBLE_DEVICES=0 python examples/fluid_patch.py --device cuda
-CUDA_VISIBLE_DEVICES=0 python -m pytest -q
-```
-
-本地 CPU 回归 **88 passed, 67 CUDA skipped**；目标 GPU 环境完整测试应为 **155 passed**。新增实际 DOLFINx 对照入口为 `validation/export_fluid_dolfinx.py` 和 `validation/compare_fluid_dolfinx.py`，可复用现有 CPU 参考环境。上一版 0.7.0 已由用户反馈在 RTX 4090 环境完成 **131 passed、无跳过**。
-
-[0.8.0 Linux 自动验证已通过](https://github.com/loveIroha/AFSI_GPU/actions/runs/36021971483)：两种六面体网格上共 40 组实际 DOLFINx 对照通过，最大绝对差 2.43e-15；原固体和 IB 回归仍通过。
-
-## 第七步：厘米制理想左心室几何
-
-0.7.0 自动生成带基底开口的椭球壳、ENDO/EPI/BASE 标签、P2 网格与规则纤维场，接入已有固体节点力计算。长度采用 **cm**，体积采用 **mL**，压力采用 **dyn/cm²**。详见 [几何说明](docs/GEOMETRY.md)。
-
-```bash
-git pull --ff-only
-conda activate afsi-torch
-python -m pip install -e ".[test,geometry]"
-CUDA_VISIBLE_DEVICES=0 python examples/ideal_lv.py --device cuda --mesh-size 1.2 --output results/ideal_lv
-CUDA_VISIBLE_DEVICES=0 python -m pytest -q
-```
-
-Gmsh 在 CPU 生成网格，后续张量计算可运行于 CUDA。结果包含可用 ParaView 打开的网格、表面标签和给定位移/节点力。本地 CPU **74 passed, 57 skipped**；安装 geometry 且 CUDA 可用时应执行 **131 项**。当前示例验证给定变形下的力，尚未求解平衡或流固耦合时间步。
-
-0.7.0 的 [Linux 自动验证已通过](https://github.com/loveIroha/AFSI_GPU/actions/runs/36018932241)，包含实际 DOLFINx 回归和左室生成示例。目标 GPU 验证仍需执行上述命令。
-
-## 第六步：GPU IB 传递验证
-
-无需安装新依赖，使用已有 afsi-torch 环境：
-
-```bash
-git pull --ff-only
-conda activate afsi-torch
-python -m pip install -e ".[test]"
-CUDA_VISIBLE_DEVICES=0 python examples/ib_patch.py --device cuda
-CUDA_VISIBLE_DEVICES=0 python validation/compare_ib.py --device cuda
-CUDA_VISIBLE_DEVICES=0 python -m pytest -q
-```
-
-两个程序应输出 `status: passed`；0.6.0 在 GPU 可用时完整测试为 **113 passed**。例子使用给定流体速度，验证固体完整节点力通过 IB 的瞬时功率、合力与力矩；不代表已求解 Navier–Stokes。独立参考遍历全部格点计算标量核，未运行原 afsi C++。
-
-0.6.0 的 [Linux 自动验证已通过](https://github.com/loveIroha/AFSI_GPU/actions/runs/35993548123)：61 passed、52 CUDA 项跳过，实际 DOLFINx 回归和新增 IB 独立对照均通过。目标 GPU 验证仍需上述命令。
-
-实际 Linux CPU 对照已经通过：[GitHub Actions 结果](https://github.com/loveIroha/AFSI_GPU/actions/runs/35985614102)。6/48 单元两种网格上共 40 组向量比较通过，所有节点力最大绝对差 5.46e-10、切线作用最大绝对差 1.42e-10。目标 RTX 4090 对照仍待执行。
-
-## 第五步：实际 DOLFINx 对照
-
-更新代码后，首次创建独立 CPU 参考环境并导出数据：
-
-```bash
-git pull --ff-only
-conda env create -f validation/environment-dolfinx.yml
-conda run --no-capture-output -n afsi-reference python validation/export_dolfinx.py
-conda activate afsi-torch
-python -m pip install -e ".[test]"
-CUDA_VISIBLE_DEVICES=0 python validation/compare_dolfinx.py --device cuda --output validation/results/gpu.json
-CUDA_VISIBLE_DEVICES=0 python -m pytest -q
-```
-
-比较应输出 `status: passed`。0.5.0 pytest 为 92 项，0.6.0 为 113 项，0.7.0（含 geometry）为 131 项，0.8.0 为 155 项，0.9.0 为 174 项，0.10.0 为 188 项，当前 0.11.0 为 **201 项**。已经创建过 `afsi-reference` 时跳过环境创建。原有 CUDA 环境保持独立。加密网格对照、误差解释及从 Actions 下载参考数据的方法见 [详细说明](docs/DOLFINX.md)。
-
-## GitHub 协作
-
-仓库为 [loveIroha/AFSI_GPU](https://github.com/loveIroha/AFSI_GPU)。仓库名称为 AFSI_GPU，Python 包名仍为 afsi_torch，Conda 环境名仍为 afsi-torch。
-
-在 Linux 上首次获取代码：
-
-```bash
-git clone git@github.com:loveIroha/AFSI_GPU.git
+git clone https://github.com/loveIroha/AFSI_GPU.git
 cd AFSI_GPU
+```
+
+### 3. Create an isolated Python environment
+
+Install [Miniforge](https://github.com/conda-forge/miniforge#install) if Conda is not already available, then create the environment:
+
+```bash
+conda create --override-channels -c conda-forge -n afsi-torch python=3.12 pip -y
 conda activate afsi-torch
-python -m pip install -e ".[test]"
-CUDA_VISIBLE_DEVICES=0 python -m pytest -q
+python -m pip install --upgrade pip
 ```
 
-后续获取已经测试并提交的更新：
+### 4. Install PyTorch and AFSI_GPU
+
+Install the CUDA-enabled PyTorch wheel before installing the project. For example, for a machine compatible with the official CUDA 12.8 wheels:
 
 ```bash
-git pull --ff-only
-python -m pip install -e ".[test]"
-CUDA_VISIBLE_DEVICES=0 python -m pytest -q
-git rev-parse --short HEAD
+python -m pip install torch --index-url https://download.pytorch.org/whl/cu128
+python -m pip install -e ".[test,geometry,fused]"
 ```
 
-反馈测试结果时附上提交号，避免把不同版本的测试结果混在一起。测试记录区分本地 CPU、Basix 对照与目标 Linux GPU；一次 CPU 测试通过不表示 GPU 测试已完成。若本地有修改导致 pull 失败，先保留和整合修改，不使用强制覆盖。
+Choose a different official PyTorch wheel index when required by your driver or GPU. Let pip resolve the Triton version compatible with PyTorch; avoid replacing it independently. `torchvision` and `torchaudio` are not needed by these demos.
 
-## 已有环境：运行第四步
+The editable install makes changes to the Python source available immediately. The package is named `afsi-torch`, and its Python import name is `afsi_torch`.
 
-无需重建已经通过 Guccione 测试的环境。在 AFSI_GPU 项目目录执行：
+| Dependency / extra | Purpose |
+| --- | --- |
+| `torch`, `numpy` | Tensor computation, sparse linear algebra, numeric checkpoint storage |
+| `geometry` | Gmsh 4.15.2 and meshio 5.3.5 for generated geometry and visualization files |
+| `fused` | Triton on Linux for optimized GPU kernels |
+| `test` | pytest |
+| `io` | meshio and Matplotlib for additional I/O and plotting tools |
+| `reference` | Optional Basix dependency for reference checks |
+
+The native PyTorch demos run without a FEniCSx, PETSc, AFSI, Docker, or Taichi installation. Separate native-AFSI comparison scripts require their own reference environment.
+
+### 5. Verify the environment
 
 ```bash
-conda activate afsi-torch
-git pull --ff-only
-python -m pip install -e ".[test]"
-CUDA_VISIBLE_DEVICES=0 python examples/boundary_patch.py --device cuda
-CUDA_VISIBLE_DEVICES=0 python -m pytest -q
+python - <<'PY'
+import torch
+import gmsh
+import meshio
+import afsi_torch
+
+print("PyTorch:", torch.__version__)
+print("PyTorch CUDA runtime:", torch.version.cuda)
+assert torch.cuda.is_available(), "CUDA is unavailable in this Python environment"
+print("GPU:", torch.cuda.get_device_name(0))
+import triton
+print("Triton:", triton.__version__)
+print("Gmsh:", gmsh.__version__, "meshio:", meshio.__version__)
+PY
+
+CUDA_VISIBLE_DEVICES=0 python -m pytest -q \
+  tests/test_simulation_config.py tests/test_mac_output.py
 ```
 
-0.4.0 的完整测试为 **81 项**，0.5.0 为 92 项，0.6.0 为 113 项，0.7.0（含 geometry）为 131 项，0.8.0 为 155 项，0.9.0 为 174 项，0.10.0 为 188 项，当前 0.11.0 为 **201 项**。若出现 skipped，请先运行环境检查，不能将跳过项当作 GPU 验证成功。
+For the full test suite, run `CUDA_VISIBLE_DEVICES=0 python -m pytest -q`. GPU tests are skipped when CUDA is unavailable, so an entirely CPU test run does not establish GPU correctness. First use of compiled kernels and CUDA Graphs can take longer than subsequent steps.
 
-可选的 Basix 独立对照（只需轻量的 Basix，无需安装完整 FEniCSx）：
+If Python imports NumPy or other packages from a different FEniCSx/Spack environment, start a clean shell and activate `afsi-torch`; check `python -c "import sys, numpy; print(sys.executable); print(numpy.__file__)"`. A missing `libGLU.so.1` indicates a missing Gmsh system library.
+
+### CPU setup
+
+Follow the repository and environment steps above. For CPU-only use, replace the CUDA installation commands with the following, omitting the fused extra:
 
 ```bash
-python -m pip install -e ".[reference]"
-python validation/compare_basix.py
-python validation/compare_guccione.py
-python validation/compare_boundary.py
+python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+python -m pip install -e ".[test,geometry]"
+
+python demo/ideal_lv_fsi/run_mac.py \
+  --device cpu --fluid-cells 16 --mesh-size 0.4 \
+  --end-time 0.0001 --no-vtk --output results/lv_cpu_smoke
 ```
 
-Basix 仅用于 CPU 参考验证，不是 GPU 计算依赖。对照在相同积分点上比较基函数、导数、体积/表面积分及节点力；边界压力使用独立的体单元导数与余子式计算。尚未覆盖真实 DOLFINx 全局自由度和边界标记导入，也未运行 afsi 完整算例。
+This small run uses the reference execution defaults. GPU presets that explicitly request pressure CUDA Graphs require CUDA.
 
-## Linux 环境
+## Quick start
 
-目标硬件：两张 RTX 4090，NVIDIA 驱动 580.126.09。建议 Python 3.12，固定 PyTorch 2.14.0 的 CUDA 13.0 构建。官方包索引已核对存在 Python 3.12 / Linux x86_64 wheel；该 wheel 要求 glibc >= 2.28。
+Run commands from the repository root with `afsi-torch` activated. Use a new output directory for a fresh simulation.
 
-如果已有 conda，在 Linux 终端执行：
+### Left ventricle: optimized MAC fluid
+
+The GPU preset enables fused execution, pointwise solid kernels, graph-based mass and pressure solves, optimized coupling, and warm starts:
 
 ```bash
-conda create -n afsi-torch python=3.12 pip --override-channels -c conda-forge -y
-conda activate afsi-torch
-python -m pip install torch==2.14.0 --index-url https://download.pytorch.org/whl/cu130
-python -m pip install numpy==2.5.3 pytest==9.1.1
+CUDA_VISIBLE_DEVICES=0 python -u demo/ideal_lv_fsi/run_mac.py \
+  --config demo/ideal_lv_fsi/configs/mac_gpu.json \
+  --end-time 0.005 --output results/lv_mac_smoke
 ```
 
-也可用已有 Python 3.12 创建 venv，替代上面两条 conda 命令：
+This advances 100 steps. Continue the same trajectory to the full 2 s horizon:
 
 ```bash
-python3.12 -m venv .venv
-source .venv/bin/activate
+CUDA_VISIBLE_DEVICES=0 python -u demo/ideal_lv_fsi/run_mac.py \
+  --resume results/lv_mac_smoke/checkpoint.npz --end-time 2.0
 ```
 
-无需同时创建 conda 和 venv。无需为这些纯 PyTorch 测试另装系统 CUDA Toolkit、cuDNN、torchvision 或 torchaudio；pip 会安装该 PyTorch 构建所需的运行库。以后编译自定义 CUDA 扩展时，再配置相应编译工具链。
-
-将本项目文件夹复制到 Linux 并进入该文件夹后执行（不要复制 Windows 的 .venv）：
+A fresh full run uses the preset's 2 s end time:
 
 ```bash
-python -m pip install -e ".[test]"
-python scripts/check_environment.py --device cuda:0
-python scripts/check_environment.py --device cuda:1
-CUDA_VISIBLE_DEVICES=0 python -m pytest -q
-python -m pip freeze > requirements-local-linux-cu130.txt
+CUDA_VISIBLE_DEVICES=0 python -u demo/ideal_lv_fsi/run_mac.py \
+  --config demo/ideal_lv_fsi/configs/mac_gpu.json \
+  --output results/lv_mac_2s
 ```
 
-检查脚本实际运行 FP64 矩阵运算、自动求导及稀疏矩阵乘法，并核对解析结果。指定 CUDA 后无法使用时会报错，不会悄悄转到 CPU。两次检查仅分别验证两张卡，并未实现双卡并行。pytest 在没有 CUDA 的机器上会明确跳过 GPU 测试；因此先运行检查脚本是必要的。
+### Valve: optimized two-dimensional MAC fluid
 
-本地 Windows 验证环境使用 Python 3.12.14、PyTorch 2.14.0+cpu、NumPy 2.5.3、pytest 9.1.1。它不能证明目标 Linux/CUDA 环境已通过测试。
+```bash
+CUDA_VISIBLE_DEVICES=0 python -u demo/ideal_valve_fsi/run_mac.py \
+  --config demo/ideal_valve_fsi/configs/mac_gpu.json \
+  --end-time 0.005 --fluid-fields --output results/valve_mac_smoke
 
-历史验证：用户反馈 Linux RTX 4090 上 P1 的 **9 项**、0.2.0 P2 的 **34 项**和 0.3.0 Guccione 的 **52 项**测试均通过；Guccione 基线为 `b85202f`。0.4.0 的 GPU 验证仍需在目标机器运行。PyTorch 内部在 JVP 测试中会发出 TorchScript 弃用提示。3x3 行列式使用标量三重积实现，使参考构形处的二阶导数通过有限差分检验。
+CUDA_VISIBLE_DEVICES=0 python -u demo/ideal_valve_fsi/run_mac.py \
+  --resume results/valve_mac_smoke/checkpoint.npz \
+  --end-time 3.0 --fluid-fields
+```
 
-0.2.0 本地验证：**16 passed, 18 skipped**（全部跳过项为 CUDA 测试）。两单元示例通过，解析力/自动求导力最大差 1.11e-16。Basix 0.10.0 独立对照通过，形函数最大差 5.83e-16、导数最大差 1.55e-15、节点力最大差 1.05e-15。详见 [验证记录](docs/VALIDATION.md)。
+### Left ventricle: finite-element fluid
 
-0.3.0 本地验证：**25 passed, 27 skipped**。Guccione 独立 Basix + NumPy 复步长对照通过，PK1 最大差 2.36e-9、组装力最大差 1.38e-10；随后用户完成目标 GPU 验证。
+```bash
+CUDA_VISIBLE_DEVICES=0 python -u demo/ideal_lv_fsi/run_fem.py \
+  --config demo/ideal_lv_fsi/configs/fem.json \
+  --end-time 0.005 --output results/lv_fem_smoke
+```
 
-0.4.0 本地验证：**39 passed, 42 skipped**。完整固体节点力示例通过，残量切线作用/有限差分相对误差 1.19e-10；独立 Basix 体单元余子式对照中，压力节点力最大差 2.27e-13、基底弹簧节点力最大差 9.24e-14。所有跳过项均依赖 CUDA，等待目标机器验证。
+### Background execution and elapsed time
 
-## 哪些包需要安装
+This example starts a fresh 2 s MAC LV run. Create the output directory before redirecting its log:
 
-| 阶段 | 包 | 用途 |
-| --- | --- | --- |
-| 当前必需 | torch、numpy、pytest | GPU 张量/自动求导，数据准备，数值验证 |
-| 网格导入及结果输出 | meshio | 读写网格与场数据 |
-| 绘图与三维检查 | matplotlib、pyvista | 收敛曲线、网格和变形场 |
-| 生成网格 | gmsh 或 pygmsh | 只在自行生成几何/网格时需要 |
-| CPU 对照和监控 | scipy、nvidia-ml-py | 独立数值基准、显存/利用率记录 |
-| 后续 afsi 对照环境 | FEniCSx/DOLFINx 及匹配的 Basix/UFL/FFCx/PETSc | 保留原始离散作对照，单独环境管理 |
+```bash
+run_dir="results/lv_mac_$(date +%Y%m%d_%H%M%S)"
+mkdir -p "$run_dir"
 
-torchcor 的完整依赖还包含 pandas、wfdb、seaborn、scikit-learn。当前力学测试无需心电信号处理依赖，也不需要把 torchcor 安装为本项目依赖。若完整运行 torchcor，应遵循其声明：torch>=2.0、numpy>=1.26、matplotlib>=3.8、pygmsh>=7.1、nvidia-ml-py>=12、pyvista>=0.45、scipy>=1.13、pandas>=2.2.3,<3、wfdb>=4.3.0,<5、seaborn>=0.13、scikit-learn>=1.4。
+CUDA_VISIBLE_DEVICES=0 nohup /usr/bin/time \
+  -f 'elapsed_seconds=%e exit_code=%x' -o "$run_dir/runtime.txt" \
+  python -u demo/ideal_lv_fsi/run_mac.py \
+  --config demo/ideal_lv_fsi/configs/mac_gpu.json \
+  --output "$run_dir" > "$run_dir/run.log" 2>&1 < /dev/null &
 
-## 当前代码结构与下一步
+echo "PID=$! output=$run_dir"
+tail -f "$run_dir/run.log"
+```
+
+The process continues after the terminal closes. `runtime.txt` is written on exit. The report's cumulative elapsed time can include earlier restart segments, whereas `/usr/bin/time` measures this process invocation.
+
+## Configuration
+
+Each demo main program contains a `CONFIG` object. Edit it directly, load a JSON file, or override common parameters on the command line:
+
+**Demo defaults → JSON fields → explicit command-line arguments.**
+
+Export the optimized LV preset as an editable configuration file without starting a simulation:
+
+```bash
+python demo/ideal_lv_fsi/run_mac.py \
+  --config demo/ideal_lv_fsi/configs/mac_gpu.json --write-config lv.json
+```
+
+The main sections cover `time`, `fluid`, solid geometry/material/loading, solver tolerances, execution backends, and output intervals. For example, the following fields specify time and space resolution:
+
+```json
+{
+  "time": {"dt": 0.00005, "end_time": 2.0},
+  "fluid": {
+    "shape": [64, 64, 64],
+    "lengths": [5.0, 5.0, 5.0],
+    "origin": [0.0, 0.0, 0.0],
+    "rho": 1.0,
+    "mu": 1.0
+  },
+  "geometry": {"mesh_size": 0.1},
+  "output": {"write_vtk": true, "output_every": 400}
+}
+```
+
+A partial JSON file inherits unspecified fields from the demo's Python `CONFIG`. Keep the `execution` section when editing an exported GPU preset to retain its optimizations. Unknown keys are rejected. `configuration.json` in the result directory records the effective settings and can seed another fresh run.
+
+The public Python entry points are `afsi_torch.simulation.lv_mac.run`, `afsi_torch.simulation.lv_fem.run`, and `afsi_torch.simulation.valve_mac.run`, accepting the corresponding configuration type from `afsi_torch.config`. This lets other applications reuse the runners without importing example scripts.
+
+A restart restores the saved mesh, material, loading, and time step; omit `--config` when using `--resume`. Changes to these physical settings require a fresh output directory. MAC grids must satisfy the multigrid coarsening and explicit time-step limits. The [configuration guide](docs/CONFIGURATION.md) explains rectangular grids, FEM element counts, units, and supported overrides.
+
+## PyTorch implementation
+
+### Nonlinear solid finite elements
+
+The solid stores reference coordinates, connectivity, shape functions, reference gradients, quadrature weights, fiber fields, and the evolving coordinates as tensors. Each force evaluation computes deformation gradients and constitutive stresses at quadrature points, integrates element contributions, and assembles the nodal force by indexed tensor accumulation.
+
+The LV model uses anisotropic Guccione elasticity, a volumetric penalty, active fiber stress, endocardial pressure traction, and basal springs. The valve model uses the FRH constitutive law and root springs. PyTorch automatic differentiation supports independent checks of constitutive derivatives and tangent actions; the production demos use their implemented force kernels. The transient coupled stepper is an explicit, partitioned forward solver, with nonlinear stress evaluated at the updated geometry.
+
+### Fluid solvers
+
+For MAC fluid, pressure is cell-centered and velocity components are stored on cell faces. The solver uses centered conservative convection, explicit viscosity, and a pressure projection with the discrete operator `-D G`. Geometric multigrid applies local stencils, smoothing, restriction, coarse correction, and prolongation directly to structured tensors. The 3D closed box uses homogeneous Neumann pressure conditions and a zero-mean gauge; the 2D channel has prescribed inflow, no-slip walls, and a pressure outlet.
+
+The alternative FEM fluid path uses Q2 velocity/Q1 pressure and Chorin splitting. Fixed finite-element operators are assembled into sparse CSR tensors and reused in GPU iterative solves; its tentative-velocity solve treats viscosity implicitly. The MAC and FEM paths therefore have different fluid discretizations and boundary/operator details.
+
+### Quadrature-based IB coupling for MAC
+
+The MAC coupling follows the weak-form, quadrature-based approach described by [Griffith and Luo](https://doi.org/10.1002/cnm.2888). Solid interaction points move with the FE deformation, and the four-point Peskin kernel connects them to the staggered fluid grid.
+
+Let `B` evaluate FE coefficients at interaction quadrature points, `W` contain their reference integration weights, and `K` interpolate grid velocity to those points. Let `b` be the integrated nodal force and `V_E` the Eulerian cell volume, or area in 2D. The implemented operations are:
 
 ```text
-src/afsi_torch/coupling.py       显式 IB/FEM 耦合状态和时间步
-src/afsi_torch/lv_model.py       左室非线性固体力及载荷斜坡
-examples/coupled_lv.py          程序生成左室的真实耦合短程运行
-src/afsi_torch/fluid/            Q2/Q1 算子、PCG 及 Chorin 三步法
-examples/chorin_box.py          短程流体求解与残量/散度诊断
-examples/fluid_patch.py         制造场算子检查
-src/afsi_torch/geometry/         椭球壳、纤维、腔体积及结果输出
-src/afsi_torch/units.py          CGS 单位与 mmHg 换算
-examples/ideal_lv.py            程序生成左室与给定变形固体力验证
-scripts/preview_lv.py           网格表面与剖视预览
-src/afsi_torch/mechanics.py      P1 几何、变形梯度、能量、PK1 节点力
-src/afsi_torch/tetrahedron.py    P2 形函数、参考节点、共享边自由度
-src/afsi_torch/quadrature.py     四面体积分点与权重（预处理）
-src/afsi_torch/materials.py      Neo-Hookean、Guccione、给定张力的主动应力
-src/afsi_torch/fields.py         参考方向/张力场插值，积分点法向
-src/afsi_torch/solid.py          P2 参考几何、积分及节点力组装
-src/afsi_torch/triangle.py       P2 三角形迹、表面积分规则
-src/afsi_torch/boundary.py       外表面提取、随动压力、参考基底弹簧
-src/afsi_torch/ib.py             规则三维格点上的 Peskin 插值/节点载荷与力密度散布
-tests/test_ib.py                核矩条件、合力/力矩、功率及 CPU/GPU 对照
-examples/ib_patch.py            完整固体节点力与给定速度场的 IB 传递验证
-validation/compare_ib.py        全格点 NumPy 标量核独立对照
-tests/test_mechanics.py         刚体运动、解析能量、力组装、差分、切线及 CPU/GPU 对照
-tests/test_p2.py                P2 多项式再现、解析变形、积分收敛及切线验证
-tests/test_guccione.py          各向异性、主动应力、方向场、节点力与切线验证
-tests/test_boundary.py          法向、面积映射、边界力、完整残量切线验证
-examples/p2_patch.py            可在 CPU/CUDA 运行的两单元例子
-examples/guccione_patch.py      afsi 材料参数与变纤维方向的两单元例子
-examples/boundary_patch.py      体积分+压力+基底弹簧的完整固体节点力示例
-validation/compare_basix.py     可选的 Basix/NumPy 独立对照
-validation/compare_guccione.py  Basix + NumPy 复步长应力/力独立对照
-validation/compare_boundary.py  Basix 体单元/余子式的边界力独立对照
-scripts/check_environment.py    运行环境和必要张量运算检查
-pyproject.toml                 包与可选依赖定义
-requirements-test.txt          已验证的 NumPy/pytest 版本
+M = Bᵀ W B                          consistent reference FE mass matrix
+M F = b                             recover force-density coefficients
+f = V_E⁻¹ Kᵀ W B F                  spread force to the fluid grid
+M U = Bᵀ W K u                      project interpolated velocity to FE nodes
 ```
 
-首个数值链路为 X -> 单元形函数梯度/体积 -> F=grad_X(x) -> W(F) -> E -> g=-dE/dx。解析 PK1 组装独立核对自动求导，torch.func.jvp 核对切线矩阵与向量乘积。使用 float64 建立精度基线。
+The same interaction points and kernel weights are used in both directions. This gives the discrete power relation `bᵀU = V_E fᵀu` up to linear-solve and floating-point error. Boundary extensions are included consistently in the 2D transfer. The mass matrix is assembled once as CSR; both mass solves execute on the selected PyTorch device.
 
-0.5.0 的对照入口为 `validation/export_dolfinx.py` 和 `validation/compare_dolfinx.py`，环境定义为 `validation/environment-dolfinx.yml`。0.6.0 本地回归 **61 passed, 52 skipped**，其中 CUDA 项尚待目标机器验证；见 [VALIDATION](docs/VALIDATION.md)。0.7.0 已完成生成左室网格与纤维，本地回归 74 passed、57 CUDA skipped。0.8.0 已实现流体 FEM 算子，后续三个里程碑是 GPU 流体求解、耦合时间推进和完整算例验收。afsi 当前选定示例以显式更新固体坐标为主，因此不把完整 Newton 求解器设为首阶段必需项。
+A MAC time step spreads the stored solid force, advances and projects the fluid velocity, interpolates velocity to the solid, updates coordinates, and evaluates the next nodal force. The LV implementation preserves the AFSI-style lagged loading order: the new force uses updated coordinates and the preceding state time. Initial fluid velocity and stored force are zero. The FEM-fluid comparison path retains its existing nodal IB transfer, so it should not be confused with the MAC quadrature transfer above.
 
-## 来源
+## GPU performance
 
-- [torchcor 依赖声明](https://github.com/sagebei/torchcor/blob/b02daee87d4283888981cbfc3a6b00f57789a820/pyproject.toml)
-- [afsi 收缩示例](https://github.com/npuheart/afsi/blob/99df0ffba795fa05043ba874ad00353dcb986466/afsic/demo/demo_337/fsi_paralell_fibers_contraction.py)
-- [PyTorch CUDA 13.0 官方包索引](https://download.pytorch.org/whl/cu130/torch/)
-- [PyTorch 安装说明](https://pytorch.org/get-started/locally/)
-- [NVIDIA 驱动兼容说明](https://docs.nvidia.com/deploy/cuda-compatibility/minor-version-compatibility.html)
-- [nvidia-smi 中 CUDA 版本的含义](https://docs.nvidia.com/deploy/nvidia-smi/index.html)
+The implementation addresses GPU launch overhead, temporary tensors, repeated global-memory access, and host/device synchronization alongside sparse arithmetic.
+
+| Component | Implementation | Intended benefit |
+| --- | --- | --- |
+| FE operators and IB mass matrix | Assemble COO contributions, coalesce, convert to CSR, and reuse fixed matrices | Avoid rebuilding matrices and repeating element-wise mass actions during each solve |
+| Solid constitutive kernels | `torch.compile` / Inductor; fused scalar 3×3 Guccione algebra in the pointwise backend | Reduce small batched-matrix calls and intermediate tensors |
+| IB transfer | Compact separable four-point stencils and Triton gather/spread kernels | Reduce expanded index/weight storage and repeated tensor passes |
+| Pressure multigrid | Fused five-/seven-point stencils, residual/restriction and prolongation/correction kernels | Reduce kernel launches and intermediate fine-grid arrays |
+| Iterative solver storage | Preallocated workspaces and fixed-address double buffers | Reuse allocations and support repeatable execution graphs |
+| CUDA Graph replay | Capture pressure V-cycle blocks and CSR/Jacobi-PCG iteration blocks between convergence checks | Reduce Python and CUDA submission overhead |
+| Warm starts and geometry reuse | Reuse prior mass-solve coefficients; cache accepted geometry and IB stencils with invalidation | Reduce iterations and duplicate evaluation |
+| Diagnostics | Combine acceptance flags and sample expensive diagnostics at configured intervals | Reduce frequent host reads while retaining numerical acceptance checks |
+
+These execution backends retain FP64, the chosen quadrature, consistent mass matrices, solver tolerances, and true-residual checks. They do not replace the mass solve with diagonal lumping. Pressure multigrid uses structured stencil actions, while FE mass and FEM fluid operators use assembled sparse matrices. First-run compilation/capture and scheduled visualization still contribute to total run time.
+
+### Example measurements
+
+The following are development-run wall times reported on an **RTX 4090**, useful as scale estimates rather than portable benchmark guarantees:
+
+| Case | Problem size and horizon | Reported elapsed time |
+| --- | --- | --- |
+| 3D ideal LV, optimized MAC | 64³ fluid cells; 28,840 P2 solid nodes; 243,502 interaction points; 40,000 steps / 2 s | 931.79 s, approximately 15.5 min |
+| 2D ideal valve, optimized MAC | 256 × 64 fluid cells; 1,986 P2 solid nodes; 48,000 steps / 3 s | 333.48 s, approximately 5.6 min |
+
+The LV timing predates regular VTK time-series export; the current GPU preset enables that output. Runtime depends on output frequency, host CPU, software versions, compilation, load phase, mesh, and solver iterations. These figures are not a matched-discretization speedup comparison with native AFSI. Larger meshes and different GPUs require measurement, especially because FP64 throughput and memory traffic both matter.
+
+For a controlled comparison, replay an existing checkpoint using the supplied benchmark tools. For example:
+
+```bash
+CUDA_VISIBLE_DEVICES=0 python -u validation/benchmark_lv_mac_graph.py \
+  --checkpoint results/lv_mac_2s/checkpoint.npz \
+  --device cuda --warmup 10 --steps 100 --profile \
+  --output results/lv_mac_benchmark/report.json
+```
+
+Use an existing checkpoint path. These benchmarks compare state equivalence as well as speed. Warmup/compilation is separated from throughput, and optional phase profiling uses a separate replay. A short replay at the end of loading does not predict the entire transient runtime; nested phase timings should not be added together.
+
+## Results and visualization
+
+Runs produce `configuration.json`, `report.json`, `history.csv`, and `checkpoint.npz`. The checkpoint preserves the restart state; CSV contains sampled scalar diagnostics.
+
+The 3D MAC LV demo also writes:
+
+- `vtk/solid.pvd`: deformed P2 tetrahedral meshes (`.vtu`), displacement, nodal force, reference fibers, and element `J_min/J_max`.
+- `vtk/fluid.pvd`: structured fluid fields (`.vti`) containing pressure, display velocity, and divergence.
+- `vtk/fields.json`: field definitions and units.
+
+Open the two `.pvd` files in ParaView and apply the readers to animate the solution. Solid coordinates are already deformed. MAC display velocity is reconstructed at cell centers; the checkpoint retains the original staggered velocity arrays. For point-based flow visualization, apply **Cell Data to Point Data** as needed.
+
+With the LV preset, `output_every=400` and `dt=5e-5` give a 0.02 s frame interval. The 2D valve writes its collections under `fields/`; use `--fluid-fields` to include its fluid output. See the individual demo guides for FEM visualization and single-checkpoint export.
+
+## Project structure
+
+```text
+src/afsi_torch/
+  config.py          Public case configuration and JSON handling
+  simulation/        Reusable LV MAC, LV FEM, and valve runners
+  geometry/          Solid geometry, boundary tags, and fiber generation
+  mac/               3D MAC fluid, multigrid, FE/IB transfer, GPU execution
+  mac2d/             2D channel fluid, multigrid, FE/IB transfer
+  fluid/             Q2/Q1 FEM fluid, sparse operators, linear solvers
+  solid.py           Solid finite-element quadrature and assembly
+  materials.py       Constitutive models
+  afsi337.py         Ideal-LV reference settings and model construction
+  afsi340.py         Ideal-valve geometry and solid model
+
+demo/                Runnable cases, editable CONFIG objects, JSON presets
+examples/            Small examples and compatibility entry points
+validation/          Numerical comparisons, performance tools, data export
+scripts/             Optional native-AFSI/container workflows
+tests/               Numerical, restart, output, and execution tests
+docs/                Detailed methods and experiment documentation
+```
+
+## Validation and scope
+
+Tests cover FE and constitutive identities, derivative checks, fluid operators and projection, IB transfer/power consistency, iterative-solver convergence, reference/optimized equivalence, checkpoint restart, configuration propagation, and visualization layout. Selected reference comparisons use NumPy or native FEniCSx/AFSI outside the main runtime.
+
+The included LV and valve simulations have completed their prescribed horizons in development runs. Mesh/time-step convergence and agreement with a particular native AFSI trajectory still need to be established for each chosen case. The generated LV mesh/fibers are not asserted identical to external AFSI input files. The 2 s LV loading-and-holding example does not include a closed-loop circulation or a physiological cardiac cycle, and the valve example has no contact model. End-to-end differentiation of a transient FSI run is not currently exposed.
+
+The current demos use one selected GPU. `CUDA_VISIBLE_DEVICES=0` selects a device; it does not enable multi-GPU domain decomposition.
+
+When reporting an issue, include the command/configuration, commit, Python/PyTorch/Triton versions, GPU and driver, and the relevant report or traceback. Include output settings when comparing runtime.
+
+## References and acknowledgements
+
+- [AFSI](https://github.com/loveIroha/afsi): reference formulations and the ideal-LV `demo_337` and ideal-valve `demo_340` cases.
+- [torchcor](https://github.com/sagebei/torchcor): inspiration for GPU finite-element computation using PyTorch tensors, assembly, and sparse solvers; its cardiac electrophysiology solver is a separate project.
+- Griffith, B. E., and Luo, X. (2017). [Hybrid finite difference/finite element immersed boundary method](https://doi.org/10.1002/cnm.2888). *International Journal for Numerical Methods in Biomedical Engineering*, 33, e2888.
+- [MAC-taichi](https://github.com/houkensjtu/MAC-taichi): reference for MAC predictor/correction design. AFSI_GPU implements its operators in PyTorch/Triton; see the retained [third-party notice](docs/MAC_TAICHI_LICENSE.txt).
