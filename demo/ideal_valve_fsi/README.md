@@ -1,5 +1,10 @@
 # AFSI demo_340：二维理想双瓣叶 GPU 算例
 
+主程序顶部的 `CONFIG` 集中定义流体网格、时间步、流体性质、瓣叶几何/材料、
+入口波形、求解器和输出参数。可使用 `--config configs/mac_gpu.json` 或自己的
+JSON，命令行显式参数覆盖它；实际配置写入 `configuration.json`。
+[接口与新算例使用说明](../../docs/CONFIGURATION.md)。
+
 入口为 `demo/ideal_valve_fsi/run_mac.py`，默认推进 **3 s、48000 步**。网格在 CPU 上用 Gmsh 生成；P2 固体有限元、FRH 应力/节点力组装、CSR 一致质量矩阵求解、IB 插值传播及二维 MAC 流体/压力多重网格在指定的 PyTorch 设备上运行。指定 `--device cuda` 时 CUDA 不可用会报错，不会退回 CPU。无需安装 FEniCSx、AFSI、Docker 或 Swanlab。
 
 这是沿用本项目 MAC/积分点 IB 框架的新算例，不是原 AFSI 离散的逐项复刻。用户已完成旧版 GPU 的 3 s 运行（1094.143 s）；与原 AFSI 的完整轨迹一致性尚未建立。默认现启用二维固定压力工作区、Triton 融合模板、CUDA Graph、跨步 IB 缓存和合并检查；优化版 GPU 测试和性能仍待验证。[执行优化、已有检查点短程 A/B 与独立完整运行](../../docs/VALVE_GPU_EXECUTION.md)。

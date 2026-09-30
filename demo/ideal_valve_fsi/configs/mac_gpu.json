@@ -1,0 +1,66 @@
+{
+  "time": {
+    "dt": 6.25e-05,
+    "end_time": 3.0
+  },
+  "fluid": {
+    "shape": [
+      256,
+      64
+    ],
+    "lengths": [
+      8.0,
+      1.61
+    ],
+    "origin": [
+      0.0,
+      0.0
+    ],
+    "rho": 1.0,
+    "mu": 0.1
+  },
+  "solid": {
+    "width": 0.0212,
+    "length": 0.7,
+    "x_right": 2.0,
+    "height": 1.61,
+    "mesh_size": 0.01,
+    "C0": 200000.0,
+    "C1": 1000000.0,
+    "kappa": 400000.0,
+    "beta": 100000000.0
+  },
+  "inlet": {
+    "amplitude": 5.0,
+    "period": 1.0,
+    "offset": 1.1
+  },
+  "pressure_solver": {
+    "rtol": 1e-10,
+    "atol": 1e-12,
+    "max_cycles": 100,
+    "smooth": 4,
+    "check_every": 2
+  },
+  "mass_solver": {
+    "rtol": 1e-12,
+    "atol": 1e-13,
+    "max_iterations": 500,
+    "recompute_every": 40,
+    "check_every": 4
+  },
+  "execution": {
+    "execution_backend": "optimized",
+    "pressure_backend": "auto",
+    "mass_backend": "graph",
+    "fused": true,
+    "warm_start": true
+  },
+  "output": {
+    "log_every": 160,
+    "checkpoint_every": 1600,
+    "output_every": 160,
+    "write_vtk": true,
+    "fluid_fields": false
+  }
+}

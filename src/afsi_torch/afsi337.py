@@ -59,12 +59,13 @@ def default_quadrature(device='cpu'):
     return (cast(q), cast(w)), (cast(s), cast(sw))
 
 
-def generated_model(*, mesh_size=.1, device='cpu'):
+def generated_model(*, mesh_size=.1, device='cpu', geometry=None, parameters=None, loads=None, beta=5e5):
     from .geometry.ellipsoid_fibers import laplace_ellipsoid_fibers
-    mesh = generate_lv(geometry_config(mesh_size), device=device)
+    mesh = generate_lv(geometry_config(mesh_size) if geometry is None else geometry, device=device)
     fibers, info = laplace_ellipsoid_fibers(mesh)
     vq, sq = default_quadrature(device)
-    return LVSolid(mesh, loads=AFSI337Loads(), fibers=fibers, volume_quadrature=vq,
+    return LVSolid(mesh, loads=AFSI337Loads() if loads is None else loads, parameters=parameters,
+                   beta=beta, fibers=fibers, volume_quadrature=vq,
                    surface_quadrature=sq, fiber_metadata=dict(
                        mode='generated', recipe='P1 Laplace -> nodal P2 ellipsoidal helix',
                        endo_angle_degrees=90., epi_angle_degrees=-90., laplace=info,
@@ -76,8 +77,9 @@ def alignment(model, settings):
     return dict(source=SOURCE, demo_blob='283b23f5155dbc57043edd2aa7280d61c3c8e985',
         protocol='simultaneous pressure/tension linear ramp to 1.5 s, then hold; horizon 2 s',
         reference_dt_s=5e-5, reference_fluid_cells=32, reference_fluid_box_cm=[0.,5.],
-        fluid_mesh_matched=(settings['fluid_cells'] == 32 and settings['box_length'] == 5.
-                            and settings['origin'] == [0.,0.,0.]),
+        fluid_mesh_matched=(tuple(settings.get('fluid_shape',(settings['fluid_cells'],)*3)) == (32,)*3
+                            and tuple(settings.get('fluid_lengths',(settings['box_length'],)*3)) == (5.,)*3
+                            and tuple(settings['origin']) == (0.,0.,0.)),
         dt_matched=settings['dt'] == 5e-5,
         solid_source='exported AFSI mesh and P2 fields' if native else 'generated companion benchmark geometry',
         solid_mesh_and_fibers_matched=native,
@@ -89,4 +91,3 @@ def alignment(model, settings):
             'Generated fibers evaluate Laplace-based ellipsoid recipe at P2 nodes; external projected coefficients may differ.']),
         solver_difference='PyTorch CSR Jacobi-PCG replaces native PETSc linear solvers',
         diagnostic_definition='AFSI volume is wall integral of detF; cavity volume is an additional output')
-

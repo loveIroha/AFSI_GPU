@@ -1,5 +1,10 @@
 # 理想左心室 2 s IB/FEM 流固耦合 demo
 
+MAC 和 FEM 主程序均在顶部 `CONFIG` 集中设置网格、时间、流体性质、材料、
+载荷、求解器及输出参数。支持 `--config JSON`，实际配置保存在运行目录的
+`configuration.json`；旧命令仍可使用。[项目结构与配置接口](../../docs/CONFIGURATION.md)。
+优化版 MAC 配置为 `configs/mac_gpu.json`，FEM 配置为 `configs/fem.json`。
+
 ## MAC 的 ParaView 时间序列
 
 新的 MAC demo 从初始状态启动时默认输出 VTK；`--vtk` 显式开启，`--no-vtk`

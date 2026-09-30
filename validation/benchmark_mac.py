@@ -22,6 +22,8 @@ from afsi_torch.mac.checkpoint import load_mac
 from afsi_torch.mac.coupling import MACIBStepper
 from afsi_torch.mac.transfer import FETransfer, MACStencil
 from afsi_torch.solid import prepare_p2
+from afsi_torch.mac.multigrid import MGOptions
+from afsi_torch.fluid.solvers import SolverOptions
 
 
 class ExpandedTransfer(FETransfer):
@@ -144,7 +146,8 @@ def benchmark(checkpoint, *, device='cuda', steps=20, warmup=3):
     if device.type == 'cuda' and not torch.cuda.is_available():
         raise RuntimeError('CUDA requested but unavailable')
     model, initial, settings, _ = load_mac(checkpoint, device)
-    grid = MACGrid((settings['fluid_cells'],)*3, (settings['box_length'],)*3)
+    from afsi_torch.config import lv_grid
+    grid = lv_grid(settings)
     degree = settings['interaction_degree']
     geometry = (model.geometry if degree is None else
                 prepare_p2(model.mesh.X, model.mesh.cells, degree=degree))
@@ -152,8 +155,10 @@ def benchmark(checkpoint, *, device='cuda', steps=20, warmup=3):
     for name, cls, warm_start in [('expanded', ExpandedTransfer, False),
                                    ('separable', FETransfer, False),
                                    ('separable_warm', FETransfer, True)]:
-        flow = MACFlow(grid, dt=settings['dt'], rho=settings['rho'], mu=settings['mu'], device=device)
-        transfer = cls(grid, geometry, warm_start=warm_start)
+        flow = MACFlow(grid, dt=settings['dt'], rho=settings['rho'], mu=settings['mu'], device=device,
+                       options=MGOptions(**settings.get('pressure_solver',{})))
+        transfer = cls(grid, geometry, warm_start=warm_start,
+                       options=SolverOptions(**settings['mass_solver']) if 'mass_solver' in settings else None)
         driver = MACIBStepper(flow, transfer, model.force, model.validate)
         replay(driver, initial, warmup, device)
         transfer.reset_warm_start()

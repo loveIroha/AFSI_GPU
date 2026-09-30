@@ -1,5 +1,11 @@
 # AFSI_GPU：PyTorch IB/FEM 流固耦合
 
+**项目结构与公共配置接口：**三个 demo 主程序顶部集中定义 `CONFIG`，支持
+Python 配置、JSON 文件和命令行覆盖。可以设置流体网格及域尺寸、时间步、
+固体几何/材料、载荷、求解器容差和输出频率；每次运行保存实际
+`configuration.json`。可复用 runner 位于 `src/afsi_torch/simulation/`。
+[接口、运行示例及续算规则](docs/CONFIGURATION.md)。
+
 **2 s 理想左心室 demo：**[运行说明与 MAC/FEM 两种流体入口](demo/ideal_lv_fsi/README.md)。保留 MAC 有限差分＋几何多重网格和 Q2/Q1 有限元流体两种入口。
 
 **三维 MAC 执行迁移：**新增压力 CUDA Graph、残差/粗化融合与合并耦合检查，保持全 Neumann 边界、零均值、原容差和载荷次序；支持旧检查点切换及只读短程 A/B。[GPU 验证及完整 2 s 运行说明](docs/LV_MAC_GRAPH_EXECUTION.md)。本地相关回归 70 passed、60 CUDA skipped，三维 GPU 加速待测。

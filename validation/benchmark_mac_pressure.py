@@ -32,7 +32,8 @@ def benchmark(checkpoint, *, device='cuda', steps=20, warmup=3):
         raise ValueError('steps and warmup must be positive')
     device = torch.device(device)
     model, initial, settings, _ = load_mac(checkpoint, device)
-    grid = MACGrid((settings['fluid_cells'],)*3, (settings['box_length'],)*3)
+    from afsi_torch.config import lv_grid
+    grid = lv_grid(settings)
     degree = settings['interaction_degree']
     geometry = (model.geometry if degree is None else
                 prepare_p2(model.mesh.X, model.mesh.cells, degree=degree))
@@ -41,9 +42,12 @@ def benchmark(checkpoint, *, device='cuda', steps=20, warmup=3):
         print(f'{backend}: setup and warmup (first CUDA use compiles kernels)...', flush=True)
         synchronize(device)
         started = perf_counter()
+        from afsi_torch.mac.multigrid import MGOptions
+        from afsi_torch.fluid.solvers import SolverOptions
         flow = MACFlow(grid, dt=settings['dt'], rho=settings['rho'], mu=settings['mu'],
-                       device=device, pressure_backend=backend)
-        transfer = FETransfer(grid, geometry, warm_start=True)
+                       device=device, pressure_backend=backend,options=MGOptions(**settings.get('pressure_solver',{})))
+        transfer = FETransfer(grid, geometry, warm_start=True,
+                              options=SolverOptions(**settings['mass_solver']) if 'mass_solver' in settings else None)
         driver = MACIBStepper(flow, transfer, model.force, model.validate)
         replay(driver, initial, warmup, device)
         setup_warmup = perf_counter()-started

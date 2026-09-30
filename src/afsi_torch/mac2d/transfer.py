@@ -19,7 +19,7 @@ class Stencil:
 
 
 class TriangleTransfer:
-    def __init__(self,grid,geometry,*,mass_backend='graph',warm_start=True,fused=True,optimized=False):
+    def __init__(self,grid,geometry,*,mass_backend='graph',warm_start=True,fused=True,optimized=False,options=None):
         if mass_backend not in ('pcg','graph'):
             raise ValueError('mass backend must be pcg or graph')
         self.grid,self.geometry=grid,geometry
@@ -35,7 +35,7 @@ class TriangleTransfer:
             (g.node_count,g.node_count),device=g.weights.device,dtype=g.weights.dtype,check_invariants=True).coalesce().to_sparse_csr()
         diagonal=g.weights.new_zeros(g.node_count).index_add(0,g.cells.reshape(-1),local.diagonal(dim1=-2,dim2=-1).reshape(-1))
         self.diagonal=diagonal[:,None].expand(-1,2)
-        options=SolverOptions(rtol=1e-12,atol=1e-13,max_iterations=500,check_every=4)
+        options=SolverOptions(rtol=1e-12,atol=1e-13,max_iterations=500,check_every=4) if options is None else options
         self.solver=(GraphMassSolver if mass_backend=='graph' else MassSolver)(self.mass,self.diagonal,options)
         self.templates=grid.zeros(device=g.weights.device,dtype=g.weights.dtype)
         self.offsets=torch.cartesian_prod(torch.arange(4,device=g.weights.device),torch.arange(4,device=g.weights.device))

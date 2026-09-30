@@ -1,0 +1,88 @@
+{
+  "time": {
+    "dt": 5e-05,
+    "end_time": 2.0
+  },
+  "fluid": {
+    "shape": [
+      64,
+      64,
+      64
+    ],
+    "lengths": [
+      5.0,
+      5.0,
+      5.0
+    ],
+    "origin": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "rho": 1.0,
+    "mu": 1.0
+  },
+  "geometry": {
+    "inner_axes": [
+      0.7,
+      0.7,
+      1.7
+    ],
+    "outer_axes": [
+      1.0,
+      1.0,
+      2.0
+    ],
+    "base_height": 0.5,
+    "mesh_size": 0.1,
+    "center": [
+      3.5,
+      2.5,
+      2.5
+    ],
+    "long_axis": "x"
+  },
+  "material": {
+    "C": 20000.0,
+    "bf": 8.0,
+    "bt": 2.0,
+    "bfs": 4.0,
+    "kappa": 500000.0
+  },
+  "loads": {
+    "pressure": 150000.0,
+    "tension": 600000.0,
+    "ramp_time": 1.5
+  },
+  "beta": 500000.0,
+  "interaction_degree": null,
+  "pressure_solver": {
+    "rtol": 1e-10,
+    "atol": 1e-12,
+    "max_cycles": 100,
+    "smooth": 4,
+    "check_every": 2
+  },
+  "mass_solver": {
+    "rtol": 1e-12,
+    "atol": 1e-13,
+    "max_iterations": 500,
+    "recompute_every": 40,
+    "check_every": 4
+  },
+  "execution": {
+    "execution_backend": "fused",
+    "pressure_backend": "graph",
+    "solid_backend": "pointwise",
+    "mass_backend": "graph",
+    "coupling_backend": "optimized",
+    "warm_start": true
+  },
+  "output": {
+    "log_every": 200,
+    "checkpoint_every": 1000,
+    "output_every": 400,
+    "write_vtk": true,
+    "fluid_fields": true
+  }
+}

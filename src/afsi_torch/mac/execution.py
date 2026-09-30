@@ -12,7 +12,6 @@ def tensor_kernel(function, device):
 
 
 def build_driver(model, settings, device):
-    from .grid import MACGrid
     from .flow import MACFlow
     from .transfer import FETransfer
     from .coupling import MACIBStepper
@@ -33,24 +32,29 @@ def build_driver(model, settings, device):
         raise ValueError('optimized coupling backend requires fused execution')
     if backend!='fused' and (solid_backend!='reference' or mass_backend!='pcg'):
         raise ValueError('pointwise solid and graph mass backends require execution_backend=fused')
-    grid = MACGrid((settings['fluid_cells'],)*3, (settings['box_length'],)*3)
+    from ..config import lv_grid
+    from .multigrid import MGOptions
+    from ..fluid.solvers import SolverOptions
+    grid = lv_grid(settings)
     flow = MACFlow(grid, dt=settings['dt'], rho=settings['rho'], mu=settings['mu'],
                    device=device, pressure_backend=settings.get('pressure_backend','torch'),
-                   execution_backend=backend)
+                   execution_backend=backend, options=MGOptions(**settings.get('pressure_solver',{})))
     degree = settings['interaction_degree']
     geometry = model.geometry if degree is None else prepare_p2(model.mesh.X,model.mesh.cells,degree=degree)
     if backend == 'fused':
         from .compact_transfer import CompactFETransfer
         from .solid_execution import SolidExecution
         transfer = CompactFETransfer(grid,geometry,warm_start=settings.get('warm_start',False),
-                                     mass_backend=mass_backend)
+                                     mass_backend=mass_backend,
+                                     options=SolverOptions(**settings['mass_solver']) if 'mass_solver' in settings else None)
         if solid_backend=='pointwise':
             from .solid_pointwise import PointwiseSolidExecution
             solid = PointwiseSolidExecution(model)
         else:
             solid = SolidExecution(model)
     else:
-        transfer = FETransfer(grid,geometry,warm_start=settings.get('warm_start',False))
+        transfer = FETransfer(grid,geometry,warm_start=settings.get('warm_start',False),
+                              options=SolverOptions(**settings['mass_solver']) if 'mass_solver' in settings else None)
         solid = model
     return MACIBStepper(flow,transfer,solid.force,solid.validate,
         optimized=coupling_backend=='optimized',solid_execution=solid if backend=='fused' else None)

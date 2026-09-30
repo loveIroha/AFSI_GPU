@@ -5,13 +5,13 @@ import sys
 if not __package__:
     sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from afsi_torch.mac.checkpoint import load_mac
-from afsi_torch.mac.grid import MACGrid
+from afsi_torch.config import lv_grid
 from afsi_torch.mac.output import MACWriter
 
 
 def export(checkpoint,output,device='cpu'):
     model,state,settings,_=load_mac(checkpoint,device)
-    grid=MACGrid((settings['fluid_cells'],)*3,(settings['box_length'],)*3)
+    grid=lv_grid(settings)
     output=Path(output)
     if any(output.glob('*.pvd')) or any(output.glob('*.vtu')) or any(output.glob('*.vti')):
         raise FileExistsError('choose an empty visualization output directory')

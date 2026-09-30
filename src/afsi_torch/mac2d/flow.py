@@ -16,10 +16,12 @@ class ChannelResult:
 
 class ChannelFlow:
     def __init__(self,grid,*,dt=1/16000,rho=1.,mu=.1,device='cpu',fused=True,options=None,
-                 optimized=False,pressure_backend=None):
+                 optimized=False,pressure_backend=None,inlet_config=None):
         if any(not isfinite(v) or v<=0 for v in (dt,rho,mu)):
             raise ValueError('positive finite dt/rho/mu required')
         self.grid,self.dt,self.rho,self.mu=grid,dt,rho,mu
+        from ..config import InletConfig
+        self.inlet_config=InletConfig(**(inlet_config or {}))
         self.optimized=optimized
         self.viscous_number=dt*mu/rho*sum(1/h**2 for h in grid.spacing)
         if self.viscous_number>.25:
@@ -52,7 +54,8 @@ class ChannelFlow:
         return torch.stack((finite.to(u.dtype),walls.to(u.dtype)))
 
     def inlet(self,time):
-        self.scale.fill_(5*(sin(2*pi*time)+1.1))
+        config=self.inlet_config
+        self.scale.fill_(config.amplitude*(sin(2*pi*time/config.period)+config.offset))
         return self.scale*self.profile
 
     def _predict(self,velocity,density,inlet):
