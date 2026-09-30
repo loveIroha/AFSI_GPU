@@ -2,6 +2,8 @@
 
 **2 s 理想左心室 demo：**[运行说明与 MAC/FEM 两种流体入口](demo/ideal_lv_fsi/README.md)。保留 MAC 有限差分＋几何多重网格和 Q2/Q1 有限元流体两种入口。
 
+**三维 MAC 执行迁移：**新增压力 CUDA Graph、残差/粗化融合与合并耦合检查，保持全 Neumann 边界、零均值、原容差和载荷次序；支持旧检查点切换及只读短程 A/B。[GPU 验证及完整 2 s 运行说明](docs/LV_MAC_GRAPH_EXECUTION.md)。本地相关回归 70 passed、60 CUDA skipped，三维 GPU 加速待测。
+
 **3 s 二维理想瓣膜 demo_340：**[物理设置、离散差别及 GPU 后台运行说明](demo/ideal_valve_fsi/README.md)。程序生成双瓣叶 P2 网格，使用 FRH 材料、±45° 纤维、根部弹簧、周期入口和二维 MAC/多重网格/积分点 IB。用户已完成旧版 GPU 3 s 运行（1094.143 s）。新执行版加入二维压力固定工作区、Triton 融合模板、CUDA Graph、跨步 IB 缓存与合并检查，保持数值方法和容差；[GPU 测试、只读短程 A/B 及优化版运行说明](docs/VALVE_GPU_EXECUTION.md)。目标 GPU 加速幅度待验证。
 
 目标是在 GPU 上实现 AFSI 的非线性固体、背景流体与 IB 耦合，算例采用程序生成的厘米制理想左心室。当前已具备 P2 固体、Q2/Q1 流体、Chorin 求解及显式耦合时间步，并通过小规模独立 DOLFINx/NumPy 对照。已有 GPU 0.8 s 加载轨迹；当前优先对齐 AFSI demo_337 实际启用的 2 s 加载—保持算例，平衡、收敛和长期稳定性仍待验收。

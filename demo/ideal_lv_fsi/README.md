@@ -1,5 +1,9 @@
 # 理想左心室 2 s IB/FEM 流固耦合 demo
 
+## 三维压力图重放与合并检查
+
+新增 `--pressure-backend graph --coupling-backend optimized`，适配二维瓣膜已验证的固定执行序列和合并检查，保留三维全 Neumann 压力边界、逐层零均值、原容差及载荷时序。需配合 `--execution-backend fused`。旧检查点和默认行为保留，显式开关启用新路径。[GPU 测试、已有检查点的只读 A/B、加载初期及后台续算命令](../../docs/LV_MAC_GRAPH_EXECUTION.md)。本地 CPU 相关回归 70 项通过；CUDA 正确性和三维加速幅度待目标 GPU 验证。
+
 ## 本次固体/质量矩阵优化实验
 
 在已有 `--execution-backend fused` 上，加 `--solid-backend pointwise`

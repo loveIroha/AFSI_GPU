@@ -34,8 +34,10 @@ def main(argv=None):
     parser.add_argument('--checkpoint-every', type=int, default=1000)
     parser.add_argument('--warm-start', action=argparse.BooleanOptionalAction, default=None,
                         help='reuse previous IB mass-solve coefficients (experimental)')
-    parser.add_argument('--pressure-backend', choices=('torch','fused'), default=None,
-                        help='pressure V-cycle execution; fused uses Triton on CUDA (experimental)')
+    parser.add_argument('--pressure-backend', choices=('torch','fused','workspace','graph'), default=None,
+                        help='graph: fused workspace and CUDA Graph V-cycle blocks')
+    parser.add_argument('--coupling-backend', choices=('reference','optimized'), default=None,
+                        help='optimized: IB stencil cache and combined checks; requires fused execution')
     parser.add_argument('--execution-backend', choices=('torch','fused'), default=None,
                         help='fused: compact IB, buffered CSR PCG and compiled fluid/solid kernels')
     parser.add_argument('--solid-backend', choices=('reference','pointwise'), default=None,

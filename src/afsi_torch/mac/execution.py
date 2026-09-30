@@ -20,12 +20,17 @@ def build_driver(model, settings, device):
     backend = settings.get('execution_backend', 'torch')
     solid_backend = settings.get('solid_backend', 'reference')
     mass_backend = settings.get('mass_backend', 'pcg')
+    coupling_backend=settings.get('coupling_backend','reference')
     if backend not in ('torch', 'fused'):
         raise ValueError('execution backend must be torch or fused')
     if solid_backend not in ('reference','pointwise'):
         raise ValueError('solid backend must be reference or pointwise')
     if mass_backend not in ('pcg','graph'):
         raise ValueError('mass backend must be pcg or graph')
+    if coupling_backend not in ('reference','optimized'):
+        raise ValueError('coupling backend must be reference or optimized')
+    if coupling_backend=='optimized' and backend!='fused':
+        raise ValueError('optimized coupling backend requires fused execution')
     if backend!='fused' and (solid_backend!='reference' or mass_backend!='pcg'):
         raise ValueError('pointwise solid and graph mass backends require execution_backend=fused')
     grid = MACGrid((settings['fluid_cells'],)*3, (settings['box_length'],)*3)
@@ -47,4 +52,5 @@ def build_driver(model, settings, device):
     else:
         transfer = FETransfer(grid,geometry,warm_start=settings.get('warm_start',False))
         solid = model
-    return MACIBStepper(flow,transfer,solid.force,solid.validate)
+    return MACIBStepper(flow,transfer,solid.force,solid.validate,
+        optimized=coupling_backend=='optimized',solid_execution=solid if backend=='fused' else None)

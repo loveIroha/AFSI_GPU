@@ -52,6 +52,7 @@ class CompactFETransfer(FETransfer):
         self._assemble_kernel=tensor_kernel(_assemble,device)
         self._support_kernel=tensor_kernel(self._support_flags,device)
         self._finite_kernel=tensor_kernel(lambda a,b,c:torch.isfinite(a).all() & torch.isfinite(b).all() & torch.isfinite(c).all(),device)
+        self._nodal_finite_kernel=tensor_kernel(lambda value:torch.isfinite(value).all(),device)
         cast=self.geometry.weights.new_tensor
         self.origins=cast([self.grid.face_origin(c) for c in range(3)])
         self.spacing=cast(self.grid.spacing)
@@ -71,6 +72,12 @@ class CompactFETransfer(FETransfer):
         if not self._support_kernel(points):
             raise ValueError('MAC IB support reaches a wall or is nonfinite; enlarge/refine the fluid box')
 
+    def _nodal(self,value):
+        g=self.geometry
+        if (value.shape!=(g.node_count,3) or value.device!=g.weights.device or
+                value.dtype!=g.weights.dtype or not self._nodal_finite_kernel(value)):
+            raise ValueError('invalid FE nodal field')
+
     def evaluate(self,value):
         return self._evaluate_kernel(value,self.geometry.values,self.geometry.cells)
 
@@ -78,6 +85,11 @@ class CompactFETransfer(FETransfer):
     def prepare(self,x):
         points=self.interaction_points(x)
         self.check_support(points)
+        return self.from_points(points)
+
+    def from_points(self,points):
+        # Called only after support/finite-value acceptance, including cached
+        # next-step preparation in the optimized coupled driver.
         # The same two-cell wall margin guarantees every staggered 4-point
         # stencil is complete. No clipping or renormalization is introduced.
         base,phi=self._prepare_kernel(points,self.origins,self.spacing,self.axis_offsets)

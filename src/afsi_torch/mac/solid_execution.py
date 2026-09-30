@@ -88,9 +88,29 @@ class SolidExecution:
     @torch.no_grad()
     def force(self,x,time):
         self.validate(x)
+        self._set_loads(time)
+        F,endo,_=self._cached_geometry
+        return self._force_kernel(x,F,endo,self.loads)
+
+    def _set_loads(self,time):
         pressure,tension=self.model.loads.at(time)
         # Tensor loads prevent recompilation for every Python time/float value.
         self.loads[0].fill_(pressure)
         self.loads[1].fill_(tension)
-        F,endo,_=self._cached_geometry
-        return self._force_kernel(x,F,endo,self.loads)
+
+    @torch.no_grad()
+    def force_with_geometry(self,x,time):
+        # Pending geometry is never cached before all coupled acceptance checks
+        # pass. This exposes existing validity flags for one combined host read.
+        m=self.model
+        if x.shape!=m.mesh.X.shape or x.device!=m.mesh.X.device or x.dtype!=m.mesh.X.dtype:
+            raise ValueError('x must match the prepared mesh shape, device and dtype')
+        geometry=self._geometry_kernel(x)
+        self._set_loads(time)
+        F,endo,_=geometry
+        return self._force_kernel(x,F,endo,self.loads),geometry
+
+    def remember_geometry(self,x,geometry):
+        self._cached_x=x
+        self._cached_version=None if torch.is_inference(x) else x._version
+        self._cached_geometry=geometry

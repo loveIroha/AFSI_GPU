@@ -69,6 +69,24 @@ def _restrict(FINE, OUT, NX: tl.constexpr, NY: tl.constexpr, NZ: tl.constexpr,
 
 
 @triton.jit
+def _residual_restrict(P,RHS,OUT,NX:tl.constexpr,NY:tl.constexpr,NZ:tl.constexpr,
+                       HX2:tl.constexpr,HY2:tl.constexpr,HZ2:tl.constexpr,BLOCK:tl.constexpr):
+    i=tl.program_id(0)*BLOCK+tl.arange(0,BLOCK)
+    active=i<(NX//2)*(NY//2)*(NZ//2)
+    x,y,z=i//((NY//2)*(NZ//2)),(i//(NZ//2))%(NY//2),i%(NZ//2)
+    j=(2*x*NY+2*y)*NZ+2*z
+    value=tl.full((BLOCK,),0.,P.dtype.element_ty)
+    # Preserve the eight-child sum order of the existing restriction.
+    for a in tl.static_range(2):
+        for b in tl.static_range(2):
+            for c in tl.static_range(2):
+                k=j+a*NY*NZ+b*NZ+c
+                _,ap=_apply(P,k,NX,NY,NZ,HX2,HY2,HZ2)
+                value+=tl.load(RHS+k,active,other=0.)-ap
+    tl.store(OUT+i,value*.125,active)
+
+
+@triton.jit
 def _prolong_add(COARSE, FINE, NX: tl.constexpr, NY: tl.constexpr, NZ: tl.constexpr,
                  BLOCK: tl.constexpr):
     # Fine coordinate maps to i/2-1/4 on the cell-centered coarse lattice.
@@ -120,6 +138,12 @@ class TritonKernels:
         with torch.cuda.device(fine.device):
             _restrict[(triton.cdiv(out.numel(), self.block),)](
                 fine, out, *out.shape, BLOCK=self.block, enable_fp_fusion=False)
+
+    def residual_restrict(self,p,rhs,out,spacing):
+        with torch.cuda.device(p.device):
+            _residual_restrict[(triton.cdiv(out.numel(),self.block),)](
+                p,rhs,out,*p.shape,*(h*h for h in spacing),
+                BLOCK=self.block,enable_fp_fusion=False)
 
     def prolong_add(self, coarse, fine):
         with torch.cuda.device(fine.device):
