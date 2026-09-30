@@ -176,6 +176,7 @@ class ValveSolid:
         self.probe_cells,self.probe_values=self._locate(self.probe_reference)
         self._force_kernel=tensor_kernel(self._force,mesh.X.device) if fused else self._force
         self._F_kernel=tensor_kernel(self._F,mesh.X.device) if fused else self._F
+        self._force_det_kernel=tensor_kernel(self._force_and_det,mesh.X.device) if fused else self._force_and_det
 
     def _F(self,x):
         return torch.einsum('eai,eqaJ->eqiJ',x[self.mesh.cells],self.geometry.gradients)
@@ -188,8 +189,11 @@ class ValveSolid:
             raise ValueError('nonpositive or nonfinite valve det(F)')
 
     def _force(self,x):
+        return self._force_from_F(x,self._F(x))
+
+    def _force_from_F(self,x,F):
         g,c=self.geometry,self.config
-        P=frh_stress(self._F(x),self.fiber,c.C0,c.C1,c.kappa)
+        P=frh_stress(F,self.fiber,c.C0,c.C1,c.kappa)
         local=-torch.einsum('eq,eqiJ,eqaJ->eai',g.weights,P,g.gradients)
         result=torch.zeros_like(x).index_add(0,self.mesh.cells.reshape(-1),local.reshape(-1,2))
         root_displacement=x[self.mesh.roots]-self.mesh.X[self.mesh.roots]
@@ -199,6 +203,13 @@ class ValveSolid:
 
     def force(self,x):
         return self._force_kernel(x)
+
+    def _force_and_det(self,x):
+        F=self._F(x)
+        return self._force_from_F(x,F),determinant(F)
+
+    def force_and_det(self,x):
+        return self._force_det_kernel(x)
 
     def _locate(self,points):
         vertices=self.mesh.X[self.mesh.cells[:,:3]].detach().cpu().numpy()

@@ -2,7 +2,7 @@
 
 入口为 `demo/ideal_valve_fsi/run_mac.py`，默认推进 **3 s、48000 步**。网格在 CPU 上用 Gmsh 生成；P2 固体有限元、FRH 应力/节点力组装、CSR 一致质量矩阵求解、IB 插值传播及二维 MAC 流体/压力多重网格在指定的 PyTorch 设备上运行。指定 `--device cuda` 时 CUDA 不可用会报错，不会退回 CPU。无需安装 FEniCSx、AFSI、Docker 或 Swanlab。
 
-这是沿用本项目 MAC/积分点 IB 框架的新算例，不是原 AFSI 离散的逐项复刻。完整 GPU 运行和与原 AFSI 的轨迹一致性尚待验证。
+这是沿用本项目 MAC/积分点 IB 框架的新算例，不是原 AFSI 离散的逐项复刻。用户已完成旧版 GPU 的 3 s 运行（1094.143 s）；与原 AFSI 的完整轨迹一致性尚未建立。默认现启用二维固定压力工作区、Triton 融合模板、CUDA Graph、跨步 IB 缓存和合并检查；优化版 GPU 测试和性能仍待验证。[执行优化、已有检查点短程 A/B 与独立完整运行](../../docs/VALVE_GPU_EXECUTION.md)。
 
 ## 与原算例对齐的物理设置
 
@@ -53,7 +53,7 @@ W = C0/2*(I1bar-3) + C1*(exp(I4bar-1)-I4bar)
 git pull --ff-only
 conda activate afsi-torch
 python -m pip install -e ".[test,geometry,fused]"
-CUDA_VISIBLE_DEVICES=0 python -m pytest -q tests/test_valve_mac.py
+CUDA_VISIBLE_DEVICES=0 python -m pytest -q tests/test_valve_mac.py tests/test_valve_execution.py
 CUDA_VISIBLE_DEVICES=0 python -u demo/ideal_valve_fsi/run_mac.py \
   --device cuda --end-time 0.005 --fluid-fields \
   --output results/demo_ideal_valve/mac

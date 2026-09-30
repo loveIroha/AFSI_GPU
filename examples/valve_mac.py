@@ -7,16 +7,15 @@ from pathlib import Path
 from time import perf_counter
 import torch
 from afsi_torch.afsi340 import ValveConfig,generate_valve,ValveSolid
-from afsi_torch.mac2d import ChannelGrid,ChannelFlow,divergence
-from afsi_torch.mac2d.transfer import TriangleTransfer
-from afsi_torch.mac2d.coupling import ValveStepper
+from afsi_torch.mac2d import divergence
 from afsi_torch.mac2d import checkpoint
+from afsi_torch.mac2d.execution import build_driver
 from afsi_torch.cycle_checkpoint import atomic_json
 
 
 @torch.no_grad()
 def run(*,device='cuda',output=None,resume=None,end_time=.005,dt=None,nx=None,ny=None,
-        mesh_size=None,mass_backend=None,fused=None,warm_start=None,
+        mesh_size=None,mass_backend=None,fused=None,warm_start=None,execution_backend=None,pressure_backend=None,
         log_every=160,checkpoint_every=1600,field_every=160,fluid_fields=False):
     if str(device).startswith('cuda') and not torch.cuda.is_available():
         raise RuntimeError('CUDA requested but unavailable')
@@ -26,6 +25,10 @@ def run(*,device='cuda',output=None,resume=None,end_time=.005,dt=None,nx=None,ny
         raise ValueError('positive log/checkpoint intervals and nonnegative field interval required')
     if mass_backend is not None and mass_backend not in ('pcg','graph'):
         raise ValueError('mass backend must be pcg or graph')
+    if execution_backend is not None and execution_backend not in ('reference','optimized'):
+        raise ValueError('execution backend must be reference or optimized')
+    if pressure_backend is not None and pressure_backend not in ('auto','reference','workspace','graph'):
+        raise ValueError('invalid pressure backend')
     if any(v is not None and type(v) is not bool for v in (fused,warm_start)):
         raise ValueError('fused/warm_start must be bool or None')
     started=perf_counter()
@@ -36,7 +39,8 @@ def run(*,device='cuda',output=None,resume=None,end_time=.005,dt=None,nx=None,ny
         solid,state,settings,progress=checkpoint.load(resume,device)
         if fused is not None and fused!=settings['fused']:
             solid=ValveSolid(solid.mesh,solid.config,fused=fused)
-        for key,value in (('mass_backend',mass_backend),('fused',fused),('warm_start',warm_start)):
+        for key,value in (('mass_backend',mass_backend),('fused',fused),('warm_start',warm_start),
+                          ('execution_backend',execution_backend),('pressure_backend',pressure_backend)):
             if value is not None:
                 settings[key]=value
     else:
@@ -45,7 +49,8 @@ def run(*,device='cuda',output=None,resume=None,end_time=.005,dt=None,nx=None,ny
         config=ValveConfig(mesh_size=.01 if mesh_size is None else mesh_size)
         settings=dict(dt=1/16000 if dt is None else dt,nx=256 if nx is None else nx,ny=64 if ny is None else ny,
                       rho=1.,mu=.1,mass_backend='graph' if mass_backend is None else mass_backend,
-                      fused=True if fused is None else fused,warm_start=True if warm_start is None else warm_start)
+                      fused=True if fused is None else fused,warm_start=True if warm_start is None else warm_start,
+                      execution_backend=execution_backend or 'optimized',pressure_backend=pressure_backend or 'auto')
         solid=ValveSolid(generate_valve(config,device=device),config,fused=settings['fused'])
         progress=dict(elapsed_seconds=0.,segments=[],frames=[],summary={})
     if not isfinite(end_time) or end_time<=0:
@@ -53,11 +58,11 @@ def run(*,device='cuda',output=None,resume=None,end_time=.005,dt=None,nx=None,ny
     steps=round(end_time/settings['dt'])
     if steps<1 or abs(steps*settings['dt']-end_time)>1e-12:
         raise ValueError('end time must be an integer multiple of dt')
-    grid=ChannelGrid((settings['nx'],settings['ny']),(8.,solid.config.height))
-    flow=ChannelFlow(grid,dt=settings['dt'],rho=settings['rho'],mu=settings['mu'],device=device,fused=settings['fused'])
-    transfer=TriangleTransfer(grid,solid.geometry,mass_backend=settings['mass_backend'],
-                              warm_start=settings['warm_start'],fused=settings['fused'])
-    driver=ValveStepper(flow,transfer,solid)
+    settings.setdefault('execution_backend','optimized')
+    settings.setdefault('pressure_backend','auto')
+    driver=build_driver(solid,settings,device)
+    flow,transfer=driver.flow,driver.transfer
+    grid=flow.grid
     if not resume:
         state=driver.initialize()
     if state.step>steps:
@@ -69,7 +74,8 @@ def run(*,device='cuda',output=None,resume=None,end_time=.005,dt=None,nx=None,ny
     previous_elapsed=progress['elapsed_seconds']
     progress.pop('failure',None)
     progress['segments'].append(dict(start_step=state.step,device=str(device),mass_backend=settings['mass_backend'],
-                                     fused=settings['fused'],field_every=field_every,fluid_fields=fluid_fields))
+                                     fused=settings['fused'],execution_backend=settings['execution_backend'],
+                                     pressure_backend=flow.pressure_solver.backend,field_every=field_every,fluid_fields=fluid_fields))
     history=[]
     if (folder/'history.csv').exists():
         with (folder/'history.csv').open(newline='',encoding='utf-8') as stream:
@@ -110,6 +116,9 @@ def run(*,device='cuda',output=None,resume=None,end_time=.005,dt=None,nx=None,ny
             solid_nodes=len(state.x),solid_cells=len(solid.mesh.cells),interaction_points=solid.geometry.weights.numel(),
             fluid_cells=grid.shape,fluid_spacing_cm=grid.spacing,mg_levels=flow.pressure_solver.shapes,
             pressure_backend=flow.pressure_solver.backend,mass_cuda_graphs=len(getattr(transfer.solver,'graphs',{})),
+            pressure_cuda_graphs=len(getattr(flow.pressure_solver.workspace,'graphs',{})),
+            pressure_workspace_bytes=getattr(flow.pressure_solver.workspace,'allocated_bytes',0),
+            ib_stencil_builds=driver.stencil_builds,
             quadrature='positive six-point triangle degree 4; three-point root Gauss',
             coupling='quadrature IB with consistent CSR P2 mass; adjoint odd-wall extension',
             inlet='u_x=5*(sin(2*pi*t)+1.1)*y*(1.61-y), u_y=0',outlet='p=0; tentative velocity zero normal derivative',
@@ -133,7 +142,8 @@ def run(*,device='cuda',output=None,resume=None,end_time=.005,dt=None,nx=None,ny
             write_fields()
         save('running')
         print(f'Valve MAC: {device}, grid={grid.shape}, solid nodes={len(state.x)}, cells={len(solid.mesh.cells)}, '
-              f'dt={flow.dt:g}; steps {state.step}->{steps}; mass={settings["mass_backend"]}',flush=True)
+              f'dt={flow.dt:g}; steps {state.step}->{steps}; mass={settings["mass_backend"]}; '
+              f'execution={settings["execution_backend"]}, pressure={flow.pressure_solver.backend}',flush=True)
         for _ in range(state.step,steps):
             sample=(state.step+1)%log_every==0 or state.step+1==steps
             state,info=driver.step(state,diagnostics=sample)
@@ -166,6 +176,8 @@ def main(argv=None,*,default_end_time=.005,default_output='results/valve_mac'):
     p.add_argument('--ny',type=int)
     p.add_argument('--mesh-size',type=float)
     p.add_argument('--mass-backend',choices=('pcg','graph'))
+    p.add_argument('--execution-backend',choices=('reference','optimized'))
+    p.add_argument('--pressure-backend',choices=('auto','reference','workspace','graph'))
     p.add_argument('--fused',action=argparse.BooleanOptionalAction,default=None)
     p.add_argument('--warm-start',action=argparse.BooleanOptionalAction,default=None)
     p.add_argument('--log-every',type=int,default=160)

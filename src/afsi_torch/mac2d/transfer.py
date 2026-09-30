@@ -19,12 +19,13 @@ class Stencil:
 
 
 class TriangleTransfer:
-    def __init__(self,grid,geometry,*,mass_backend='graph',warm_start=True,fused=True):
+    def __init__(self,grid,geometry,*,mass_backend='graph',warm_start=True,fused=True,optimized=False):
         if mass_backend not in ('pcg','graph'):
             raise ValueError('mass backend must be pcg or graph')
         self.grid,self.geometry=grid,geometry
         self.warm_start=warm_start
         self.mass_backend=mass_backend
+        self.optimized=optimized
         self.force_initial,self.velocity_initial=None,None
         g=geometry
         local=torch.einsum('eq,qa,qb->eab',g.weights,g.values,g.values)
@@ -41,6 +42,8 @@ class TriangleTransfer:
         if fused:
             for name in ('evaluate','_prepare','_spread','_gather','_assemble'):
                 setattr(self,name,tensor_kernel(getattr(self,name),g.weights.device))
+            if optimized:
+                self.support_valid=tensor_kernel(self.support_valid,g.weights.device)
 
     def reset_warm_start(self):
         self.force_initial,self.velocity_initial=None,None
@@ -75,10 +78,23 @@ class TriangleTransfer:
         hx,hy=self.grid.spacing
         # Reflection is valid only at the horizontal walls. Solid motion beyond
         # this halo or into inlet/outlet is a failed step, never an index clamp.
-        if (not torch.isfinite(points).all() or (points[:,0]<2*hx).any() or
+        if self.optimized:
+            if not self.support_valid(points).item():
+                raise ValueError('valve IB points leave the channel support region')
+        elif (not torch.isfinite(points).all() or (points[:,0]<2*hx).any() or
             (points[:,0]>self.grid.lengths[0]-2*hx).any() or
             (points[:,1]<-hy).any() or (points[:,1]>self.grid.lengths[1]+hy).any()):
             raise ValueError('valve IB points leave the channel support region')
+        return self.from_points(points)
+
+    def support_valid(self,points):
+        hx,hy=self.grid.spacing
+        return (torch.isfinite(points).all() & (points[:,0]>=2*hx).all() &
+            (points[:,0]<=self.grid.lengths[0]-2*hx).all() &
+            (points[:,1]>=-hy).all() & (points[:,1]<=self.grid.lengths[1]+hy).all())
+
+    def from_points(self,points):
+        # Caller must validate support; used after the combined acceptance check.
         ids,w=self._prepare(points)
         return Stencil(ids,w)
 
