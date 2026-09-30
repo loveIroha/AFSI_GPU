@@ -1,14 +1,18 @@
 # AFSI_GPU：PyTorch IB/FEM 流固耦合
 
-**2 s 理想左心室 demo：**[运行说明与 MAC/FEM 两种流体入口](demo/ideal_lv_fsi/README.md)。MAC 有限差分＋几何多重网格版本目前仅完成 0.005 s GPU 短程验证，完整 2 s 运行是下一项实验；有限元流体入口保留已运行的 Q2/Q1 基线。
+**2 s 理想左心室 demo：**[运行说明与 MAC/FEM 两种流体入口](demo/ideal_lv_fsi/README.md)。保留 MAC 有限差分＋几何多重网格和 Q2/Q1 有限元流体两种入口。
+
+**新增 3 s 二维理想瓣膜 demo_340：**[物理设置、离散差别及 GPU 后台运行说明](demo/ideal_valve_fsi/README.md)。程序生成双瓣叶 P2 网格，使用 FRH 材料、±45° 纤维、根部弹簧、周期入口和二维 MAC/多重网格/积分点 IB。默认网格 CPU 已推进至 0.02 s；GPU 和完整 3 s 待运行。
 
 目标是在 GPU 上实现 AFSI 的非线性固体、背景流体与 IB 耦合，算例采用程序生成的厘米制理想左心室。当前已具备 P2 固体、Q2/Q1 流体、Chorin 求解及显式耦合时间步，并通过小规模独立 DOLFINx/NumPy 对照。已有 GPU 0.8 s 加载轨迹；当前优先对齐 AFSI demo_337 实际启用的 2 s 加载—保持算例，平衡、收敛和长期稳定性仍待验收。
 
-## 0.27.0：对齐 demo_337 的加载—保持算例
+## 0.27.1：对齐 demo_337 的加载—保持算例与原版输入生成
 
 新入口 `examples/lv_afsi337.py`：压力和主动张力前 1.5 s 同时线性升至 150000、600000 dyn/cm²，保持至 2 s；不采用 0.8 s 周期。使用配套基准尺寸及 x 长轴生成左室、Laplace 椭球纤维 ±90°、Basix degree-4 固体积分规则，以及 `[0,5]^3` cm 的 32³ Q2/Q1 流体网格。Guccione、基底弹簧、Chorin、IB 与载荷时序沿用已核对形式。另提供原始外部网格/纤维的可选导出导入，以保留其逐节点系数；默认生成模式不会冒称网格完全一致。
 
-本地完整回归 **201 passed、109 CUDA skipped、2 warnings**，包括新加载、纤维、积分、短程推进及续算。完整 2 s GPU 运行尚待用户环境执行。[参数对照、差异范围与 Linux/Docker 命令](docs/AFSI337_ALIGNMENT.md)。
+若原版 AFSI 容器没有 `337_ideal_left_ventricle`，可用 `validation/generate_afsi337_source.py` 和 `validation/write_afsi337_native_inputs.py` 将本项目生成的同一几何/纤维写成原版需要的 XDMF、边界标签和 P2 文本。容器内的真实写出仍需按[操作说明](docs/AFSI337_ALIGNMENT.md)验证。
+
+本地完整回归 **203 passed、109 CUDA skipped、2 warnings**，包括新加载、纤维、积分、短程推进、续算及原版数据桥接的数值检查。用户的完整 2 s GPU 运行已结束，结果有待分析；容器内的 DOLFINx XDMF 写出尚待验证。[参数对照、差异范围与 Linux/Docker 命令](docs/AFSI337_ALIGNMENT.md)。
 
 ## 0.26.0：CSR 流体求解与低开销周期运行
 
@@ -448,4 +452,3 @@ requirements-test.txt          已验证的 NumPy/pytest 版本
 - [PyTorch 安装说明](https://pytorch.org/get-started/locally/)
 - [NVIDIA 驱动兼容说明](https://docs.nvidia.com/deploy/cuda-compatibility/minor-version-compatibility.html)
 - [nvidia-smi 中 CUDA 版本的含义](https://docs.nvidia.com/deploy/nvidia-smi/index.html)
-
