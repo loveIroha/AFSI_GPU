@@ -1,5 +1,65 @@
 # 理想左心室 2 s IB/FEM 流固耦合 demo
 
+## MAC 的 ParaView 时间序列
+
+新的 MAC demo 从初始状态启动时默认输出 VTK；`--vtk` 显式开启，`--no-vtk`
+关闭。`examples/lv_mac.py` 的旧默认与旧检查点仍保持关闭，续算继承已保存的
+输出设置。`--output-every 400` 表示每 400 步一帧，默认 `dt=5e-5 s` 下
+为 0.02 s，完整 2 s 共 101 帧（含初始和最终状态）。提前停止在非整输出步时
+仍输出该段最终状态，续算会保留它。日志频率、检查点频率和可视化频率独立。
+
+```bash
+git pull --ff-only
+conda activate afsi-torch
+python -m pip install -e ".[test,geometry,fused]"
+CUDA_VISIBLE_DEVICES=0 python -m pytest -q tests/test_mac_output.py
+
+lv_run_dir="results/lv_afsi337_vtk_$(date +%Y%m%d_%H%M%S)"
+mkdir -p "$lv_run_dir"
+CUDA_VISIBLE_DEVICES=0 nohup /usr/bin/time \
+  -f 'elapsed_seconds=%e exit_code=%x' -o "$lv_run_dir/runtime_2s.txt" \
+  python -u demo/ideal_lv_fsi/run_mac.py \
+  --device cuda --warm-start --dt 0.00005 --end-time 2.0 \
+  --mesh-size 0.1 --fluid-cells 64 \
+  --execution-backend fused --solid-backend pointwise --mass-backend graph \
+  --pressure-backend graph --coupling-backend optimized \
+  --vtk --output-every 400 --log-every 200 --checkpoint-every 1000 \
+  --output "$lv_run_dir" > "$lv_run_dir/run_2s.log" 2>&1 < /dev/null &
+echo "PID=$! results=$lv_run_dir"
+```
+
+ParaView 同时打开结果目录中的 `vtk/solid.pvd` 和 `vtk/fluid.pvd`，点击 Apply
+后即可播放时间序列。固体文件已经使用变形后的 P2 几何，可选择
+`displacement_cm` 或单元数据 `J_min/J_max` 着色；`nodal_force_dyn` 是积分后的
+有限元节点力，`fiber_reference` 是参考纤维方向。流体压力单位为 dyn/cm²，
+速度单位为 cm/s，几何单位为 cm。流场 Slice、Glyph 或流线需要点数据时，
+先对 `fluid.pvd` 使用 Cell Data to Point Data。
+
+固体逐帧保存压缩 FP64 `.vtu`；流体逐帧保存压缩 FP64 ImageData `.vti`，
+规则背景网格通过原点、间距和范围描述，避免每帧重复写六面体连接与坐标。
+流体压力是原 MAC 单元值，显示速度是相对两面速度的算术平均，
+`divergence_per_s` 从原交错速度计算。该重构只用于可视化；求解器和
+`checkpoint.npz` 中的速度仍是原交错场。字段说明保存在 `vtk/fields.json`。
+每帧只在输出时进行 CPU 复制与压缩写盘，默认关闭的基准不增加输出开销。
+
+`report.json` 的 `visualization` 记录帧数、时间范围和集合路径。续算恢复已有
+成对完整帧，去除 PVD 中晚于检查点的记录，避免重复时刻；未引用的旧文件
+保留在磁盘。两帧文件完成后才发布集合记录，文件和集合均通过临时文件
+替换。输出会增加 I/O 成本，本次含输出的实际耗时需要单独记录。
+
+旧完整运行只有最终检查点时，可直接导出最终帧，无需推进或改写旧结果：
+
+```bash
+python validation/export_mac_vtk.py \
+  --checkpoint results/你的旧结果目录/checkpoint.npz \
+  --output results/lv_final_vtk
+```
+
+该命令默认在 CPU 导出，可用 `--device cuda`；输出目录必须没有现有 VTK
+结果。它只包含检查点时刻，历史动画需从初始状态开启上述时间输出运行。
+也可以从旧检查点续算并加 `--vtk --output-every 400`，这只保存恢复时刻及
+之后的帧。已有 CSV 诊断不能还原此前各时刻的空间场。
+
 ## 三维压力图重放与合并检查
 
 新增 `--pressure-backend graph --coupling-backend optimized`，适配二维瓣膜已验证的固定执行序列和合并检查，保留三维全 Neumann 压力边界、逐层零均值、原容差及载荷时序。需配合 `--execution-backend fused`。旧检查点和默认行为保留，显式开关启用新路径。[GPU 测试、已有检查点的只读 A/B、加载初期及后台续算命令](../../docs/LV_MAC_GRAPH_EXECUTION.md)。本地 CPU 相关回归 70 项通过；CUDA 正确性和三维加速幅度待目标 GPU 验证。

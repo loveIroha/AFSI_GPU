@@ -19,7 +19,8 @@ from afsi_torch.mac.checkpoint import save_mac,load_mac
 @torch.no_grad()
 def run(*,device='cuda',output=None,end_time=.005,dt=None,fluid_cells=None,mesh_size=None,
         interaction_degree=None,log_every=20,checkpoint_every=200,resume=None,warm_start=None,
-        pressure_backend=None,execution_backend=None,solid_backend=None,mass_backend=None,coupling_backend=None):
+        pressure_backend=None,execution_backend=None,solid_backend=None,mass_backend=None,coupling_backend=None,
+        write_vtk=None,output_every=None):
     if execution_backend is not None and execution_backend not in ('torch','fused'):
         raise ValueError('execution_backend must be torch or fused')
     if solid_backend is not None and solid_backend not in ('reference','pointwise'):
@@ -34,6 +35,10 @@ def run(*,device='cuda',output=None,end_time=.005,dt=None,fluid_cells=None,mesh_
         raise ValueError('positive integer log/checkpoint intervals required')
     if warm_start is not None and type(warm_start) is not bool:
         raise ValueError('warm_start must be a bool or None')
+    if write_vtk is not None and type(write_vtk) is not bool:
+        raise ValueError('write_vtk must be a bool or None')
+    if output_every is not None and (type(output_every) is not int or output_every<1):
+        raise ValueError('positive integer output_every required')
     if pressure_backend is not None and pressure_backend not in ('torch','fused','workspace','graph'):
         raise ValueError('pressure_backend must be torch, fused, workspace or graph')
     started=perf_counter()
@@ -71,6 +76,10 @@ def run(*,device='cuda',output=None,end_time=.005,dt=None,fluid_cells=None,mesh_
                       mass_backend='pcg' if mass_backend is None else mass_backend,
                       coupling_backend='reference' if coupling_backend is None else coupling_backend)
         progress=dict(elapsed_seconds=0.,segments=[],summary={})
+    settings['write_vtk']=settings.get('write_vtk',False) if write_vtk is None else write_vtk
+    settings['output_every']=settings.get('output_every',400) if output_every is None else output_every
+    if type(settings['output_every']) is not int or settings['output_every']<1:
+        raise ValueError('positive integer output_every required')
     dt=settings['dt']
     if not isfinite(end_time) or end_time<=0 or not isfinite(dt) or dt<=0:
         raise ValueError('positive finite dt/end time required')
@@ -95,6 +104,10 @@ def run(*,device='cuda',output=None,end_time=.005,dt=None,fluid_cells=None,mesh_
     else:
         state=driver.initialize(model.mesh.X)
     folder.mkdir(parents=True,exist_ok=True)
+    writer=None
+    if settings['write_vtk']:
+        from afsi_torch.mac.output import MACWriter
+        writer=MACWriter(folder/'vtk',model,grid,resume_time=state.time if resume else None)
     history=[]
     if (folder/'history.csv').exists():
         with (folder/'history.csv').open(newline='',encoding='utf-8') as stream:
@@ -106,7 +119,8 @@ def run(*,device='cuda',output=None,end_time=.005,dt=None,fluid_cells=None,mesh_
                                       execution_backend=settings['execution_backend'],
                                       solid_backend=settings['solid_backend'],mass_backend=settings['mass_backend'],
                                       coupling_backend=settings['coupling_backend'],
-                                      pressure_backend=flow.pressure_solver.backend))
+                                      pressure_backend=flow.pressure_solver.backend,
+                                      write_vtk=settings['write_vtk'],output_every=settings['output_every']))
     info={}
 
     def row():
@@ -123,9 +137,9 @@ def run(*,device='cuda',output=None,end_time=.005,dt=None,fluid_cells=None,mesh_
         if int(history[-1]['step'])!=state.step:
             history.append(row())
         with (folder/'history.csv').open('w',newline='',encoding='utf-8') as stream:
-            writer=csv.DictWriter(stream,fieldnames=history[0].keys())
-            writer.writeheader()
-            writer.writerows(history)
+            csv_writer=csv.DictWriter(stream,fieldnames=history[0].keys())
+            csv_writer.writeheader()
+            csv_writer.writerows(history)
         progress['elapsed_seconds']=previous_elapsed+perf_counter()-started
         report=dict(schema=1,demo='experimental-afsi337-mac',status=status,
             completed=state.step==steps,accepted_steps=state.step,reached_time_s=state.time,
@@ -147,6 +161,7 @@ def run(*,device='cuda',output=None,end_time=.005,dt=None,fluid_cells=None,mesh_
             pressure_gauge='zero mean, homogeneous Neumann, A=-D G',
             time_scheme='first-order, centered conservative convection, explicit viscosity; AFSI lagged force order',
             loads=asdict(model.loads),material=asdict(model.parameters),last=history[-1],last_solver_info=info,
+            visualization=writer.summary() if writer else dict(enabled=False),
             full_horizon_validated=False,mesh_convergence_established=False,
             cuda_peak_allocated_bytes=torch.cuda.max_memory_allocated(device) if str(device).startswith('cuda') else None,
             **progress)
@@ -155,6 +170,8 @@ def run(*,device='cuda',output=None,end_time=.005,dt=None,fluid_cells=None,mesh_
         return report
 
     try:
+        if writer:
+            writer.write(state)
         save('running')
         print(f'MAC LV: {device}, grid={grid.shape}, solid nodes={len(state.x)}, '
               f'interaction points={geometry.weights.numel()}, dt={dt:g}; steps {state.step}->{steps}',flush=True)
@@ -164,6 +181,8 @@ def run(*,device='cuda',output=None,end_time=.005,dt=None,fluid_cells=None,mesh_
         for _ in range(state.step,steps):
             sample=(state.step+1)%log_every==0 or state.step+1==steps
             state,info=driver.step(state,diagnostics=sample)
+            if writer and (state.step%settings['output_every']==0 or state.step==steps):
+                writer.write(state)
             for key,value in (('max_pressure_cycles',info['flow']['pressure']['cycles']),
                               ('max_grid_displacement',info['max_grid_displacement'])):
                 progress['summary'][key]=max(progress['summary'].get(key,0),value)
@@ -195,6 +214,10 @@ def main():
     parser.add_argument('--log-every',type=int,default=20)
     parser.add_argument('--checkpoint-every',type=int,default=200)
     parser.add_argument('--resume')
+    parser.add_argument('--vtk',dest='write_vtk',action=argparse.BooleanOptionalAction,default=None,
+                        help='write ParaView solid/fluid time series at output steps')
+    parser.add_argument('--output-every',type=int,default=None,
+                        help='VTK frame interval in steps; default: 400')
     parser.add_argument('--warm-start',action=argparse.BooleanOptionalAction,default=None,
                         help='reuse previous IB mass-solve coefficients as PCG initial guesses')
     parser.add_argument('--pressure-backend',choices=('torch','fused','workspace','graph'),default=None,

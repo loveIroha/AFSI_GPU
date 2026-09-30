@@ -32,6 +32,10 @@ def main(argv=None):
                         help='fresh quadrature only; default: 14-point rule')
     parser.add_argument('--log-every', type=int, default=200)
     parser.add_argument('--checkpoint-every', type=int, default=1000)
+    parser.add_argument('--vtk', dest='write_vtk', action=argparse.BooleanOptionalAction, default=None,
+                        help='write ParaView time series; enabled for a fresh demo, inherited on resume')
+    parser.add_argument('--output-every', type=int, default=None,
+                        help='VTK frame interval in steps; default: 400 (0.02 s)')
     parser.add_argument('--warm-start', action=argparse.BooleanOptionalAction, default=None,
                         help='reuse previous IB mass-solve coefficients (experimental)')
     parser.add_argument('--pressure-backend', choices=('torch','fused','workspace','graph'), default=None,
@@ -45,6 +49,8 @@ def main(argv=None):
     parser.add_argument('--mass-backend', choices=('pcg','graph'), default=None,
                         help='graph: captured CSR-PCG blocks; requires fused execution')
     options = vars(parser.parse_args(argv))
+    if options['write_vtk'] is None and options['resume'] is None:
+        options['write_vtk'] = True
     if options['output'] is None and options['resume'] is None:
         options['output'] = 'results/demo_ideal_lv/mac'
     report = run(**options)
