@@ -56,7 +56,7 @@ class SolidExecution:
             raise ValueError('invalid LV deformation: det(F), surface or cavity volume')
         self._cached_x,self._cached_version,self._cached_geometry=x,version,geometry
 
-    def _force(self,x,F,endo_area,loads):
+    def _stress(self,F,loads):
         m=self.model
         E=.5*(F.transpose(-1,-2)@F-self.identity)
         local=self.axes.transpose(-1,-2)@E@self.axes
@@ -72,11 +72,18 @@ class SolidExecution:
         fiber=m.fields.fiber
         Ff=(F@fiber[...,None]).squeeze(-1)
         P=P+loads[1]*Ff[..., :,None]*fiber[...,None,:]
+        return P
+
+    def _assemble(self,x,P,endo_area,loads):
+        m=self.model
         internal=solid.assemble_pk1(P,m.geometry)
         surface=m.endo
         traction=-loads[0]*endo_area
         pressure=bd._scatter(torch.einsum('q,qa,bqi->bai',surface.quadrature_weights,surface.values,traction),surface)
         return internal+pressure+bd.spring_force(x,m.base,m.beta)
+
+    def _force(self,x,F,endo_area,loads):
+        return self._assemble(x,self._stress(F,loads),endo_area,loads)
 
     @torch.no_grad()
     def force(self,x,time):

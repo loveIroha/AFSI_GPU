@@ -99,6 +99,10 @@ leaving the selected pressure backend independent.
 
 ## Remaining costs
 
+The next isolated four-way experiment targets solid small-matrix algebra and
+PCG CUDA Graph blocks. See [solid/mass experiment](MAC_SOLID_MASS_EXPERIMENT.md)
+for GPU checks, checkpoint replay commands and interpretation of detail timing.
+
 Sparse mass matrix multiplies, global convergence reductions, force-scatter
 atomics and checks required to accept a step remain. Compilation does not
 guarantee fusion across sparse/library calls. Profiling on the target GPU is
