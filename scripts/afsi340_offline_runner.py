@@ -1,6 +1,6 @@
 """Run native demo_340, replacing only input/output paths and online tracking.
 
-No fluid, solid, time-step or diagnostic calculation is rewritten. One MPI rank.
+Native MPI IB is retained; distributed ghost synchronization is added.
 """
 import ast
 import csv
@@ -13,10 +13,11 @@ from time import perf_counter
 import traceback
 
 
-def offline_tree(source,input_path,output_path,experiment):
+def offline_tree(source,input_path,output_path,experiment,*,parallel=False):
     class Replace(ast.NodeTransformer):
         def __init__(self):
             self.counts=dict(input=0,output=0,counter=0)
+            self.syncs=dict(fluid_to_solid=0,solid_to_fluid=0)
 
         def visit_Assign(self,node):
             if len(node.targets)==1 and isinstance(node.value,ast.IfExp):
@@ -28,6 +29,9 @@ def offline_tree(source,input_path,output_path,experiment):
                         kind='output' if key=='output_path' else 'counter'
                         self.counts[kind]+=1
                         node.value=ast.Constant(output_path if kind=='output' else experiment)
+            if parallel and len(node.targets)==1 and isinstance(node.targets[0],ast.Name) and node.targets[0].id=='u_max':
+                node.value=ast.Call(ast.parse('mesh.comm.allreduce',mode='eval').body,[node.value],
+                                    [ast.keyword('op',ast.parse('MPI.MAX',mode='eval').body)])
             return self.generic_visit(node)
 
         def visit_Constant(self,node):
@@ -35,10 +39,23 @@ def offline_tree(source,input_path,output_path,experiment):
                 self.counts['input']+=1
                 return ast.copy_location(ast.Constant(input_path),node)
             return node
+        def visit_Expr(self,node):
+            node=self.generic_visit(node)
+            if parallel and isinstance(node.value,ast.Call):
+                call=node.value
+                if (isinstance(call.func,ast.Attribute) and isinstance(call.func.value,ast.Name) and
+                    call.func.value.id=='ib_interpolation' and call.func.attr in ('fluid_to_solid','solid_to_fluid')):
+                    name='solid_velocity' if call.func.attr=='fluid_to_solid' else 'solid_force'
+                    self.syncs[call.func.attr]+=1
+                    sync=ast.parse(f'{name}.x.scatter_forward()').body[0]
+                    return [node,ast.copy_location(sync,node)]
+            return node
     transform=Replace()
     tree=transform.visit(ast.parse(source))
     if transform.counts!=dict(input=1,output=1,counter=1):
         raise ValueError(f'unexpected demo_340 source layout: {transform.counts}; refusing ambiguous rewrite')
+    if parallel and transform.syncs!=dict(fluid_to_solid=1,solid_to_fluid=1):
+        raise ValueError(f'unexpected MPI IB call layout: {transform.syncs}')
     return ast.fix_missing_locations(tree)
 
 
@@ -48,8 +65,15 @@ def main():
     import afsic
     import dolfinx
     from mpi4py import MPI
-    if MPI.COMM_WORLD.size!=1:
-        raise RuntimeError('this native IB comparison runner is validated for one MPI rank only')
+    comm=MPI.COMM_WORLD
+    if comm.size>1:
+        original_solver=afsic.ChorinSolver
+        class CheckedChorin(original_solver):
+            def __init__(self,*args,**kwargs):
+                super().__init__(*args,**kwargs)
+                for ksp in (self.solver1,self.solver2,self.solver3):
+                    ksp.setErrorIfNotConverged(True)
+        afsic.ChorinSolver=CheckedChorin
     demo=Path(os.environ.get('AFSI340_DEMO','/root/afsi/afsic/demo/demo_340'))
     folder=Path(os.environ['AFSI340_LOGDIR'])
     input_path=Path(os.environ['AFSI340_INPUT'])
@@ -57,7 +81,7 @@ def main():
     folder.mkdir(parents=True,exist_ok=True)
     out=folder/'fields'; out.mkdir(exist_ok=True)
     source=script.read_text(encoding='utf-8')
-    tree=offline_tree(source,str(input_path),str(out)+'/',folder.name)
+    tree=offline_tree(source,str(input_path),str(out)+'/',folder.name,parallel=comm.size>1)
     config={}
     def init(project,experiment,cfg):
         config.update(cfg)
@@ -65,7 +89,8 @@ def main():
                       pressure_order=1,rho=1.,mu=.1,C0=2e5,C1=1e6,kappa=4e5,beta=1e8)
         if any(cfg.get(k)!=v for k,v in expected.items()):
             raise ValueError('container demo defaults differ from the GPU comparison setup')
-        (folder/'config.json').write_text(json.dumps(cfg,indent=2),encoding='utf-8')
+        if comm.rank==0:
+            (folder/'config.json').write_text(json.dumps(cfg,indent=2),encoding='utf-8')
     def upload(t,data):
         row=dict(source_time_s=float(t),accepted_time_s=float(t)+config['dt'],step=round(t/config['dt'])+1,**data)
         path=folder/'history.csv'
@@ -81,11 +106,15 @@ def main():
     namespace=dict(__name__='__main__',__file__=str(script))
     started=perf_counter(); code=0
     try:
-        print('Native AFSI demo_340: one MPI rank; online tracking disabled; numerical source unchanged',flush=True)
+        if comm.rank==0:
+            print(f'Native AFSI demo_340: {comm.size} MPI ranks; native C++ IB retained; online tracking disabled',flush=True)
         exec(compile(tree,str(script),'exec'),namespace)
     except BaseException as exc:
         code=130 if isinstance(exc,KeyboardInterrupt) else 1
         traceback.print_exc()
+        if comm.size>1:
+            # A rank-local failure must not leave other ranks hanging in a collective.
+            comm.Abort(code)
     finally:
         for name in ('file_velocity','file_solid'):
             file=namespace.get(name)
@@ -96,6 +125,11 @@ def main():
                     code=code or 1
                     traceback.print_exc()
         elapsed=perf_counter()-started
+        if comm.size>1:
+            elapsed=comm.allreduce(elapsed,op=MPI.MAX)
+            code=comm.allreduce(code,op=MPI.MAX)
+        if comm.rank!=0:
+            return code
         (folder/'runtime.txt').write_text(f'elapsed_seconds={elapsed:.6f} exit_code={code}\n',encoding='utf-8')
         report=dict(elapsed_seconds=elapsed,exit_code=code,
                     completed=code==0 and namespace.get('step',-1)+1==config.get('num_steps'),config=config,

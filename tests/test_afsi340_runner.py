@@ -88,7 +88,7 @@ afsic.swanlab_upload(step*config["dt"],dict(x_displacement=.1,y_displacement=.01
     monkeypatch.setenv('AFSI340_INPUT',str(tmp_path/'mesh.xdmf'))
     monkeypatch.setitem(sys.modules,'afsic',types.ModuleType('afsic'))
     monkeypatch.setitem(sys.modules,'dolfinx',types.SimpleNamespace(__version__='test'))
-    monkeypatch.setitem(sys.modules,'mpi4py',types.SimpleNamespace(MPI=types.SimpleNamespace(COMM_WORLD=types.SimpleNamespace(size=1))))
+    monkeypatch.setitem(sys.modules,'mpi4py',types.SimpleNamespace(MPI=types.SimpleNamespace(COMM_WORLD=types.SimpleNamespace(size=1,rank=0))))
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(sys,'path',list(sys.path))
     # Do not change the test process's interrupt handler.
@@ -101,3 +101,45 @@ afsic.swanlab_upload(step*config["dt"],dict(x_displacement=.1,y_displacement=.01
         row=next(csv.DictReader(file))
     assert float(row['accepted_time_s'])==3. and int(row['step'])==48000
     assert 'exit_code=0' in (folder/'runtime.txt').read_text()
+
+
+def test_parallel_rewrite_only_adds_forward_ghost_sync():
+    runner=module('scripts/afsi340_offline_runner.py')
+    source='''
+config["output_path"]=unique_filename() if rank==0 else None
+config["experiment_name"]=counter() if rank==0 else None
+path=f"/home/dolfinx/afsi/data/340-valve/mesh-340.xdmf"
+ib_interpolation.fluid_to_solid(ns_solver.u_._cpp_object,solid_velocity._cpp_object)
+solid_coords.x.array[:]+=solid_velocity.x.array[:]*dt
+ib_interpolation.solid_to_fluid(ns_solver.f._cpp_object,solid_force._cpp_object)
+u_max=ns_solver.u_.x.array.max()
+'''
+    result=ast.unparse(runner.offline_tree(source,'input','output','offline',parallel=True))
+    assert 'solid_velocity.x.scatter_forward()' in result
+    assert 'solid_force.x.scatter_forward()' in result
+    assert 'solid_coords.x.array[:] += solid_velocity.x.array[:] * dt' in result
+    assert 'mesh.comm.allreduce(ns_solver.u_.x.array.max(), op=MPI.MAX)' in result
+
+
+def test_mpi_check_stencil_matches_scalar_peskin_and_adjointness():
+    checker=module('validation/check_afsi340_mpi.py')
+    points=np.array([[1.91,.001],[2.013,.71],[2.11,1.61]])
+    ids,w,area=checker.stencil(points)
+    def phi(r):
+        r=abs(r)
+        return (3-2*r+np.sqrt(1+4*r-4*r*r))/8 if r<1 else (5-2*r-np.sqrt(-7+12*r-4*r*r))/8 if r<2 else 0.
+    dense=np.zeros((len(points),257*65))
+    for q,p in enumerate(points):
+        for i in range(257):
+            for j in range(65):
+                dense[q,i*65+j]=phi(p[0]/(8/256)-i)*phi(p[1]/(1.61/64)-j)
+    actual=np.zeros_like(dense)
+    for q in range(len(points)):
+        np.add.at(actual[q],ids[q],w[q])
+    np.testing.assert_allclose(actual,dense,rtol=1e-13,atol=1e-15)
+    rng=np.random.default_rng(4)
+    velocity=rng.normal(size=(257*65,2)); force=rng.normal(size=(len(points),2))
+    gathered=(velocity[ids]*w[...,None]).sum(1)
+    spread=np.zeros_like(velocity)
+    np.add.at(spread,ids.reshape(-1),(w[...,None]*force[:,None]/area).reshape(-1,2))
+    np.testing.assert_allclose((gathered*force).sum(),area*(spread*velocity).sum(),rtol=1e-13,atol=1e-13)
