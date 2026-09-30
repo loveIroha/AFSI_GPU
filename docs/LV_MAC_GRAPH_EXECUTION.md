@@ -19,6 +19,27 @@
 
 旧 `pressure_backend=fused`、`coupling_backend=reference` 保留用于对照或回退。旧检查点缺少耦合键时仍恢复参考行为，不静默改变执行选择。新选项已接入 `examples/lv_mac.py` 与 `demo/ideal_lv_fsi/run_mac.py`，支持续算覆盖与保存。demo 报告的 IB 构建/求值计数属于当前进程或续算段；基准计数仅属于预热后的测量段。
 
+## 续算时的图捕获生命周期修复
+
+一次目标 GPU 回归得到 53 passed、1 failed，失败项为
+`test_demo_cli_resume_and_explicit_rollback[cuda]`。首段推进成功，续算重新构造质量矩阵图时出现多次 `CUDAGraph reset` 被禁止及 `CUDA_ERROR_STREAM_CAPTURE_INVALIDATED`。这些日志支持旧驱动持有的循环引用在新图捕获期间被回收的判断；本地没有 CUDA，具体触发仍需目标 GPU 验证。
+
+质量矩阵图、三维压力图和二维压力图共用初始化保护：捕获前回收失去引用的循环对象，在预热及整组图捕获期间暂停自动循环垃圾回收，正常或异常退出均恢复原设置。新质量矩阵图也明确使用其张量所在 CUDA 设备。保护只在构造求解器时执行，不进入逐步求解或图重放；不增加每步同步、回收或诊断，不修改数值方法、容差和检查位置。
+
+修复本地回归为 **50 passed、39 CUDA skipped、1 warning**，覆盖质量求解、三维压力/demo 续算和二维压力执行。新增测试验证回收时机、异常恢复及三类初始化入口；另有三类实际 CUDA 求解器反复重建的回归，需在 GPU 执行。
+
+已经完成此前测试时，先只重跑失败项及新增回归：
+
+```bash
+git pull --ff-only
+conda activate afsi-torch
+CUDA_VISIBLE_DEVICES=0 python -m pytest -q \
+  tests/test_mac_demo_backends.py::test_demo_cli_resume_and_explicit_rollback \
+  tests/test_cuda_graph_lifecycle.py
+```
+
+通过后继续下方同检查点短程对照。此命令开启新的 Python 进程，避免复用捕获失败后的 CUDA 上下文。
+
 ## Linux RTX 4090：测试与只读短程对照
 
 在 AFSI_GPU 根目录执行：

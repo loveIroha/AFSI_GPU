@@ -7,6 +7,7 @@ its storage and must not be used for concurrent solves.
 import torch
 import torch.nn.functional as F
 from .grid import negative_laplacian
+from .graph_capture import capture_initialization
 
 
 class TensorKernels:
@@ -105,7 +106,7 @@ class MGWorkspace:
             self.cycle()
 
     def _capture(self):
-        with torch.cuda.device(self.p[0].device):
+        with torch.cuda.device(self.p[0].device), capture_initialization():
             self.p[0].zero_(); self.rhs[0].zero_()
             stream=torch.cuda.Stream(device=self.p[0].device)
             stream.wait_stream(torch.cuda.current_stream())

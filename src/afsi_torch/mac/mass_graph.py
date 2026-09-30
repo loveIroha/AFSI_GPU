@@ -8,6 +8,7 @@ from math import isfinite
 import torch
 from .mass_solver import MassSolver,_advance,_direction
 from .execution import tensor_kernel
+from .graph_capture import capture_initialization
 from ..fluid.solvers import SolveInfo
 
 
@@ -50,21 +51,22 @@ class GraphMassSolver(MassSolver):
     def _capture(self):
         # Empty inactive work warms library/compiled kernels without a host
         # check in the captured region. All graph inputs have stable addresses.
-        for v in (self.x,self.r,self.d,self.Ad):
-            v.zero_()
-        self.tol.fill_(1.)
-        stream=torch.cuda.Stream(device=self.x.device)
-        stream.wait_stream(torch.cuda.current_stream(self.x.device))
-        with torch.cuda.stream(stream):
-            for _ in range(3):
-                self._block(self.options.check_every)
-        torch.cuda.current_stream(self.x.device).wait_stream(stream)
-        for count in range(1,self.options.check_every+1):
-            graph=torch.cuda.CUDAGraph()
-            with torch.cuda.graph(graph,stream=stream):
-                self._block(count)
-            self.graphs[count]=graph
-        torch.cuda.current_stream(self.x.device).wait_stream(stream)
+        with torch.cuda.device(self.x.device), capture_initialization():
+            for v in (self.x,self.r,self.d,self.Ad):
+                v.zero_()
+            self.tol.fill_(1.)
+            stream=torch.cuda.Stream(device=self.x.device)
+            stream.wait_stream(torch.cuda.current_stream(self.x.device))
+            with torch.cuda.stream(stream):
+                for _ in range(3):
+                    self._block(self.options.check_every)
+            torch.cuda.current_stream(self.x.device).wait_stream(stream)
+            for count in range(1,self.options.check_every+1):
+                graph=torch.cuda.CUDAGraph()
+                with torch.cuda.graph(graph,stream=stream):
+                    self._block(count)
+                self.graphs[count]=graph
+            torch.cuda.current_stream(self.x.device).wait_stream(stream)
 
     @torch.no_grad()
     def solve(self,rhs,initial=None):
