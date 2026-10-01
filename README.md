@@ -33,6 +33,7 @@ Lengths, time, density, viscosity, and stress use **cm–g–s units**. The 2D c
 | Topic | Guide |
 | --- | --- |
 | Public configuration API, parameter units, and project structure | [Configuration guide](docs/CONFIGURATION.md) |
+| External XDMF/HDF5 meshes, DOLFIN boundary tags, and cellwise fibers | [Mesh input API](docs/MESH_INPUT.md) |
 | Left-ventricle MAC/FEM demos, restart, and VTK output | [Ideal LV demo](demo/ideal_lv_fsi/README.md) |
 | Two-dimensional valve demo and boundary conditions | [Ideal valve demo](demo/ideal_valve_fsi/README.md) |
 | AFSI `demo_337` material, loading, geometry, and reference differences | [AFSI337 alignment](docs/AFSI337_ALIGNMENT.md) |
@@ -103,6 +104,7 @@ The editable install makes changes to the Python source available immediately. T
 | `fused` | Triton on Linux for optimized GPU kernels |
 | `test` | pytest |
 | `io` | meshio and Matplotlib for additional I/O and plotting tools |
+| `mesh` | h5py and meshio for external XDMF/HDF5 input and mesh inspection |
 | `reference` | Optional Basix dependency for reference checks |
 
 The native PyTorch demos run without a FEniCSx, PETSc, AFSI, Docker, or Taichi installation. Separate native-AFSI comparison scripts require their own reference environment.
@@ -342,6 +344,7 @@ With the LV preset, `output_every=400` and `dt=5e-5` give a 0.02 s frame interva
 ```text
 src/afsi_torch/
   config.py          Public case configuration and JSON handling
+  mesh_io.py         Static XDMF/HDF5 meshes and DOLFIN cell/facet fields
   simulation/        Reusable LV MAC, LV FEM, and valve runners
   geometry/          Solid geometry, boundary tags, and fiber generation
   mac/               3D MAC fluid, multigrid, FE/IB transfer, GPU execution
