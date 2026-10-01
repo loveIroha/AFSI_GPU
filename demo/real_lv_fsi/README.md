@@ -119,6 +119,31 @@ CUDA_VISIBLE_DEVICES=0 python -u demo/real_lv_fsi/run_mac.py \
 检查点自包含，不依赖再次读取原始数据文件。
 续算仅允许更改设备与目标时长；更改物理参数或执行设置需要新运行。
 
+## 对流检查停止时
+
+MAC 中心对流当前保留两个保守检查：
+`CFL = dt*sum(max|u_i|/h_i) <= 0.25` 和
+`cell_Re = max(max|u_i|*h_i/(mu/rho)) <= 1`。
+这些检查不是完整的非线性 FSI 稳定性证明；小散度也不证明力学耦合稳定。
+默认网格与流体参数下，单分量速度超过 `8.533333 cm/s` 就会触发 cell_Re 限制。
+减小 dt 只能降低 CFL，不会降低同一速度场的 cell_Re。
+不要仅为继续运行而关闭检查或改变黏度；先检查实际速度、局部峰值与力学时间推进。
+
+发生此异常时，程序保存最后接受状态到原运行目录的 `checkpoint.npz`，
+并写出 `report.json` 的失败信息。新增错误输出分别记录 CFL、cell_Re 和触发项，
+失败报告同时保存 `failure.transport_guard`；旧版失败检查点也可以直接分析：
+
+```bash
+python validation/diagnose_real_lv_guard.py \
+  --checkpoint results/real_lv_3cycles/checkpoint.npz \
+  > results/real_lv_3cycles/guard_diagnosis.json
+```
+
+请使用实际失败的运行目录。此命令只在 CPU 读取保存的速度与配置，
+不导入原始网格、不编译 GPU 内核、不推进或改写检查点；它不做完整校验和验证。
+输出包括 CFL、cell_Re、速度峰值及其交错网格坐标。
+诊断和恢复尚未完成时，直接续算相同检查点会再次触发相同限制。
+
 ## 主程序与 JSON 参数接口
 
 `run_mac.py` 顶部的 `CONFIG` 显式列出材料、标签、流体域、时间步和输出。

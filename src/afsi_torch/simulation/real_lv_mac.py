@@ -152,5 +152,7 @@ def run(*, case_config=None, device='cuda', output=None, resume=None, end_time=N
         return save('completed')
     except (Exception, KeyboardInterrupt) as exc:
         progress['failure'] = dict(type=type(exc).__name__, message=str(exc), last_accepted_step=state.step)
+        if hasattr(exc, 'diagnostics'):
+            progress['failure']['transport_guard'] = exc.diagnostics
         save('failed')
         raise

@@ -6,6 +6,20 @@ from .grid import divergence, gradient, zero_normal, velocity_laplacian, convect
 from .multigrid import GeometricMultigrid
 
 
+class MACTransportGuardError(ValueError):
+    """A conservative transport check stopped the step before its predictor."""
+
+    def __init__(self, diagnostics):
+        self.diagnostics = diagnostics
+        super().__init__(
+            'MAC centered-advection stability guard exceeded: '
+            f'CFL={diagnostics["courant"]:.9g} (limit 0.25), '
+            f'cell_Re={diagnostics["cell_reynolds"]:.9g} (limit 1); '
+            f'triggered={",".join(diagnostics["triggered"])}. '
+            'Reducing dt affects CFL, not cell_Re. '
+            'The cell_Re limit is a conservative policy, not proof of divergence.')
+
+
 @dataclass(frozen=True)
 class MACFlowResult:
     velocity: tuple
@@ -64,6 +78,21 @@ class MACFlow:
                             for c,u in enumerate(tentative)]).all()
         return torch.stack((finite,normal))
 
+    def _check_transport(self, velocity, courant, reynolds):
+        if courant <= .25 and reynolds <= 1.:
+            return
+        # Extra reductions occur only on failure; successful steps keep the
+        # existing checks and synchronization count.
+        speeds = [u.abs().max().item() for u in velocity]
+        raise MACTransportGuardError(dict(
+            courant=courant, cell_reynolds=reynolds,
+            courant_limit=.25, cell_reynolds_limit=1.,
+            triggered=[name for name, failed in
+                       (('courant', courant > .25), ('cell_reynolds', reynolds > 1.)) if failed],
+            component_max_abs_velocity=speeds, spacing=list(self.grid.spacing),
+            dt=self.dt, rho=self.rho, mu=self.mu, viscous_number=self.viscous_number,
+            component_velocity_at_cell_re_limit=[self.mu/self.rho/h for h in self.grid.spacing]))
+
     @torch.no_grad()
     def project(self, tentative, initial=None):
         self.grid.check_velocity(tentative)
@@ -93,11 +122,11 @@ class MACFlow:
             finite,courant,reynolds=self._step_checks(velocity,density).tolist()
             if not finite:
                 raise ValueError('finite MAC velocity and force density required')
-            if courant>.25 or reynolds>1.:
-                raise ValueError('MAC centered-advection stability guard exceeded; refine grid or change transport scheme')
+            self._check_transport(velocity,courant,reynolds)
             result=self.project(self._predict(velocity,density),pressure_initial)
             return MACFlowResult(result.velocity,result.pressure,
-                                 dict(result.diagnostics,courant=courant,viscous_number=self.viscous_number))
+                                 dict(result.diagnostics,courant=courant,cell_reynolds=reynolds,
+                                      viscous_number=self.viscous_number))
         if any(not torch.isfinite(u).all() for u in (*velocity, *density)):
             raise ValueError('finite MAC velocity and force density required')
         # Conservative guard for this initial centered-advection implementation.
@@ -106,8 +135,8 @@ class MACFlow:
         speeds = torch.stack([u.abs().max() for u in velocity])
         h = speeds.new_tensor(self.grid.spacing)
         courant = (self.dt*speeds/h).sum().item()
-        if courant > .25 or (speeds*h/(self.mu/self.rho)).max().item() > 1.:
-            raise ValueError('MAC centered-advection stability guard exceeded; refine grid or change transport scheme')
+        reynolds = (speeds*h/(self.mu/self.rho)).max().item()
+        self._check_transport(velocity,courant,reynolds)
         vel = zero_normal(velocity)
         adv = convection(vel, self.grid.spacing)
         star = zero_normal(tuple(u+self.dt*(-a+self.mu/self.rho*
@@ -115,4 +144,5 @@ class MACFlow:
             for c,(u,a,f) in enumerate(zip(vel,adv,density))))
         result = self.project(star, pressure_initial)
         return MACFlowResult(result.velocity, result.pressure,
-                             dict(result.diagnostics, courant=courant, viscous_number=self.viscous_number))
+                             dict(result.diagnostics, courant=courant, cell_reynolds=reynolds,
+                                  viscous_number=self.viscous_number))

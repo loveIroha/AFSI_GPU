@@ -211,6 +211,26 @@ def test_public_config_and_default_three_cycles(tmp_path):
         replace(cfg, execution=replace(cfg.execution, solid_backend='pointwise'))
 
 
+def test_transport_failure_saves_last_accepted_state_and_metrics(real_case, tmp_path, monkeypatch):
+    from afsi_torch.simulation.real_lv_mac import run
+    from afsi_torch.mac.flow import MACFlow, MACTransportGuardError
+    from validation.diagnose_real_lv_guard import diagnose
+    metrics = dict(courant=.01, cell_reynolds=1.2, triggered=['cell_reynolds'])
+    def reject(*args, **kwargs):
+        raise MACTransportGuardError(metrics)
+    monkeypatch.setattr(MACFlow, 'step', reject)
+    folder = tmp_path/'rejected'
+    with pytest.raises(MACTransportGuardError):
+        run(case_config=real_case, device='cpu', output=folder)
+    report = json.loads((folder/'report.json').read_text())
+    assert report['status'] == 'failed' and report['accepted_steps'] == 0
+    assert report['failure']['transport_guard'] == metrics
+    _, state, _, progress, _ = load_real_lv(folder/'checkpoint.npz')
+    assert state.step == 0 and state.time == 0.
+    assert progress['failure']['transport_guard'] == metrics
+    assert diagnose(folder/'checkpoint.npz')['saved_failure']['transport_guard'] == metrics
+
+
 @pytest.mark.parametrize('device', DEVICES)
 def test_compiled_driver_keeps_ho_and_active_load(real_case, device):
     model = imported_model(real_case, device)
