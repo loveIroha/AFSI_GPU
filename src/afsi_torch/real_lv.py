@@ -64,7 +64,7 @@ class RealLVConfig:
             raise ValueError('real LV uses the compiled H-O kernel, not Guccione pointwise execution')
         if not isinstance(self.coupling, MACCouplingOptions):
             raise ValueError('coupling must be MACCouplingOptions')
-        if self.coupling.scheme == 'explicit-lagged':
+        if self.coupling.scheme != 'implicit-newton':
             self.fluid.validate_time(self.time)
         validate_graph_options(self)
 

@@ -10,8 +10,7 @@ from ..config import TimeConfig, lv_grid
 from ..cycle_checkpoint import atomic_json
 from ..mac.execution import build_driver
 from ..mac.grid import divergence
-from ..transport import transport_numbers, transport_policy
-from ..mac.implicit import implicit_policy
+from ..transport import transport_numbers, coupling_policy
 
 
 @torch.no_grad()
@@ -73,7 +72,7 @@ def run(*, case_config=None, device='cuda', output=None, resume=None, end_time=N
                         **asdict(config.execution))
         progress = dict(elapsed_seconds=0., segments=[], summary={})
     implicit = config.coupling.scheme == 'implicit-newton'
-    policy = implicit_policy() if implicit else transport_policy()
+    policy = coupling_policy(config.coupling.scheme)
     steps = round(config.time.end_time/config.time.dt)
     driver = build_driver(model, settings, device)
     grid, flow, transfer = driver.flow.grid, driver.flow, driver.transfer
@@ -156,7 +155,9 @@ def run(*, case_config=None, device='cuda', output=None, resume=None, end_time=N
                       coupling='quadrature FE/IB with consistent CSR mass and shared MAC solver',
                       boundary='endo follower pressure; basal radial projection in xy plus fixed z; free epi',
                       time_scheme=('backward Euler transport and new-time FE force; reduced coupled Newton; IB geometry frozen at old position'
-                                   if implicit else 'explicit partitioned MAC; updated solid force sampled at preceding state time'),
+                                   if implicit else 'SSPRK3 fluid with step-frozen force; first-order explicit partitioned FE/IB; preceding-time force sampling'
+                                   if config.coupling.scheme == 'explicit-rk3' else 'explicit partitioned MAC; updated solid force sampled at preceding state time'),
+                      pressure_time_meaning='RK-weighted step average' if config.coupling.scheme == 'explicit-rk3' else 'projection multiplier',
                       pressure_gauge='closed box, homogeneous Neumann, zero mean',
                       cavity_measurement='endocardium plus virtual mean-rim triangle fan; no cap traction',
                       volume_penalty='kappa*(ln J)^2; finite penalty, not a mixed incompressible constraint',

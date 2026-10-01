@@ -19,6 +19,22 @@ def implicit_policy():
                 scope='implicit transport/solid force; step-frozen IB geometry; no unconditional nonlinear FSI claim')
 
 
+def rk3_policy():
+    return dict(name='centered-ssprk3-lagged-ib-v1',courant_limit=COURANT_LIMIT,
+                viscous_number_limit=VISCOUS_LIMIT,advection_diffusion_monitor_only=True,
+                cell_reynolds_monitor_only=True,
+                scope='each RK stage screened; frozen-coefficient transport only; explicit elastic/IB restrictions remain')
+
+
+def rk3_violations(courant, viscous_number):
+    return [name for name,value,limit in
+            (('courant',courant,COURANT_LIMIT),('viscous',viscous_number,VISCOUS_LIMIT)) if value > limit]
+
+
+def coupling_policy(scheme):
+    return implicit_policy() if scheme == 'implicit-newton' else rk3_policy() if scheme == 'explicit-rk3' else transport_policy()
+
+
 def transport_policy():
     return dict(name=TRANSPORT_POLICY, courant_limit=COURANT_LIMIT,
                 viscous_number_limit=VISCOUS_LIMIT,

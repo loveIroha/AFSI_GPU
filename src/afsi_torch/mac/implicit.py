@@ -26,8 +26,8 @@ class MACCouplingOptions:
     tangent_chunk_size: int = 2048
 
     def __post_init__(self):
-        if self.scheme not in ('explicit-lagged', 'implicit-newton'):
-            raise ValueError('coupling scheme must be explicit-lagged or implicit-newton')
+        if self.scheme not in ('explicit-lagged', 'explicit-rk3', 'implicit-newton'):
+            raise ValueError('coupling scheme must be explicit-lagged, explicit-rk3 or implicit-newton')
         if not isinstance(self.newton, NewtonOptions):
             raise ValueError('coupling newton must be NewtonOptions')
         if type(self.tangent_chunk_size) is not int or self.tangent_chunk_size < 1:

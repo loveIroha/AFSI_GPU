@@ -31,6 +31,8 @@ The separate [real-LV demo](demo/real_lv_fsi/README.md) reads user-provided XDMF
 
 The real-LV case also provides optional **backward-Euler coupled Newton stepping** (`--coupling implicit-newton`): new-time fluid transport and FE force, an assembled CSR H–O tangent, and pressure elimination by multigrid. IB transfer geometry is frozen within each step. It changes time integration and adds iterative-solve cost; full-scale GPU performance and trajectory validation are pending. See the [implicit coupling guide](docs/MAC_IMPLICIT.md).
 
+For lower per-step cost, `--coupling explicit-rk3` uses three projected RK3 fluid stages with the existing explicit FE/IB update. This reuses the optimized kernels and avoids coupled Newton solves; the complete FSI scheme remains first order and subject to explicit elastic stability limits. A same-checkpoint benchmark counts all nested pressure/mass solves. See the [RK3 method and performance experiment](docs/MAC_RK3.md).
+
 Lengths, time, density, viscosity, and stress use **cm–g–s units**. The 2D case assumes unit out-of-plane thickness. Mesh generation runs on the CPU; with `--device cuda`, solid force evaluation, sparse mass solves, IB transfer, and fluid advancement use GPU tensors. Logging, mesh generation, convergence decisions, and file output still involve the host.
 
 ## Documentation
@@ -48,6 +50,7 @@ Lengths, time, density, viscosity, and stress use **cm–g–s units**. The 2D c
 | Fused pressure multigrid | [Multigrid implementation](docs/MAC_MULTIGRID_PERFORMANCE.md) |
 | Solid force and consistent-mass optimization | [Solid/mass implementation](docs/MAC_SOLID_MASS_EXPERIMENT.md) |
 | Real-LV implicit coupling, CSR solid tangent and Newton equations | [Implicit MAC/FE coupling](docs/MAC_IMPLICIT.md) |
+| Real-LV explicit RK3 fluid, stability screen and warmed scheme benchmark | [RK3 MAC/FE coupling](docs/MAC_RK3.md) |
 | Three-dimensional pressure graphs and coupling caches | [LV execution design](docs/LV_MAC_GRAPH_EXECUTION.md) |
 | Two-dimensional GPU execution | [Valve execution design](docs/VALVE_GPU_EXECUTION.md) |
 

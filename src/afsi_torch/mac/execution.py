@@ -39,7 +39,9 @@ def build_driver(model, settings, device):
     from ..config import _decode
     coupling = _decode(MACCouplingOptions, settings.get('coupling', {}))
     grid = lv_grid(settings)
-    flow = MACFlow(grid, dt=settings['dt'], rho=settings['rho'], mu=settings['mu'],
+    from .rk3 import MACRK3Flow
+    flow_class = MACRK3Flow if coupling.scheme == 'explicit-rk3' else MACFlow
+    flow = flow_class(grid, dt=settings['dt'], rho=settings['rho'], mu=settings['mu'],
                    device=device, pressure_backend=settings.get('pressure_backend','torch'),
                    execution_backend=backend, options=MGOptions(**settings.get('pressure_solver',{})),
                    implicit_transport=coupling.scheme == 'implicit-newton')

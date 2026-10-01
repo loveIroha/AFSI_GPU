@@ -47,7 +47,7 @@ def refine_checkpoint_dt(model, state, settings, config, dt, end_time=None):
     details = dict(old_dt_s=old_dt, new_dt_s=dt, refinement_factor=factor,
                    source_step=state.step, start_step=step, start_time_s=state.time,
                    force_time_s=force_time,force_resampled=step > 0,
-                   lagged_force_resampled=step > 0 and config.coupling.scheme == 'explicit-lagged',
+                   lagged_force_resampled=step > 0 and config.coupling.scheme != 'implicit-newton',
                    output_intervals_preserved_in_seconds=True)
     return branch, dict(settings, dt=dt), config, details
 
