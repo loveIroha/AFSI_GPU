@@ -33,7 +33,7 @@ class MACFlowResult:
 
 class MACFlow:
     def __init__(self, grid, *, dt, rho=1., mu=1., device='cpu', dtype=torch.float64,
-                 options=None, pressure_backend='torch', execution_backend='torch'):
+                 options=None, pressure_backend='torch', execution_backend='torch', implicit_transport=False):
         if execution_backend not in ('torch','fused'):
             raise ValueError('execution backend must be torch or fused')
         if any(not isfinite(v) or v <= 0 for v in (dt, rho, mu)):
@@ -41,7 +41,8 @@ class MACFlow:
         self.grid, self.dt, self.rho, self.mu = grid, float(dt), float(rho), float(mu)
         self.viscous_number = dt*mu/rho*sum(1/h**2 for h in grid.spacing)
         # Boundary-adjacent tangential unknowns have a larger diagonal.
-        if self.viscous_number > VISCOUS_LIMIT:
+        self.implicit_transport = implicit_transport
+        if not implicit_transport and self.viscous_number > VISCOUS_LIMIT:
             raise ValueError('explicit viscous time step too large; reduce dt')
         self.pressure_solver = GeometricMultigrid(grid, device=device, dtype=dtype,
                                                   options=options, backend=pressure_backend)
@@ -120,6 +121,8 @@ class MACFlow:
 
     @torch.no_grad()
     def step(self, velocity, density, *, pressure_initial=None):
+        if self.implicit_transport:
+            raise ValueError('implicit transport must be advanced by the coupled Newton driver')
         self.grid.check_velocity(velocity)
         self.grid.check_velocity(density)
         if self.execution_backend=='fused':

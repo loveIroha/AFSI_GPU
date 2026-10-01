@@ -10,6 +10,7 @@ from .mechanics import determinant3
 from .config import (TimeConfig, FluidConfig, OutputConfig, LVExecutionConfig,
                      MGOptions, mass_options, validate_graph_options)
 from .fluid.solvers import SolverOptions
+from .mac.implicit import MACCouplingOptions
 
 
 @dataclass(frozen=True)
@@ -37,6 +38,7 @@ class RealLVConfig:
         execution_backend='fused', pressure_backend='graph', solid_backend='reference',
         mass_backend='graph', coupling_backend='optimized', warm_start=True))
     output: OutputConfig = field(default_factory=lambda: OutputConfig(100, 1000, 200, True))
+    coupling: MACCouplingOptions = field(default_factory=MACCouplingOptions)
 
     def __post_init__(self):
         for name in ('fiber_files', 'sheet_files', 'basal_center_cm'):
@@ -60,7 +62,10 @@ class RealLVConfig:
             raise ValueError('real LV requires 3D fluid and paired output')
         if self.execution.solid_backend != 'reference':
             raise ValueError('real LV uses the compiled H-O kernel, not Guccione pointwise execution')
-        self.fluid.validate_time(self.time)
+        if not isinstance(self.coupling, MACCouplingOptions):
+            raise ValueError('coupling must be MACCouplingOptions')
+        if self.coupling.scheme == 'explicit-lagged':
+            self.fluid.validate_time(self.time)
         validate_graph_options(self)
 
 

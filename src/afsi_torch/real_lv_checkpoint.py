@@ -41,12 +41,13 @@ def refine_checkpoint_dt(model, state, settings, config, dt, end_time=None):
     output = replace(config.output, **{name: getattr(config.output, name)*factor for name in
                      ('log_every', 'output_every', 'checkpoint_every')})
     config = replace(config, time=time, output=output)
-    force_time = None if step == 0 else (step-1)*dt
+    force_time = None if step == 0 else state.time if config.coupling.scheme == 'implicit-newton' else (step-1)*dt
     force = state.force if step == 0 else model.force(state.x, force_time)
     branch = replace(state, step=step, force_time=force_time, force=force)
     details = dict(old_dt_s=old_dt, new_dt_s=dt, refinement_factor=factor,
                    source_step=state.step, start_step=step, start_time_s=state.time,
-                   force_time_s=force_time, lagged_force_resampled=step > 0,
+                   force_time_s=force_time,force_resampled=step > 0,
+                   lagged_force_resampled=step > 0 and config.coupling.scheme == 'explicit-lagged',
                    output_intervals_preserved_in_seconds=True)
     return branch, dict(settings, dt=dt), config, details
 
@@ -95,10 +96,13 @@ def load_real_lv(path, device='cpu'):
                      tuple(tensor(f'velocity_{c}') for c in range(3)), tensor('pressure'),
                      tensor('force'), metadata['force_time'])
     dt = config.time.dt
+    expected_time = state.time if config.coupling.scheme == 'implicit-newton' else (state.step-1)*dt
     if (type(state.step) is not int or state.step < 0 or abs(state.time-state.step*dt) > 1e-12
             or (state.step == 0 and state.force_time is not None)
-            or (state.step > 0 and (state.force_time is None or abs(state.force_time-(state.step-1)*dt) > 1e-12))):
+            or (state.step > 0 and (state.force_time is None or abs(state.force_time-expected_time) > 1e-12))):
         raise ValueError('inconsistent real LV checkpoint clock')
+    if metadata['settings'].get('coupling', {}).get('scheme', 'explicit-lagged') != config.coupling.scheme:
+        raise ValueError('checkpoint solver and configuration coupling schemes differ')
     model.validate(state.x)
     expected = torch.zeros_like(state.x) if state.force_time is None else model.force(state.x, state.force_time)
     if not torch.allclose(state.force, expected, rtol=1e-10, atol=1e-7):

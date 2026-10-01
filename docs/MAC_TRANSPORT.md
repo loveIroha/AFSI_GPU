@@ -1,5 +1,10 @@
 # Centered MAC transport checks
 
+This page describes `explicit-lagged` stepping. The real-LV
+`implicit-newton` option uses backward Euler for transport and new-time solid
+forces; its C/D/A values are monitors, not explicit-screen vetoes. See
+[coupled Newton stepping](MAC_IMPLICIT.md) for its equations and scope.
+
 The 3D MAC backend retains its centered conservative momentum fluxes, explicit
 physical viscosity, forward Euler predictor and pressure projection. This change
 affects acceptance checks and diagnostics, not the update equations, IB kernel,

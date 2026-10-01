@@ -6,6 +6,9 @@
 
 ## 默认设置
 
+默认时间推进为兼容既有结果的 `explicit-lagged`；
+`--coupling implicit-newton` 启用新时刻强耦合 Newton，见下述运行方法。
+
 | 项目 | 设置 |
 | --- | --- |
 | 长度、时间、应力 | cm、s、dyn/cm² |
@@ -121,6 +124,79 @@ CUDA_VISIBLE_DEVICES=0 python -u demo/real_lv_fsi/run_mac.py \
 时间步减小使用下述显式 `--resume-dt` 接口，保存到新目录。
 
 ## 对流检查停止时
+
+本节的 CFL/D/A 停止条件适用于 `explicit-lagged` 路径。
+隐式 Newton 路径的对流、黏性和固体力在新时刻共同求解，CFL/A 作为监测量。
+方法公式、CSR 切线、几何冻结范围与性能代价见 [隐式耦合说明](../../docs/MAC_IMPLICIT.md)。
+
+### 使用新时刻强耦合 Newton
+
+显式滞后力可能引入额外弹性稳定性限制和载荷相位误差；
+反复触发 A 并不单独证明这些误差已发生。新路径使用后向 Euler，
+将流体对流、黏性、当前位置的 H–O/主动力、随动压力和基底力同时纳入 Newton。
+压力通过多重网格消元，固体切线实际组装为 CSR。
+IB 几何在每步开始的位置冻结；插值和传播始终采用同一套算子。
+
+先验证 GPU 路径，并从最新失败状态继续到 0.532 s，检查新方法的实际收敛和耗时。
+此例假定最新状态位于 `real_lv_3cycles_dt25us` 且早于 0.532 s。
+源状态晚于该时刻时，选择更晚的 `--end-time`，并保持它为 dt 的整数倍。
+首次执行会编译新的切线/动量核；总耗时包括编译和 CSR 模式准备。
+
+```bash
+git pull --ff-only
+conda activate afsi-torch
+CUDA_VISIBLE_DEVICES=0 python -m pytest -q tests/test_mac_implicit.py
+
+source_checkpoint="results/real_lv_3cycles_dt25us/checkpoint.npz"
+run_dir="results/real_lv_implicit_newton"
+mkdir -p "$run_dir"
+
+CUDA_VISIBLE_DEVICES=0 nohup /usr/bin/time \
+  -f 'elapsed_seconds=%e exit_code=%x' -o "$run_dir/runtime_smoke.txt" \
+  python -u demo/real_lv_fsi/run_mac.py \
+  --device cuda --resume "$source_checkpoint" --coupling implicit-newton \
+  --end-time 0.532 --output "$run_dir" \
+  > "$run_dir/run_smoke.log" 2>&1 < /dev/null &
+
+echo "PID=$! output=$run_dir"
+```
+
+该命令保留原检查点的 dt=2.5e-5 与 x/u/p，将力时间改为当前状态时间，
+不重复已接受的时间段，不改写原结果；这是一条从显式历史转入隐式方法的混合轨迹。
+已有显式历史的误差不会因切换而消失。方法切换必须使用新目录。
+初始力与每一步接受状态均按新配置保存，下一次普通续算自动恢复隐式路径。
+
+```bash
+tail -f results/real_lv_implicit_newton/run_smoke.log
+```
+
+日志与 CSV 新增 Newton 迭代次数、真实残差和容差。
+完整检查点报告也包含 Newton/GMRES 历史。失败时保存上一个接受状态，
+Newton 不收敛不能被标记为成功时间步。每步多次质量/压力求解会增加耗时，
+全尺寸 GPU 效率与完整三个周期尚待实际运行验证。
+
+检查收敛后，可在同一目录直接继续到 2.4 s：
+
+```bash
+run_dir="results/real_lv_implicit_newton"
+CUDA_VISIBLE_DEVICES=0 nohup /usr/bin/time \
+  -f 'elapsed_seconds=%e exit_code=%x' -o "$run_dir/runtime_3cycles.txt" \
+  python -u demo/real_lv_fsi/run_mac.py \
+  --device cuda --resume "$run_dir/checkpoint.npz" --cycles 3 \
+  > "$run_dir/run_3cycles.log" 2>&1 < /dev/null &
+echo "PID=$!"
+```
+
+从零开始使用隐式路径时：
+
+```bash
+CUDA_VISIBLE_DEVICES=0 python -u demo/real_lv_fsi/run_mac.py \
+  --coupling implicit-newton --dt 1e-4 --cycles 3 \
+  --output results/real_lv_implicit_from_zero
+```
+
+隐式方法也有时间精度、空间分辨率和非线性收敛要求；不能凭通过旧 A 阈值
+或某段 Newton 收敛宣称全部三个周期稳定。
 
 MAC 中心对流采用与显式黏性项联合的时间步检查，令 `U_i=max|u_i|`、`nu=mu/rho`：
 
@@ -281,8 +357,9 @@ UFL 中 `inner(U,V)*dx` 对应质量矩阵。
 耦合沿用当前 AFSI 风格的滞后力时序；CSV 的 `force_time_s` 记录实际力采样时间，
 载荷列则记录当前状态时刻的规定载荷。
 
-这是有限惩罚、显式分区 IB–FSI 运行，不是严格混合不可压约束、隐式 Newton 耦合，
-也不包含多孔介质压力/渗流未知量。三个规定载荷周期不等同于已达到周期稳态。
+固体采用有限体积惩罚，没有引入多孔介质压力/渗流未知量。
+`explicit-lagged` 沿用原滞后力时序；`implicit-newton` 使用上述后向 Euler 强耦合求解。
+三个规定载荷周期不等同于已达到周期稳态。
 
 ## 输出与代码位置
 

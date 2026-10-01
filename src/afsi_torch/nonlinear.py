@@ -138,11 +138,15 @@ def gmres(action,rhs,*,precondition=None,options=None):
 
 
 @torch.no_grad()
-def newton(residual,x0,*,validate,fixed=None,values=None,preconditioner_factory=None,options=None):
+def newton(residual,x0,*,validate,fixed=None,values=None,preconditioner_factory=None,
+           linearization_factory=None,options=None):
     """Solve free residual=0 with exact JVP and Armijo residual-norm backtracking.
 
     A preconditioner is prepared once per Newton iteration and applied on the
     right in GMRES. Geometry is checked before evaluating any trial residual.
+    A supplied linearization_factory(x) returns an exact Jacobian action,
+    allowing assembled FE tangents and pressure elimination without autograd
+    through iterative linear solvers. Otherwise use the residual's exact JVP.
     Singular tangents, nonconvergence and failed line searches raise with the
     last accepted state. Initial invalid input raises before any iteration.
     """
@@ -172,9 +176,13 @@ def newton(residual,x0,*,validate,fixed=None,values=None,preconditioner_factory=
     for iteration in range(1,opt.max_iterations+1):
         if norm(r) <= tol:
             return result(True)
-        def action(v):
-            return project(torch.func.jvp(residual,(x,),(project(v),))[1]).detach()
         try:
+            tangent = None if linearization_factory is None else linearization_factory(x)
+            def action(v):
+                direction = project(v)
+                out = (torch.func.jvp(residual,(x,),(direction,))[1]
+                       if tangent is None else tangent(direction))
+                return project(out).detach()
             inverse = None if preconditioner_factory is None else preconditioner_factory(x)
             precondition = None if inverse is None else lambda v: project(inverse(project(v)))
             step,linear_info = gmres(action,-r,precondition=precondition,options=opt.linear)

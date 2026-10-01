@@ -12,6 +12,13 @@ ADVECTION_DIFFUSION_LIMIT = .25
 TRANSPORT_POLICY = 'centered-explicit-advection-diffusion-v1'
 
 
+def implicit_policy():
+    return dict(name='backward-euler-frozen-ib-newton-v1',
+                courant_monitor_only=True, advection_diffusion_monitor_only=True,
+                cell_reynolds_monitor_only=True,
+                scope='implicit transport/solid force; step-frozen IB geometry; no unconditional nonlinear FSI claim')
+
+
 def transport_policy():
     return dict(name=TRANSPORT_POLICY, courant_limit=COURANT_LIMIT,
                 viscous_number_limit=VISCOUS_LIMIT,

@@ -29,6 +29,8 @@ The generated ideal left-ventricle demos follow the **loading-and-holding protoc
 
 The separate [real-LV demo](demo/real_lv_fsi/README.md) reads user-provided XDMF/HDF5 meshes and DOLFIN XML directions. It uses a supplied H–O variant, radial basal constraints and 0.8 s periodic loading; it is distinct from the generated `demo_337` cases. Patient input files are not distributed. Full GPU trajectory validation is pending.
 
+The real-LV case also provides optional **backward-Euler coupled Newton stepping** (`--coupling implicit-newton`): new-time fluid transport and FE force, an assembled CSR H–O tangent, and pressure elimination by multigrid. IB transfer geometry is frozen within each step. It changes time integration and adds iterative-solve cost; full-scale GPU performance and trajectory validation are pending. See the [implicit coupling guide](docs/MAC_IMPLICIT.md).
+
 Lengths, time, density, viscosity, and stress use **cm–g–s units**. The 2D case assumes unit out-of-plane thickness. Mesh generation runs on the CPU; with `--device cuda`, solid force evaluation, sparse mass solves, IB transfer, and fluid advancement use GPU tensors. Logging, mesh generation, convergence decisions, and file output still involve the host.
 
 ## Documentation
@@ -45,6 +47,7 @@ Lengths, time, density, viscosity, and stress use **cm–g–s units**. The 2D c
 | Compact IB kernels and tensor execution | [MAC execution design](docs/MAC_EXECUTION_PERFORMANCE.md) |
 | Fused pressure multigrid | [Multigrid implementation](docs/MAC_MULTIGRID_PERFORMANCE.md) |
 | Solid force and consistent-mass optimization | [Solid/mass implementation](docs/MAC_SOLID_MASS_EXPERIMENT.md) |
+| Real-LV implicit coupling, CSR solid tangent and Newton equations | [Implicit MAC/FE coupling](docs/MAC_IMPLICIT.md) |
 | Three-dimensional pressure graphs and coupling caches | [LV execution design](docs/LV_MAC_GRAPH_EXECUTION.md) |
 | Two-dimensional GPU execution | [Valve execution design](docs/VALVE_GPU_EXECUTION.md) |
 

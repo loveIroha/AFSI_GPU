@@ -5,7 +5,7 @@ from pathlib import Path
 import sys
 import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]/'src'))
-from afsi_torch.transport import transport_numbers, transport_policy, transport_violations
+from afsi_torch.transport import transport_numbers, transport_policy, transport_violations, implicit_policy
 
 
 def diagnose(checkpoint):
@@ -39,16 +39,19 @@ def diagnose(checkpoint):
                               rms_cm_per_s=float(np.sqrt(np.mean(u*u)))))
     speeds = np.asarray([p['max_abs_cm_per_s'] for p in peaks])
     numbers = transport_numbers(speeds.tolist(), spacing.tolist(), dt, mu/rho)
+    implicit = settings.get('coupling', {}).get('scheme', 'explicit-lagged') == 'implicit-newton'
+    violations = transport_violations(numbers['courant'], numbers['advection_diffusion_number'],numbers['viscous_number'])
     return dict(checkpoint=str(Path(checkpoint)), step=meta['step'], time_s=meta['time'],
                 attempted_next_step=meta['step']+1, dt=dt, rho=rho, mu=mu,
                 spacing_cm=spacing.tolist(), component_peaks=peaks,
-                **numbers, transport_policy=transport_policy(),
-                triggered=transport_violations(numbers['courant'], numbers['advection_diffusion_number'],
-                                               numbers['viscous_number']),
+                **numbers, transport_policy=implicit_policy() if implicit else transport_policy(),
+                triggered=[] if implicit else violations,
+                explicit_screen_triggered=violations,
                 legacy_cell_re_gt_one=numbers['cell_reynolds'] > 1.,
                 saved_failure=meta.get('progress', {}).get('failure'),
                 inspection='selected saved fields; no full checksum validation or advancement',
-                interpretation='current transport screen; cell_Re monitors spatial resolution, not time stability; saved failure may use an older policy')
+                interpretation=('implicit transport diagnostics; explicit CFL/D/A vetoes do not apply; cell_Re monitors spatial resolution'
+                    if implicit else 'current transport screen; cell_Re monitors spatial resolution, not time stability; saved failure may use an older policy'))
 
 
 def main():

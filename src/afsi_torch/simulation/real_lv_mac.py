@@ -11,10 +11,12 @@ from ..cycle_checkpoint import atomic_json
 from ..mac.execution import build_driver
 from ..mac.grid import divergence
 from ..transport import transport_numbers, transport_policy
+from ..mac.implicit import implicit_policy
 
 
 @torch.no_grad()
-def run(*, case_config=None, device='cuda', output=None, resume=None, end_time=None, resume_dt=None):
+def run(*, case_config=None, device='cuda', output=None, resume=None, end_time=None, resume_dt=None,
+        coupling_scheme=None):
     if str(device).startswith('cuda') and not torch.cuda.is_available():
         raise RuntimeError('CUDA requested but unavailable')
     if resume and case_config is not None:
@@ -24,38 +26,54 @@ def run(*, case_config=None, device='cuda', output=None, resume=None, end_time=N
     started = perf_counter()
     folder = Path(output) if output else Path(resume).parent if resume else Path('results/demo_real_lv/mac')
     refinement = resume_dt is not None
-    if refinement:
+    branch = refinement or resume and coupling_scheme is not None
+    if branch:
         if output is None or folder.resolve() == Path(resume).resolve().parent:
-            raise ValueError('smaller-dt resume requires a new output directory; source is preserved')
-    if not resume or refinement:
+            raise ValueError('dt/scheme change requires a new output directory; source is preserved')
+    if not resume or branch:
         if any((folder/name).exists() for name in ('report.json', 'checkpoint.npz', 'history.csv', 'vtk')):
             raise ValueError('output contains a run; use a new directory or resume')
     if resume:
-        if not refinement and folder.resolve() != Path(resume).resolve().parent:
+        if not branch and folder.resolve() != Path(resume).resolve().parent:
             raise ValueError('resume in the checkpoint directory')
         model, state, settings, progress, config = load_real_lv(resume, device)
+        old_scheme = config.coupling.scheme
+        details = dict(old_dt_s=config.time.dt,new_dt_s=config.time.dt,source_step=state.step,
+                       start_step=state.step,start_time_s=state.time,refinement_factor=1)
         if refinement:
             state, settings, config, details = refine_checkpoint_dt(
                 model, state, settings, config, resume_dt, end_time)
+        elif end_time is not None:
+            config = replace(config, time=TimeConfig(config.time.dt, end_time))
+        if coupling_scheme is not None:
+            config = replace(config,coupling=replace(config.coupling,scheme=coupling_scheme))
+            force_time = None if state.step == 0 else state.time if coupling_scheme == 'implicit-newton' else (state.step-1)*config.time.dt
+            state = replace(state, force_time=force_time, force=state.force if force_time is None else model.force(state.x,force_time))
+            settings = dict(settings,coupling=asdict(config.coupling))
+            details.update(old_scheme=old_scheme,new_scheme=config.coupling.scheme,force_time_s=force_time,
+                           force_resampled=state.step > 0)
+        if branch:
             progress = dict(elapsed_seconds=0., segments=[], summary={}, restart_from=dict(
                 checkpoint=str(Path(resume).resolve()), source_elapsed_seconds=progress['elapsed_seconds'],
                 source_failure=progress.get('failure'), **details))
-        elif end_time is not None:
-            config = replace(config, time=TimeConfig(config.time.dt, end_time))
     else:
         config = RealLVConfig() if case_config is None else case_config
         if not isinstance(config, RealLVConfig):
             raise TypeError('case_config must be RealLVConfig')
         if end_time is not None:
             config = replace(config, time=TimeConfig(config.time.dt, end_time))
+        if coupling_scheme is not None:
+            config = replace(config,coupling=replace(config.coupling,scheme=coupling_scheme))
         model = imported_model(config, device)
         settings = dict(dt=config.time.dt, fluid_shape=config.fluid.shape,
                         fluid_lengths=config.fluid.lengths, fluid_origin=config.fluid.origin,
                         rho=config.fluid.rho, mu=config.fluid.mu,
-                        interaction_degree=config.interaction_degree,
+                        interaction_degree=config.interaction_degree,coupling=asdict(config.coupling),
                         pressure_solver=asdict(config.pressure_solver), mass_solver=asdict(config.mass_solver),
                         **asdict(config.execution))
         progress = dict(elapsed_seconds=0., segments=[], summary={})
+    implicit = config.coupling.scheme == 'implicit-newton'
+    policy = implicit_policy() if implicit else transport_policy()
     steps = round(config.time.end_time/config.time.dt)
     driver = build_driver(model, settings, device)
     grid, flow, transfer = driver.flow.grid, driver.flow, driver.transfer
@@ -82,7 +100,7 @@ def run(*, case_config=None, device='cuda', output=None, resume=None, end_time=N
     progress['segments'].append(dict(start_step=state.step, start_time_s=state.time,
                                     dt_s=config.time.dt, device=str(device),
                                     execution=asdict(config.execution), output=asdict(config.output),
-                                    transport_policy=transport_policy()))
+                                    coupling=asdict(config.coupling),transport_policy=policy))
     info = {}
 
     def row():
@@ -98,7 +116,10 @@ def run(*, case_config=None, device='cuda', output=None, resume=None, end_time=N
                     advection_diffusion_number=numbers['advection_diffusion_number'],
                     divergence_l2=(grid.volume*divergence(state.velocity, grid.spacing).square().sum()).sqrt().item(),
                     pressure_cycles=info.get('flow', {}).get('pressure', {}).get('cycles', 0),
-                    power_error=info.get('power_error'), power_error_sampled='power_error' in info)
+                    power_error=info.get('power_error'), power_error_sampled='power_error' in info,
+                    newton_iterations=info.get('nonlinear',{}).get('iterations'),
+                    nonlinear_residual=info.get('nonlinear',{}).get('residual_norm'),
+                    nonlinear_tolerance=info.get('nonlinear',{}).get('tolerance'))
 
     if not history or int(history[-1]['step']) != state.step:
         history.append(row())
@@ -130,11 +151,12 @@ def run(*, case_config=None, device='cuda', output=None, resume=None, end_time=N
                       fluid_pressure_cells=state.pressure.numel(),
                       fluid_velocity_dofs=sum(v.numel() for v in state.velocity),
                       fluid_spacing_cm=grid.spacing, viscous_number=flow.viscous_number,
-                      transport_policy=transport_policy(),
+                      transport_policy=policy,
                       pressure_backend=flow.pressure_solver.backend, mg_levels=flow.pressure_solver.shapes,
                       coupling='quadrature FE/IB with consistent CSR mass and shared MAC solver',
                       boundary='endo follower pressure; basal radial projection in xy plus fixed z; free epi',
-                      time_scheme='explicit partitioned MAC; updated solid force sampled at preceding state time',
+                      time_scheme=('backward Euler transport and new-time FE force; reduced coupled Newton; IB geometry frozen at old position'
+                                   if implicit else 'explicit partitioned MAC; updated solid force sampled at preceding state time'),
                       pressure_gauge='closed box, homogeneous Neumann, zero mean',
                       cavity_measurement='endocardium plus virtual mean-rim triangle fan; no cap traction',
                       volume_penalty='kappa*(ln J)^2; finite penalty, not a mixed incompressible constraint',
@@ -156,6 +178,7 @@ def run(*, case_config=None, device='cuda', output=None, resume=None, end_time=N
         print(f'kappa={config.material.kappa:g}, beta={config.beta:g}; '
               f'execution={config.execution.execution_backend}, pressure={flow.pressure_solver.backend}, '
               f'mass={config.execution.mass_backend}, coupling={config.execution.coupling_backend}', flush=True)
+        print(f'Time scheme: {config.coupling.scheme}', flush=True)
         for _ in range(state.step, steps):
             sample = (state.step+1) % config.output.log_every == 0 or state.step+1 == steps
             state, info = driver.step(state, diagnostics=sample)
@@ -164,10 +187,12 @@ def run(*, case_config=None, device='cuda', output=None, resume=None, end_time=N
             if sample:
                 history.append(row())
                 last = history[-1]
+                nonlinear = info.get('nonlinear',{})
+                suffix = (f', Newton={nonlinear["iterations"]}, residual={nonlinear["residual_norm"]:.3g}' if nonlinear else '')
                 print(f'step {state.step}/{steps}, t={state.time:.6f}, V={last["cavity_volume_ml"]:.8g} mL, '
                       f'minJ={last["minimum_detF"]:.6g}, div={last["divergence_l2"]:.3g}, '
                       f'MG cycles={last["pressure_cycles"]}, CFL={last["courant"]:.3g}, '
-                      f'A={last["advection_diffusion_number"]:.3g}, Re_h={last["cell_reynolds"]:.3g}', flush=True)
+                      f'A={last["advection_diffusion_number"]:.3g}, Re_h={last["cell_reynolds"]:.3g}{suffix}', flush=True)
             progress['summary']['max_grid_displacement'] = max(
                 progress['summary'].get('max_grid_displacement', 0.), info['max_grid_displacement'])
             if state.step % config.output.checkpoint_every == 0:
@@ -177,5 +202,9 @@ def run(*, case_config=None, device='cuda', output=None, resume=None, end_time=N
         progress['failure'] = dict(type=type(exc).__name__, message=str(exc), last_accepted_step=state.step)
         if hasattr(exc, 'diagnostics'):
             progress['failure']['transport_guard'] = exc.diagnostics
+        if hasattr(exc, 'result'):
+            result = exc.result
+            progress['failure']['nonlinear'] = dict(iterations=result.iterations,
+                residual_norm=result.residual_norm,tolerance=result.tolerance,history=result.history)
         save('failed')
         raise
