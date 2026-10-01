@@ -5,7 +5,7 @@ from pathlib import Path
 from time import perf_counter
 import torch
 from ..real_lv import RealLVConfig, imported_model
-from ..real_lv_checkpoint import save_real_lv, load_real_lv
+from ..real_lv_checkpoint import save_real_lv, load_real_lv, refine_checkpoint_dt
 from ..config import TimeConfig, lv_grid
 from ..cycle_checkpoint import atomic_json
 from ..mac.execution import build_driver
@@ -14,22 +14,35 @@ from ..transport import transport_numbers, transport_policy
 
 
 @torch.no_grad()
-def run(*, case_config=None, device='cuda', output=None, resume=None, end_time=None):
+def run(*, case_config=None, device='cuda', output=None, resume=None, end_time=None, resume_dt=None):
     if str(device).startswith('cuda') and not torch.cuda.is_available():
         raise RuntimeError('CUDA requested but unavailable')
     if resume and case_config is not None:
         raise ValueError('resume restores physical configuration; omit --config and physical overrides')
+    if resume_dt is not None and not resume:
+        raise ValueError('resume_dt requires a checkpoint')
     started = perf_counter()
     folder = Path(output) if output else Path(resume).parent if resume else Path('results/demo_real_lv/mac')
-    if resume:
-        if folder.resolve() != Path(resume).resolve().parent:
-            raise ValueError('resume in the checkpoint directory')
-        model, state, settings, progress, config = load_real_lv(resume, device)
-        if end_time is not None:
-            config = replace(config, time=TimeConfig(config.time.dt, end_time))
-    else:
+    refinement = resume_dt is not None
+    if refinement:
+        if output is None or folder.resolve() == Path(resume).resolve().parent:
+            raise ValueError('smaller-dt resume requires a new output directory; source is preserved')
+    if not resume or refinement:
         if any((folder/name).exists() for name in ('report.json', 'checkpoint.npz', 'history.csv', 'vtk')):
             raise ValueError('output contains a run; use a new directory or resume')
+    if resume:
+        if not refinement and folder.resolve() != Path(resume).resolve().parent:
+            raise ValueError('resume in the checkpoint directory')
+        model, state, settings, progress, config = load_real_lv(resume, device)
+        if refinement:
+            state, settings, config, details = refine_checkpoint_dt(
+                model, state, settings, config, resume_dt, end_time)
+            progress = dict(elapsed_seconds=0., segments=[], summary={}, restart_from=dict(
+                checkpoint=str(Path(resume).resolve()), source_elapsed_seconds=progress['elapsed_seconds'],
+                source_failure=progress.get('failure'), **details))
+        elif end_time is not None:
+            config = replace(config, time=TimeConfig(config.time.dt, end_time))
+    else:
         config = RealLVConfig() if case_config is None else case_config
         if not isinstance(config, RealLVConfig):
             raise TypeError('case_config must be RealLVConfig')
@@ -66,7 +79,8 @@ def run(*, case_config=None, device='cuda', output=None, resume=None, end_time=N
             history = [r for r in csv.DictReader(stream) if int(r['step']) <= state.step]
     previous_elapsed = progress['elapsed_seconds']
     progress.pop('failure', None)
-    progress['segments'].append(dict(start_step=state.step, device=str(device),
+    progress['segments'].append(dict(start_step=state.step, start_time_s=state.time,
+                                    dt_s=config.time.dt, device=str(device),
                                     execution=asdict(config.execution), output=asdict(config.output),
                                     transport_policy=transport_policy()))
     info = {}

@@ -34,6 +34,8 @@ def main(argv=None):
     parser.add_argument('--device', default='cuda')
     parser.add_argument('--output')
     parser.add_argument('--resume', help='resume a real-LV checkpoint in its original directory')
+    parser.add_argument('--resume-dt', type=float,
+                        help='subdivide saved dt by an integer; requires --resume and a new --output directory')
     parser.add_argument('--end-time', type=float)
     parser.add_argument('--cycles', type=int)
     parser.add_argument('--dt', type=float)
@@ -55,13 +57,16 @@ def main(argv=None):
     if args.cycles is not None and args.cycles < 1:
         parser.error('--cycles must be a positive integer')
     end_time = args.end_time if args.cycles is None else .8*args.cycles
+    if args.resume_dt is not None and not args.resume:
+        parser.error('--resume-dt requires --resume')
     if args.resume:
         overrides = (args.config, args.mesh_dir, args.dt, args.fluid_cells, args.fluid_lengths,
                      args.fluid_origin, args.rho, args.mu, args.kappa, args.beta,
                      args.log_every, args.output_every, args.checkpoint_every, args.write_config)
         if any(v is not None for v in overrides) or args.reference or args.no_vtk:
-            parser.error('resume restores all settings; only device, output directory and end time/cycles may change')
-        return run(device=args.device, output=args.output, resume=args.resume, end_time=end_time)
+            parser.error('resume restores settings; only device, output, end time/cycles and --resume-dt may change')
+        return run(device=args.device, output=args.output, resume=args.resume,
+                   end_time=end_time, resume_dt=args.resume_dt)
     config = load_config(args.config, CONFIG) if args.config else CONFIG
     config = replace(config,
         source_dir=config.source_dir if args.mesh_dir is None else args.mesh_dir,

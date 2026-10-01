@@ -117,7 +117,8 @@ CUDA_VISIBLE_DEVICES=0 python -u demo/real_lv_fsi/run_mac.py \
 
 续算使用原目录，恢复 H–O 参数、基底中心、DG0 方向、原始网格、流体设置和时间步。
 检查点自包含，不依赖再次读取原始数据文件。
-续算仅允许更改设备与目标时长；更改物理参数或执行设置需要新运行。
+普通续算仅允许更改设备与目标时长；更改物理参数或执行设置需要新运行。
+时间步减小使用下述显式 `--resume-dt` 接口，保存到新目录。
 
 ## 对流检查停止时
 
@@ -149,7 +150,59 @@ python validation/diagnose_real_lv_guard.py \
 分别显示当前策略的 `triggered` 与旧阈值的 `legacy_cell_re_gt_one`。
 新版本可继续旧版本因 cell_Re 略大于 1 而停止的检查点；其他检查仍然有效。
 
-先从同一失败状态运行两个短时分支，原时间步及减半时间步分别推进至 0.05 s：
+### 减小时间步，从失败状态继续三个周期
+
+若当前检查点触发 A 或 CFL，可从最后接受状态直接用更小的固定时间步继续。
+例如 `dt=1e-4` 时 A=0.25028，保持相同速度改用 `dt=5e-5` 会将 A 减半到约 0.12514。
+0.25 是当前检查的安全裕量，并非非线性 FSI 的精确失稳边界；略超限不能单独证明解发散。
+此接口保持检查阈值、中心对流、材料、黏度和所有耦合离散不变。
+后续加载使速度继续增大时，仍可能再次触发检查。
+
+在仓库根目录运行以下命令。`source_checkpoint` 应指向实际失败的运行目录，
+不要使用更早时刻的 `half_dt` 检查点替代最近状态：
+
+```bash
+git pull --ff-only
+conda activate afsi-torch
+
+source_checkpoint="results/real_lv_transport_recovery/original_dt/checkpoint.npz"
+run_dir="results/real_lv_3cycles_dt5e5"
+mkdir -p "$run_dir"
+
+CUDA_VISIBLE_DEVICES=0 nohup /usr/bin/time \
+  -f 'elapsed_seconds=%e exit_code=%x' -o "$run_dir/runtime.txt" \
+  python -u demo/real_lv_fsi/run_mac.py \
+  --device cuda --resume "$source_checkpoint" --resume-dt 5e-5 \
+  --cycles 3 --output "$run_dir" \
+  > "$run_dir/run.log" 2>&1 < /dev/null &
+
+echo "PID=$! output=$run_dir"
+```
+
+`--cycles 3` 表示总目标时刻 2.4 s，而非从检查点额外运行 2.4 s。
+总步编号相应变为 48,000，当前步编号也按原时间重新计算，已接受的时间段不会重跑。
+接口保留当前固体位置、流体速度和压力；按既有滞后力时序在 `current_time-new_dt`
+重算初始固体力。仅支持原 dt 的整数细分，如减半、三等分。
+日志、VTK 和检查点的步数间隔同时乘细分倍数，保持其物理时间间隔不变。
+
+减小 dt 必须指定新输出目录；原报告、CSV、VTK 和检查点均保留。
+新目录的 CSV/VTK 从续算时刻开始，`restart_from` 记录来源、前次失败、时间步和重编号信息。
+新目录的 `elapsed_seconds` 只统计本次分支及其后续普通续算，前次耗时单独保存在
+`restart_from.source_elapsed_seconds`。保存的新检查点可再次普通续算，原始网格文件无需重新读取。
+`run.log`、`runtime.txt` 等后台启动文件允许预先存在，但已有计算结果的目录不能覆盖。
+
+```bash
+tail -f results/real_lv_3cycles_dt5e5/run.log
+```
+
+接口测试可独立运行；无需重复已经完成的时间步对照：
+
+```bash
+CUDA_VISIBLE_DEVICES=0 python -m pytest -q tests/test_real_lv.py
+```
+
+也可做局部时间步对照。以下是从早于 0.05 s 的共同状态继续两个分支的示例；
+检查点晚于 0.05 s 时，须设置更晚的目标时刻：
 
 ```bash
 CUDA_VISIBLE_DEVICES=0 python -m pytest -q \

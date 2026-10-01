@@ -85,3 +85,14 @@ The half-dt branch changes step numbering and resamples the initial force at
 It compares continuations from a common state, not full-history temporal
 convergence. No source mesh import or repetition of previously accepted steps
 is required. See the [real-LV demo](../demo/real_lv_fsi/README.md) for commands.
+
+For a longer continuation, `run_mac.py --resume CHECKPOINT --resume-dt DT
+--output NEW_DIRECTORY --cycles 3` refines the saved dt by an integer factor.
+It preserves accepted x/u/p, resamples the lagged force at `current_time-DT`,
+reindexes steps and preserves output spacing in seconds. The source directory
+is untouched. The new report records restart provenance and elapsed time for
+the new branch; its self-contained checkpoint supports ordinary further resumes.
+The target is absolute simulation time, not an added duration. This option
+neither relaxes the operational screen nor guarantees that future loading will
+remain within it. A value just above 0.25 is a screen violation, not evidence
+of crossing a derived nonlinear instability boundary.

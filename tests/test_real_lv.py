@@ -12,7 +12,7 @@ from afsi_torch.real_lv import RealLVConfig, imported_model
 from afsi_torch import p1, boundary as bd
 from afsi_torch.config import TimeConfig, FluidConfig, OutputConfig, LVExecutionConfig, load_config, save_config
 from afsi_torch.mac.execution import build_driver
-from afsi_torch.real_lv_checkpoint import save_real_lv, load_real_lv
+from afsi_torch.real_lv_checkpoint import save_real_lv, load_real_lv, refine_checkpoint_dt
 
 DEVICES = ['cpu', pytest.param('cuda', marks=pytest.mark.skipif(not torch.cuda.is_available(), reason='CUDA unavailable'))]
 
@@ -287,6 +287,142 @@ def test_transport_comparison_runs_half_dt_after_original_dt_failure(real_case, 
     assert not result['cases']['original_dt']['completed']
     assert result['cases']['half_dt']['completed']
     assert result['final_state_differences'] is None
+
+
+@pytest.mark.parametrize('device', DEVICES)
+def test_refinement_keeps_accepted_fields_and_resamples_lagged_load(real_case, tmp_path, device):
+    model = imported_model(real_case, device)
+    settings = dict(dt=real_case.time.dt, fluid_shape=real_case.fluid.shape,
+                    fluid_lengths=real_case.fluid.lengths, fluid_origin=real_case.fluid.origin,
+                    rho=1., mu=1., interaction_degree=2, **asdict(real_case.execution))
+    driver = build_driver(model, settings, device)
+    state = driver.initialize(model.mesh.X)
+    initial, _, _, initial_details = refine_checkpoint_dt(model, state, settings, real_case, 5e-5)
+    assert initial.time == 0. and initial.step == 0 and initial.force_time is None
+    assert initial.force is state.force and not initial_details['lagged_force_resampled']
+    # Use the active phase to make lagged-force resampling observable.
+    state = replace(state, step=6001, time=.6001, force_time=.6,
+                    force=model.force(state.x, .6), pressure=state.pressure+1.25)
+    branch, changed, config, details = refine_checkpoint_dt(model, state, settings, real_case, 5e-5, .6002)
+    assert branch.x is state.x and branch.velocity is state.velocity and branch.pressure is state.pressure
+    assert branch.time == state.time and branch.step == 12002
+    assert branch.force_time == pytest.approx(.60005)
+    torch.testing.assert_close(branch.force, model.force(state.x, .60005), rtol=1e-12, atol=1e-8)
+    assert not torch.allclose(branch.force, state.force, rtol=1e-8, atol=1e-7)
+    assert settings['dt'] == real_case.time.dt and changed['dt'] == 5e-5
+    assert details['lagged_force_resampled']
+    assert config.material == real_case.material and config.fluid == real_case.fluid
+    assert config.beta == real_case.beta and config.loads == real_case.loads
+    for name in ('log_every', 'output_every', 'checkpoint_every'):
+        assert getattr(config.output, name)*config.time.dt == getattr(real_case.output, name)*real_case.time.dt
+    path = tmp_path/'refined.npz'
+    save_real_lv(path, model, branch, changed, dict(elapsed_seconds=0., segments=[], summary={}), config)
+    _, restored, _, _, _ = load_real_lv(path, device)
+    torch.testing.assert_close(restored.force, branch.force, rtol=1e-10, atol=1e-7)
+
+
+def test_smaller_dt_resume_forks_output_preserves_source_and_can_resume_again(real_case, tmp_path):
+    from afsi_torch.simulation.real_lv_mac import run
+    config = replace(real_case, output=OutputConfig(1, 2, 1, True))
+    source = tmp_path/'source'
+    run(case_config=config, device='cpu', output=source)
+    snapshots = {p.relative_to(source): p.read_bytes() for p in source.rglob('*') if p.is_file()}
+    path = source/'checkpoint.npz'
+    original_model, original, _, _, _ = load_real_lv(path)
+    # A nohup redirect can create a log before the Python process starts.
+    folder = tmp_path/'refined'
+    folder.mkdir()
+    (folder/'run.log').write_text('launcher log', encoding='utf-8')
+    report = run(device='cpu', resume=path, resume_dt=5e-5, end_time=3e-4, output=folder)
+    assert report['completed'] and report['accepted_steps'] == 6
+    restart = report['restart_from']
+    assert restart['source_step'] == 2 and restart['start_step'] == 4
+    assert restart['start_time_s'] == original.time and restart['new_dt_s'] == 5e-5
+    assert report['segments'][0]['start_step'] == 4 and report['segments'][0]['dt_s'] == 5e-5
+    with (folder/'history.csv').open(newline='', encoding='utf-8') as stream:
+        records = list(csv.DictReader(stream))
+    assert int(records[0]['step']) == 4 and float(records[0]['time_s']) == original.time
+    assert float(records[0]['cavity_volume_ml']) == pytest.approx(
+        original_model.diagnostics(original.x)['cavity_volume_ml'])
+    assert float(records[0]['force_time_s']) == pytest.approx(1.5e-4)
+    import xml.etree.ElementTree as ET
+    vtk_times = [float(e.attrib['timestep']) for e in ET.parse(folder/'vtk/solid.pvd').iter('DataSet')]
+    assert vtk_times == pytest.approx([2e-4, 3e-4])
+    for name, content in snapshots.items():
+        assert (source/name).read_bytes() == content
+    assert (folder/'run.log').read_text(encoding='utf-8') == 'launcher log'
+    assert load_real_lv(folder/'checkpoint.npz')[1].time == pytest.approx(3e-4)
+    continued = run(device='cpu', resume=folder/'checkpoint.npz', end_time=4e-4)
+    assert continued['completed'] and continued['accepted_steps'] == 8
+    assert continued['restart_from'] == restart
+
+
+def test_invalid_dt_refinement_rejected_without_writing_outputs(real_case, tmp_path):
+    from afsi_torch.simulation.real_lv_mac import run
+    source = tmp_path/'source'
+    run(case_config=replace(real_case, output=replace(real_case.output, write_vtk=False)),
+        device='cpu', output=source)
+    path = source/'checkpoint.npz'
+    original = path.read_bytes()
+    for dt in (0., -1e-4, float('nan'), float('inf'), 1e-4, 2e-4, 7e-5):
+        with pytest.raises(ValueError, match='resume dt'):
+            run(device='cpu', resume=path, resume_dt=dt, output=tmp_path/'invalid')
+        assert not (tmp_path/'invalid').exists()
+    with pytest.raises(ValueError, match='new output directory'):
+        run(device='cpu', resume=path, resume_dt=5e-5)
+    with pytest.raises(ValueError, match='new output directory'):
+        run(device='cpu', resume=path, resume_dt=5e-5, output=source)
+    with pytest.raises(ValueError, match='precedes checkpoint'):
+        run(device='cpu', resume=path, resume_dt=5e-5, end_time=1e-4, output=tmp_path/'invalid')
+    with pytest.raises(ValueError, match='requires a checkpoint'):
+        run(device='cpu', resume_dt=5e-5, output=tmp_path/'invalid')
+    occupied = tmp_path/'occupied'
+    occupied.mkdir()
+    (occupied/'history.csv').write_text('keep', encoding='utf-8')
+    with pytest.raises(ValueError, match='output contains a run'):
+        run(device='cpu', resume=path, resume_dt=5e-5, output=occupied)
+    assert (occupied/'history.csv').read_text(encoding='utf-8') == 'keep'
+    assert path.read_bytes() == original
+
+
+@pytest.mark.parametrize('device', DEVICES)
+def test_transport_rejection_checkpoint_continues_at_half_dt(real_case, tmp_path, device):
+    from afsi_torch.simulation.real_lv_mac import run
+    from afsi_torch.mac.grid import zero_normal
+    from afsi_torch.mac.flow import MACTransportGuardError
+    from afsi_torch.transport import transport_policy
+    source = tmp_path/'source'
+    config = replace(real_case, output=replace(real_case.output, write_vtk=False))
+    run(case_config=config, device=device, output=source)
+    path = source/'checkpoint.npz'
+    model, state, settings, progress, config = load_real_lv(path, device)
+    # Small CFL, A=0.30375: a genuine transport-screen rejection, not a mocked exception.
+    state = replace(state, velocity=zero_normal(tuple(torch.full_like(v, 45.) for v in state.velocity)))
+    save_real_lv(path, model, state, settings, progress, config)
+    with pytest.raises(MACTransportGuardError) as error:
+        run(device=device, resume=path, end_time=3e-4)
+    assert error.value.diagnostics['triggered'] == ['advection_diffusion']
+    before = path.read_bytes()
+    folder = tmp_path/'recovery'
+    report = run(device=device, resume=path, resume_dt=5e-5, end_time=3e-4, output=folder)
+    assert report['completed'] and report['reached_time_s'] == pytest.approx(3e-4)
+    assert report['transport_policy'] == transport_policy()
+    assert report['restart_from']['source_failure']['type'] == 'MACTransportGuardError'
+    assert report['last']['minimum_detF'] > 0 and report['last']['advection_diffusion_number'] < .25
+    assert path.read_bytes() == before
+
+
+def test_resume_dt_cli_forwards_only_explicit_refinement(monkeypatch, tmp_path):
+    from demo.real_lv_fsi import run_mac
+    calls = []
+    monkeypatch.setattr(run_mac, 'run', lambda **kwargs: calls.append(kwargs))
+    run_mac.main(['--resume', 'saved/checkpoint.npz', '--resume-dt', '5e-5',
+                  '--output', str(tmp_path/'new'), '--cycles', '3'])
+    assert calls[0]['resume_dt'] == 5e-5 and calls[0]['end_time'] == pytest.approx(2.4)
+    with pytest.raises(SystemExit):
+        run_mac.main(['--resume-dt', '5e-5'])
+    with pytest.raises(SystemExit):
+        run_mac.main(['--resume', 'saved/checkpoint.npz', '--dt', '5e-5'])
 
 
 @pytest.mark.parametrize('device', DEVICES)

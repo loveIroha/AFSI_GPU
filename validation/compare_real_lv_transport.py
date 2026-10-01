@@ -7,7 +7,7 @@ import sys
 import torch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]/'src'))
 from afsi_torch.config import TimeConfig
-from afsi_torch.real_lv_checkpoint import load_real_lv, save_real_lv
+from afsi_torch.real_lv_checkpoint import load_real_lv, save_real_lv, refine_checkpoint_dt
 from afsi_torch.simulation.real_lv_mac import run
 from afsi_torch.cycle_checkpoint import atomic_json
 from afsi_torch.transport import transport_policy
@@ -16,20 +16,18 @@ from afsi_torch.transport import transport_policy
 def fork_case(path, model, state, settings, config, dt, end_time, write_vtk=True):
     """Retain common x/u/p; reset the clock and lagged load for the new dt."""
     original_dt = settings['dt']
-    step = round(state.time/dt)
-    if abs(step*dt-state.time) > 1e-12:
-        raise ValueError('checkpoint time must be an integer multiple of both time steps')
-    config = replace(config, time=TimeConfig(dt, end_time), output=replace(config.output,
+    if dt == original_dt:
+        branch = state
+        config = replace(config, time=TimeConfig(dt, end_time))
+    else:
+        branch, settings, config, _ = refine_checkpoint_dt(model, state, settings, config, dt, end_time)
+    config = replace(config, output=replace(config.output,
         log_every=max(1, round(.001/dt)), output_every=max(1, round(.01/dt)),
         checkpoint_every=max(1, round(.01/dt)), write_vtk=write_vtk))
-    force_time = None if step == 0 else (step-1)*dt
-    force = state.force if dt == original_dt or step == 0 else model.force(state.x, force_time)
-    branch = replace(state, step=step, time=step*dt, force_time=force_time, force=force)
-    settings = dict(settings, dt=dt)
     progress = dict(elapsed_seconds=0., segments=[], summary={})
     save_real_lv(path, model, branch, settings, progress, config)
-    return dict(dt=dt, start_step=step, start_time_s=branch.time,
-                force_time_s=force_time, lagged_force_resampled=dt != original_dt and step > 0)
+    return dict(dt=dt, start_step=branch.step, start_time_s=branch.time,
+                force_time_s=branch.force_time, lagged_force_resampled=dt != original_dt and branch.step > 0)
 
 
 @torch.no_grad()

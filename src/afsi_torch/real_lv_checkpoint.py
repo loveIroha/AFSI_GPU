@@ -1,14 +1,54 @@
 """Numeric-only real-LV checkpoints: P1 mesh, DG0 fields and H-O model ID."""
-from dataclasses import asdict
+from dataclasses import asdict, replace
+from math import isfinite
 import json
 from pathlib import Path
 import numpy as np
 import torch
 from .mesh_io import ImportedSolidMesh
 from .real_lv import RealLVConfig, RealLVSolid
-from .config import _decode
+from .config import _decode, TimeConfig
 from .mac.checkpoint import digest
 from .mac.coupling import MACState
+
+
+@torch.no_grad()
+def refine_checkpoint_dt(model, state, settings, config, dt, end_time=None):
+    """Retain accepted x/u/p and retime the existing lagged-force scheme.
+
+    Only integer subdivisions of the saved dt are supported. Output intervals
+    grow by that factor so their spacing in physical time does not change.
+    The caller must save the continuation in a separate directory.
+    """
+    old_dt = config.time.dt
+    if isinstance(dt, bool) or not isinstance(dt, (float, int)) or not isfinite(dt) or dt <= 0 or dt >= old_dt:
+        raise ValueError('resume dt must be positive, finite and smaller than the saved dt')
+    ratio = old_dt/dt
+    if not isfinite(ratio):
+        raise ValueError('resume dt refinement factor must be finite')
+    factor = round(ratio)
+    if factor < 2 or abs(factor*dt-old_dt) > 1e-12*old_dt:
+        raise ValueError('saved dt must be an integer multiple of resume dt')
+    if settings['dt'] != old_dt:
+        raise ValueError('saved solver dt differs from the configuration')
+    target = config.time.end_time if end_time is None else end_time
+    time = TimeConfig(dt, target)
+    if target < state.time-1e-12:
+        raise ValueError('end time precedes checkpoint')
+    step = state.step*factor
+    if abs(step*dt-state.time) > 1e-12:
+        raise ValueError('checkpoint time must be an integer multiple of resume dt')
+    output = replace(config.output, **{name: getattr(config.output, name)*factor for name in
+                     ('log_every', 'output_every', 'checkpoint_every')})
+    config = replace(config, time=time, output=output)
+    force_time = None if step == 0 else (step-1)*dt
+    force = state.force if step == 0 else model.force(state.x, force_time)
+    branch = replace(state, step=step, force_time=force_time, force=force)
+    details = dict(old_dt_s=old_dt, new_dt_s=dt, refinement_factor=factor,
+                   source_step=state.step, start_step=step, start_time_s=state.time,
+                   force_time_s=force_time, lagged_force_resampled=step > 0,
+                   output_intervals_preserved_in_seconds=True)
+    return branch, dict(settings, dt=dt), config, details
 
 
 def save_real_lv(path, model, state, settings, progress, config):
