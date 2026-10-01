@@ -30,7 +30,7 @@ class FETransfer:
                         check_every=4) if options is None else options)
         cells, N, W = geometry.cells, geometry.values, geometry.weights
         if torch.linalg.matrix_rank(N) < N.shape[1]:
-            raise ValueError('interaction quadrature underintegrates the consistent P2 mass')
+            raise ValueError('interaction quadrature underintegrates the consistent FE mass')
         local = torch.einsum('eq,qa,qb->eab', W, N, N)
         row = cells[:,:,None].expand_as(local).reshape(-1)
         col = cells[:,None,:].expand_as(local).reshape(-1)

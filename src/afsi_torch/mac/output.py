@@ -43,8 +43,11 @@ class MACWriter:
         self.directory.mkdir(parents=True, exist_ok=True)
         array = lambda t: t.detach().cpu().numpy()
         self.reference = array(model.mesh.X).copy()
-        self.cells = array(model.mesh.cells)[:, [0,1,2,3,4,7,5,6,8,9]].copy()
-        self.fiber = array(model.fibers.fiber).copy()
+        self.p1 = model.mesh.cells.shape[1] == 4
+        self.cells = (array(model.mesh.cells) if self.p1 else
+                      array(model.mesh.cells)[:, [0,1,2,3,4,7,5,6,8,9]]).copy()
+        self.fiber = array(model.mesh.fiber if self.p1 else model.fibers.fiber).copy()
+        self.sheet = array(model.mesh.sheet).copy() if self.p1 else None
         self.frames = []
         if resume_time is not None:
             collections = []
@@ -63,10 +66,11 @@ class MACWriter:
                 self.frames.append((time, collections[0][time], collections[1][time]))
             self._collections()
         atomic_json(self.directory/'fields.json', dict(
-            units='cm-g-s', solid_geometry='deformed P2 tetrahedra; no Warp By Vector needed',
+            units='cm-g-s', solid_geometry=f'deformed {"P1" if self.p1 else "P2"} tetrahedra; no Warp By Vector needed',
             displacement_cm='current minus reference coordinates',
             nodal_force_dyn='integrated FE nodal force, sampled at force_time_s',
-            fiber_reference='reference nodal fiber, not a deformed direction',
+            fiber_reference='reference DG0 cell fiber' if self.p1 else 'reference nodal fiber, not a deformed direction',
+            sheet_reference='reference DG0 cell sheet' if self.p1 else 'not exported',
             J_min='minimum det(F) over quadrature points within each cell',
             J_max='maximum det(F) over quadrature points within each cell',
             pressure_dyn_per_cm2='original MAC cell pressure; zero-mean gauge',
@@ -119,12 +123,17 @@ class MACWriter:
         solid_name, fluid_name = f'solid_{state.step:06d}.vtu', f'fluid_{state.step:06d}.vti'
         solid_path = self.directory/solid_name
         temporary = solid_path.with_suffix('.vtu.tmp')
-        J = determinant3(deformation_gradient(state.x,self.model.geometry))
+        J = (determinant3(self.model.element_gradient(state.x))[:, None] if self.p1 else
+             determinant3(deformation_gradient(state.x,self.model.geometry)))
         x = array(state.x)
-        self.meshio.write(temporary, self.meshio.Mesh(x, [('tetra10',self.cells)],
-            point_data=dict(displacement_cm=x-self.reference,
-                            nodal_force_dyn=array(state.force), fiber_reference=self.fiber),
-            cell_data=dict(J_min=[array(J.amin(1))], J_max=[array(J.amax(1))])),
+        point_data = dict(displacement_cm=x-self.reference, nodal_force_dyn=array(state.force))
+        cell_data = dict(J_min=[array(J.amin(1))], J_max=[array(J.amax(1))])
+        if self.p1:
+            cell_data.update(fiber_reference=[self.fiber], sheet_reference=[self.sheet])
+        else:
+            point_data['fiber_reference'] = self.fiber
+        self.meshio.write(temporary, self.meshio.Mesh(x, [('tetra' if self.p1 else 'tetra10',self.cells)],
+            point_data=point_data, cell_data=cell_data),
             file_format='vtu', binary=True, compression='zlib')
         temporary.replace(solid_path)
         self._fluid(self.directory/fluid_name,state)

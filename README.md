@@ -23,8 +23,11 @@ The project brings together three ideas: the cardiac and valve examples in [AFSI
 | Ideal left ventricle, MAC | P2 tetrahedra; Guccione material, active tension, endocardial pressure | 3D MAC + geometric multigrid | 64 × 64 × 64 | 2 s; 40,000 steps |
 | Ideal left ventricle, FEM | Same generated LV model | Q2/Q1 FEM + Chorin projection | 32 × 32 × 32 elements | 2 s; 40,000 steps |
 | Ideal two-leaflet valve | P2 triangles; FRH material and root springs | 2D MAC + geometric multigrid | 256 × 64 | 3 s; 48,000 steps |
+| Imported real left ventricle | P1 tetrahedra; user-specified H–O law and DG0 fiber/sheet | 3D MAC + geometric multigrid | 128 × 128 × 128 | 2.4 s; 24,000 steps (three prescribed cycles) |
 
-The left-ventricle demos follow the **loading-and-holding protocol** of AFSI `demo_337`: pressure and active tension rise linearly over 1.5 s and remain constant until 2 s. The valve demo follows the geometry, material, and periodic inlet of AFSI `demo_340`. Geometry is generated with Gmsh; the shipped cases do not require external patient meshes or fiber files.
+The generated ideal left-ventricle demos follow the **loading-and-holding protocol** of AFSI `demo_337`: pressure and active tension rise linearly over 1.5 s and remain constant until 2 s. The valve demo follows the geometry, material, and periodic inlet of AFSI `demo_340`. These cases generate geometry with Gmsh and do not require external patient meshes or fiber files.
+
+The separate [real-LV demo](demo/real_lv_fsi/README.md) reads user-provided XDMF/HDF5 meshes and DOLFIN XML directions. It uses a supplied H–O variant, radial basal constraints and 0.8 s periodic loading; it is distinct from the generated `demo_337` cases. Patient input files are not distributed. Full GPU trajectory validation is pending.
 
 Lengths, time, density, viscosity, and stress use **cm–g–s units**. The 2D case assumes unit out-of-plane thickness. Mesh generation runs on the CPU; with `--device cuda`, solid force evaluation, sparse mass solves, IB transfer, and fluid advancement use GPU tensors. Logging, mesh generation, convergence decisions, and file output still involve the host.
 
@@ -34,6 +37,7 @@ Lengths, time, density, viscosity, and stress use **cm–g–s units**. The 2D c
 | --- | --- |
 | Public configuration API, parameter units, and project structure | [Configuration guide](docs/CONFIGURATION.md) |
 | External XDMF/HDF5 meshes, DOLFIN boundary tags, and cellwise fibers | [Mesh input API](docs/MESH_INPUT.md) |
+| Real-LV H–O/P1 model, three cycles, input files, and background execution | [Real LV demo](demo/real_lv_fsi/README.md) |
 | Left-ventricle MAC/FEM demos, restart, and VTK output | [Ideal LV demo](demo/ideal_lv_fsi/README.md) |
 | Two-dimensional valve demo and boundary conditions | [Ideal valve demo](demo/ideal_valve_fsi/README.md) |
 | AFSI `demo_337` material, loading, geometry, and reference differences | [AFSI337 alignment](docs/AFSI337_ALIGNMENT.md) |

@@ -40,14 +40,23 @@ def build_driver(model, settings, device):
                    device=device, pressure_backend=settings.get('pressure_backend','torch'),
                    execution_backend=backend, options=MGOptions(**settings.get('pressure_solver',{})))
     degree = settings['interaction_degree']
-    geometry = model.geometry if degree is None else prepare_p2(model.mesh.X,model.mesh.cells,degree=degree)
+    if model.mesh.cells.shape[1] == 4:
+        from ..p1 import prepare_p1
+        prepare_geometry = prepare_p1
+    else:
+        prepare_geometry = prepare_p2
+    geometry = model.geometry if degree is None else prepare_geometry(model.mesh.X,model.mesh.cells,degree=degree)
     if backend == 'fused':
         from .compact_transfer import CompactFETransfer
         from .solid_execution import SolidExecution
         transfer = CompactFETransfer(grid,geometry,warm_start=settings.get('warm_start',False),
                                      mass_backend=mass_backend,
                                      options=SolverOptions(**settings['mass_solver']) if 'mass_solver' in settings else None)
-        if solid_backend=='pointwise':
+        if hasattr(model, 'execution_factory'):
+            if solid_backend != 'reference':
+                raise ValueError('custom solid model requires its own execution factory')
+            solid = model.execution_factory()
+        elif solid_backend=='pointwise':
             from .solid_pointwise import PointwiseSolidExecution
             solid = PointwiseSolidExecution(model)
         else:
