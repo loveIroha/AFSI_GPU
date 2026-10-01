@@ -3,6 +3,7 @@ from dataclasses import asdict, replace
 from math import factorial
 from pathlib import Path
 import json
+import csv
 import numpy as np
 import pytest
 import torch
@@ -190,10 +191,24 @@ def test_reference_optimized_steps_mass_and_checkpoint(real_case, tmp_path):
     # Fresh demo -> checkpoint -> restart; source files are not needed on restart.
     report = run(case_config=real_case, device='cpu', output=tmp_path/'demo')
     assert report['completed'] and report['accepted_steps'] == 2
+    # A checkpoint produced before the policy fix has the old CSV columns.
+    history_path = tmp_path/'demo/history.csv'
+    with history_path.open(newline='', encoding='utf-8') as stream:
+        rows = list(csv.DictReader(stream))
+    new_fields = {'courant', 'cell_reynolds', 'advection_diffusion_number', 'power_error_sampled'}
+    legacy_fields = [key for key in rows[0] if key not in new_fields]
+    with history_path.open('w', newline='', encoding='utf-8') as stream:
+        writer = csv.DictWriter(stream, fieldnames=legacy_fields)
+        writer.writeheader(); writer.writerows({key: row[key] for key in legacy_fields} for row in rows)
     for p in Path(real_case.source_dir).glob('*.xml'):
         p.unlink()
     report = run(device='cpu', resume=tmp_path/'demo/checkpoint.npz', end_time=3e-4)
     assert report['completed'] and report['accepted_steps'] == 3
+    with history_path.open(newline='', encoding='utf-8') as stream:
+        resumed_rows = list(csv.DictReader(stream))
+    assert resumed_rows[0]['advection_diffusion_number'] == ''
+    assert float(resumed_rows[-1]['advection_diffusion_number']) >= 0.
+    assert resumed_rows[-1]['power_error_sampled'] == 'True'
 
 
 def test_public_config_and_default_three_cycles(tmp_path):
@@ -215,7 +230,8 @@ def test_transport_failure_saves_last_accepted_state_and_metrics(real_case, tmp_
     from afsi_torch.simulation.real_lv_mac import run
     from afsi_torch.mac.flow import MACFlow, MACTransportGuardError
     from validation.diagnose_real_lv_guard import diagnose
-    metrics = dict(courant=.01, cell_reynolds=1.2, triggered=['cell_reynolds'])
+    metrics = dict(courant=.01, cell_reynolds=12., advection_diffusion_number=.5,
+                   triggered=['advection_diffusion'])
     def reject(*args, **kwargs):
         raise MACTransportGuardError(metrics)
     monkeypatch.setattr(MACFlow, 'step', reject)
@@ -225,10 +241,52 @@ def test_transport_failure_saves_last_accepted_state_and_metrics(real_case, tmp_
     report = json.loads((folder/'report.json').read_text())
     assert report['status'] == 'failed' and report['accepted_steps'] == 0
     assert report['failure']['transport_guard'] == metrics
+    assert report['last']['power_error'] is None and not report['last']['power_error_sampled']
     _, state, _, progress, _ = load_real_lv(folder/'checkpoint.npz')
     assert state.step == 0 and state.time == 0.
     assert progress['failure']['transport_guard'] == metrics
     assert diagnose(folder/'checkpoint.npz')['saved_failure']['transport_guard'] == metrics
+
+
+def test_common_checkpoint_transport_comparison_preserves_input_and_retimes_half_dt(real_case, tmp_path):
+    from afsi_torch.simulation.real_lv_mac import run
+    from validation.compare_real_lv_transport import compare
+    report = run(case_config=replace(real_case, output=replace(real_case.output, write_vtk=False)),
+                 device='cpu', output=tmp_path/'source')
+    path = tmp_path/'source/checkpoint.npz'
+    original = path.read_bytes()
+    result = compare(path, output=tmp_path/'comparison', device='cpu', end_time=4e-4, write_vtk=False)
+    assert result['both_completed'] and result['status'] == 'completed'
+    assert path.read_bytes() == original
+    assert result['cases']['original_dt']['initial']['start_step'] == 2
+    assert result['cases']['half_dt']['initial']['start_step'] == 4
+    assert result['cases']['half_dt']['initial']['force_time_s'] == pytest.approx(1.5e-4)
+    assert result['cases']['half_dt']['initial']['lagged_force_resampled']
+    for name, dt in [('original_dt', 1e-4), ('half_dt', 5e-5)]:
+        _, state, _, _, config = load_real_lv(tmp_path/'comparison'/name/'checkpoint.npz')
+        assert state.time == pytest.approx(4e-4) and config.time.dt == dt
+    assert result['final_state_differences']['x_max_abs_cm'] < 1e-6
+    with pytest.raises(ValueError, match='new or empty'):
+        compare(path, output=tmp_path/'comparison', device='cpu', end_time=4e-4)
+
+
+def test_transport_comparison_runs_half_dt_after_original_dt_failure(real_case, tmp_path, monkeypatch):
+    import validation.compare_real_lv_transport as comparison
+    from afsi_torch.simulation.real_lv_mac import run
+    run(case_config=replace(real_case, output=replace(real_case.output, write_vtk=False)),
+        device='cpu', output=tmp_path/'source')
+    original_run = comparison.run
+    def reject_original(**kwargs):
+        if Path(kwargs['resume']).parent.name == 'original_dt':
+            raise ValueError('injected original-dt failure')
+        return original_run(**kwargs)
+    monkeypatch.setattr(comparison, 'run', reject_original)
+    result = comparison.compare(tmp_path/'source/checkpoint.npz', output=tmp_path/'comparison',
+                                device='cpu', end_time=4e-4, write_vtk=False)
+    assert not result['both_completed'] and result['status'] == 'failed'
+    assert not result['cases']['original_dt']['completed']
+    assert result['cases']['half_dt']['completed']
+    assert result['final_state_differences'] is None
 
 
 @pytest.mark.parametrize('device', DEVICES)

@@ -2,7 +2,10 @@
 import argparse
 import json
 from pathlib import Path
+import sys
 import numpy as np
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]/'src'))
+from afsi_torch.transport import transport_numbers, transport_policy, transport_violations
 
 
 def diagnose(checkpoint):
@@ -35,19 +38,17 @@ def diagnose(checkpoint):
                               location_cm=(origin+(np.asarray(index)+offset)*spacing).tolist(),
                               rms_cm_per_s=float(np.sqrt(np.mean(u*u)))))
     speeds = np.asarray([p['max_abs_cm_per_s'] for p in peaks])
-    cfl = float(np.sum(dt*speeds/spacing))
-    re = float(np.max(speeds*spacing/(mu/rho)))
+    numbers = transport_numbers(speeds.tolist(), spacing.tolist(), dt, mu/rho)
     return dict(checkpoint=str(Path(checkpoint)), step=meta['step'], time_s=meta['time'],
                 attempted_next_step=meta['step']+1, dt=dt, rho=rho, mu=mu,
                 spacing_cm=spacing.tolist(), component_peaks=peaks,
-                courant=cfl, courant_limit=.25, cell_reynolds=re, cell_reynolds_limit=1.,
-                viscous_number=float(dt*mu/rho*np.sum(1/spacing**2)),
-                triggered=[name for name, failed in
-                           (('courant', cfl > .25), ('cell_reynolds', re > 1.)) if failed],
-                component_velocity_at_cell_re_limit_cm_per_s=((mu/rho)/spacing).tolist(),
+                **numbers, transport_policy=transport_policy(),
+                triggered=transport_violations(numbers['courant'], numbers['advection_diffusion_number'],
+                                               numbers['viscous_number']),
+                legacy_cell_re_gt_one=numbers['cell_reynolds'] > 1.,
                 saved_failure=meta.get('progress', {}).get('failure'),
                 inspection='selected saved fields; no full checksum validation or advancement',
-                interpretation='cell_Re is independent of dt; this conservative check alone does not prove divergence')
+                interpretation='current transport screen; cell_Re monitors spatial resolution, not time stability; saved failure may use an older policy')
 
 
 def main():

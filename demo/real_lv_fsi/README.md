@@ -121,16 +121,20 @@ CUDA_VISIBLE_DEVICES=0 python -u demo/real_lv_fsi/run_mac.py \
 
 ## 对流检查停止时
 
-MAC 中心对流当前保留两个保守检查：
-`CFL = dt*sum(max|u_i|/h_i) <= 0.25` 和
-`cell_Re = max(max|u_i|*h_i/(mu/rho)) <= 1`。
+MAC 中心对流采用与显式黏性项联合的时间步检查，令 `U_i=max|u_i|`、`nu=mu/rho`：
+
+- `CFL = dt*sum(U_i/h_i) <= 0.25`。
+- `D = nu*dt*sum(1/h_i²) <= 0.25`，保留原来的黏性时间步限制。
+- `A = dt*sum(U_i²)/(2*nu) <= 0.25`，新增对流–扩散联合时间尺度检查。
+
+原来的 `cell_Re<=1` 停止条件已移除；cell_Re 继续记录为网格分辨率指标。
+这不是简单地将其上限改为更大的常数。减小 dt 会同时降低 CFL 和 A，
+但不会改变同一速度场的 cell_Re。大 cell_Re 仍可能有空间振荡和分辨率问题。
+公式依据、安全裕量与适用范围见 [MAC transport](../../docs/MAC_TRANSPORT.md)。
 这些检查不是完整的非线性 FSI 稳定性证明；小散度也不证明力学耦合稳定。
-默认网格与流体参数下，单分量速度超过 `8.533333 cm/s` 就会触发 cell_Re 限制。
-减小 dt 只能降低 CFL，不会降低同一速度场的 cell_Re。
-不要仅为继续运行而关闭检查或改变黏度；先检查实际速度、局部峰值与力学时间推进。
 
 发生此异常时，程序保存最后接受状态到原运行目录的 `checkpoint.npz`，
-并写出 `report.json` 的失败信息。新增错误输出分别记录 CFL、cell_Re 和触发项，
+并写出 `report.json` 的失败信息。错误输出分别记录 CFL、A、cell_Re 和触发项，
 失败报告同时保存 `failure.transport_guard`；旧版失败检查点也可以直接分析：
 
 ```bash
@@ -141,8 +145,34 @@ python validation/diagnose_real_lv_guard.py \
 
 请使用实际失败的运行目录。此命令只在 CPU 读取保存的速度与配置，
 不导入原始网格、不编译 GPU 内核、不推进或改写检查点；它不做完整校验和验证。
-输出包括 CFL、cell_Re、速度峰值及其交错网格坐标。
-诊断和恢复尚未完成时，直接续算相同检查点会再次触发相同限制。
+输出包括 CFL、A、cell_Re、速度峰值及其交错网格坐标，
+分别显示当前策略的 `triggered` 与旧阈值的 `legacy_cell_re_gt_one`。
+新版本可继续旧版本因 cell_Re 略大于 1 而停止的检查点；其他检查仍然有效。
+
+先从同一失败状态运行两个短时分支，原时间步及减半时间步分别推进至 0.05 s：
+
+```bash
+CUDA_VISIBLE_DEVICES=0 python -m pytest -q \
+  tests/test_real_lv_guard.py tests/test_real_lv.py tests/test_mac_execution.py
+
+CUDA_VISIBLE_DEVICES=0 python -u validation/compare_real_lv_transport.py \
+  --checkpoint results/real_lv_3cycles/checkpoint.npz \
+  --device cuda --end-time 0.05 \
+  --output results/real_lv_transport_recovery
+```
+
+此命令不改写输入检查点，不重跑已接受的 282 步。
+`original_dt/` 和 `half_dt/` 保存各自的报告、CSV、检查点和 VTK，
+顶层 `report.json` 保存是否到达目标时刻以及最终坐标、速度、腔体积差异。
+两分支保持相同的初始坐标、流速和压力；减半时间步分支重新编号时间步，
+并按现有滞后力时序在 `start_time-half_dt` 重新采样初始力。
+因此这是从共同状态继续的局部时间步对照，不是整段历史的时间收敛证明。
+若某分支失败，仍会尝试另一分支并记录失败状态；命令最终返回非零退出码。
+输出目录必须为空；需要重跑对照时使用新的目录。
+
+新的 CSV 记录状态时刻的 CFL、A、cell_Re。
+`power_error` 在未采样时写为空白、JSON 中为 null，并用 `power_error_sampled` 标记；
+续算时保留旧 CSV 的原有数值。短时对照通过后再验证收缩阶段与完整周期。
 
 ## 主程序与 JSON 参数接口
 

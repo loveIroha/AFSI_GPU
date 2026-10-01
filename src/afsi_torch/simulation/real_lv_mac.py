@@ -10,6 +10,7 @@ from ..config import TimeConfig, lv_grid
 from ..cycle_checkpoint import atomic_json
 from ..mac.execution import build_driver
 from ..mac.grid import divergence
+from ..transport import transport_numbers, transport_policy
 
 
 @torch.no_grad()
@@ -66,19 +67,24 @@ def run(*, case_config=None, device='cuda', output=None, resume=None, end_time=N
     previous_elapsed = progress['elapsed_seconds']
     progress.pop('failure', None)
     progress['segments'].append(dict(start_step=state.step, device=str(device),
-                                    execution=asdict(config.execution), output=asdict(config.output)))
+                                    execution=asdict(config.execution), output=asdict(config.output),
+                                    transport_policy=transport_policy()))
     info = {}
 
     def row():
         pressure, tension = model.loads.at(state.time)
+        speeds = torch.stack([u.abs().max() for u in state.velocity]).tolist()
+        numbers = transport_numbers(speeds, grid.spacing, flow.dt, flow.mu/flow.rho)
         return dict(step=state.step, time_s=state.time,
                     force_time_s=-1. if state.force_time is None else state.force_time,
                     pressure_load_dyn_per_cm2=pressure, active_tension_dyn_per_cm2=tension,
                     **model.diagnostics(state.x),
-                    max_fluid_component_cm_per_s=max(u.abs().max().item() for u in state.velocity),
+                    max_fluid_component_cm_per_s=max(speeds),
+                    courant=numbers['courant'], cell_reynolds=numbers['cell_reynolds'],
+                    advection_diffusion_number=numbers['advection_diffusion_number'],
                     divergence_l2=(grid.volume*divergence(state.velocity, grid.spacing).square().sum()).sqrt().item(),
                     pressure_cycles=info.get('flow', {}).get('pressure', {}).get('cycles', 0),
-                    power_error=info.get('power_error', 0.))
+                    power_error=info.get('power_error'), power_error_sampled='power_error' in info)
 
     if not history or int(history[-1]['step']) != state.step:
         history.append(row())
@@ -88,7 +94,8 @@ def run(*, case_config=None, device='cuda', output=None, resume=None, end_time=N
             history.append(row())
         temporary = folder/'history.csv.tmp'
         with temporary.open('w', newline='', encoding='utf-8') as stream:
-            csv_writer = csv.DictWriter(stream, fieldnames=history[0].keys())
+            fields = list(dict.fromkeys(key for record in history for key in record))
+            csv_writer = csv.DictWriter(stream, fieldnames=fields)
             csv_writer.writeheader(); csv_writer.writerows(history)
         temporary.replace(folder/'history.csv')
         progress['elapsed_seconds'] = previous_elapsed+perf_counter()-started
@@ -109,6 +116,7 @@ def run(*, case_config=None, device='cuda', output=None, resume=None, end_time=N
                       fluid_pressure_cells=state.pressure.numel(),
                       fluid_velocity_dofs=sum(v.numel() for v in state.velocity),
                       fluid_spacing_cm=grid.spacing, viscous_number=flow.viscous_number,
+                      transport_policy=transport_policy(),
                       pressure_backend=flow.pressure_solver.backend, mg_levels=flow.pressure_solver.shapes,
                       coupling='quadrature FE/IB with consistent CSR mass and shared MAC solver',
                       boundary='endo follower pressure; basal radial projection in xy plus fixed z; free epi',
@@ -144,7 +152,8 @@ def run(*, case_config=None, device='cuda', output=None, resume=None, end_time=N
                 last = history[-1]
                 print(f'step {state.step}/{steps}, t={state.time:.6f}, V={last["cavity_volume_ml"]:.8g} mL, '
                       f'minJ={last["minimum_detF"]:.6g}, div={last["divergence_l2"]:.3g}, '
-                      f'MG cycles={last["pressure_cycles"]}', flush=True)
+                      f'MG cycles={last["pressure_cycles"]}, CFL={last["courant"]:.3g}, '
+                      f'A={last["advection_diffusion_number"]:.3g}, Re_h={last["cell_reynolds"]:.3g}', flush=True)
             progress['summary']['max_grid_displacement'] = max(
                 progress['summary'].get('max_grid_displacement', 0.), info['max_grid_displacement'])
             if state.step % config.output.checkpoint_every == 0:

@@ -4,6 +4,8 @@ from math import isfinite
 import torch
 from .grid import divergence, gradient, zero_normal, velocity_laplacian, convection, slab
 from .multigrid import GeometricMultigrid
+from ..transport import (COURANT_LIMIT, VISCOUS_LIMIT, ADVECTION_DIFFUSION_LIMIT,
+                         transport_policy, transport_violations)
 
 
 class MACTransportGuardError(ValueError):
@@ -13,11 +15,13 @@ class MACTransportGuardError(ValueError):
         self.diagnostics = diagnostics
         super().__init__(
             'MAC centered-advection stability guard exceeded: '
-            f'CFL={diagnostics["courant"]:.9g} (limit 0.25), '
-            f'cell_Re={diagnostics["cell_reynolds"]:.9g} (limit 1); '
+            f'CFL={diagnostics["courant"]:.9g} (limit {COURANT_LIMIT}), '
+            f'advection_diffusion={diagnostics["advection_diffusion_number"]:.9g} '
+            f'(limit {ADVECTION_DIFFUSION_LIMIT}), '
+            f'cell_Re={diagnostics["cell_reynolds"]:.9g} (monitor only); '
             f'triggered={",".join(diagnostics["triggered"])}. '
-            'Reducing dt affects CFL, not cell_Re. '
-            'The cell_Re limit is a conservative policy, not proof of divergence.')
+            'Reduce dt for a time-step violation. '
+            'Passing this transport screen does not establish nonlinear FSI stability.')
 
 
 @dataclass(frozen=True)
@@ -37,7 +41,7 @@ class MACFlow:
         self.grid, self.dt, self.rho, self.mu = grid, float(dt), float(rho), float(mu)
         self.viscous_number = dt*mu/rho*sum(1/h**2 for h in grid.spacing)
         # Boundary-adjacent tangential unknowns have a larger diagonal.
-        if self.viscous_number > .25:
+        if self.viscous_number > VISCOUS_LIMIT:
             raise ValueError('explicit viscous time step too large; reduce dt')
         self.pressure_solver = GeometricMultigrid(grid, device=device, dtype=dtype,
                                                   options=options, backend=pressure_backend)
@@ -70,7 +74,8 @@ class MACFlow:
         speeds=torch.stack([u.abs().max() for u in velocity])
         h=speeds.new_tensor(self.grid.spacing)
         return torch.stack((finite.to(speeds.dtype),(self.dt*speeds/h).sum(),
-                            (speeds*h/(self.mu/self.rho)).max()))
+                            (speeds*h/(self.mu/self.rho)).max(),
+                            self.dt*speeds.square().sum()/(2*self.mu/self.rho)))
 
     def _project_checks(self,tentative):
         finite=torch.stack([torch.isfinite(u).all() for u in tentative]).all()
@@ -78,20 +83,19 @@ class MACFlow:
                             for c,u in enumerate(tentative)]).all()
         return torch.stack((finite,normal))
 
-    def _check_transport(self, velocity, courant, reynolds):
-        if courant <= .25 and reynolds <= 1.:
+    def _check_transport(self, velocity, courant, reynolds, advection_diffusion):
+        triggered = transport_violations(courant, advection_diffusion, self.viscous_number)
+        if not triggered:
             return
         # Extra reductions occur only on failure; successful steps keep the
         # existing checks and synchronization count.
         speeds = [u.abs().max().item() for u in velocity]
         raise MACTransportGuardError(dict(
             courant=courant, cell_reynolds=reynolds,
-            courant_limit=.25, cell_reynolds_limit=1.,
-            triggered=[name for name, failed in
-                       (('courant', courant > .25), ('cell_reynolds', reynolds > 1.)) if failed],
+            advection_diffusion_number=advection_diffusion,
+            **transport_policy(), triggered=triggered,
             component_max_abs_velocity=speeds, spacing=list(self.grid.spacing),
-            dt=self.dt, rho=self.rho, mu=self.mu, viscous_number=self.viscous_number,
-            component_velocity_at_cell_re_limit=[self.mu/self.rho/h for h in self.grid.spacing]))
+            dt=self.dt, rho=self.rho, mu=self.mu, viscous_number=self.viscous_number))
 
     @torch.no_grad()
     def project(self, tentative, initial=None):
@@ -119,24 +123,25 @@ class MACFlow:
         self.grid.check_velocity(velocity)
         self.grid.check_velocity(density)
         if self.execution_backend=='fused':
-            finite,courant,reynolds=self._step_checks(velocity,density).tolist()
+            finite,courant,reynolds,advection_diffusion=self._step_checks(velocity,density).tolist()
             if not finite:
                 raise ValueError('finite MAC velocity and force density required')
-            self._check_transport(velocity,courant,reynolds)
+            self._check_transport(velocity,courant,reynolds,advection_diffusion)
             result=self.project(self._predict(velocity,density),pressure_initial)
             return MACFlowResult(result.velocity,result.pressure,
                                  dict(result.diagnostics,courant=courant,cell_reynolds=reynolds,
+                                      advection_diffusion_number=advection_diffusion,
                                       viscous_number=self.viscous_number))
         if any(not torch.isfinite(u).all() for u in (*velocity, *density)):
             raise ValueError('finite MAC velocity and force density required')
-        # Conservative guard for this initial centered-advection implementation.
-        # High cell Reynolds numbers need a different transport scheme, not an
-        # unchecked continuation with a small pressure residual.
+        # Screen the combined explicit centered advection/viscosity time scale.
+        # Cell Re is recorded separately; it is not a time-step criterion.
         speeds = torch.stack([u.abs().max() for u in velocity])
         h = speeds.new_tensor(self.grid.spacing)
         courant = (self.dt*speeds/h).sum().item()
         reynolds = (speeds*h/(self.mu/self.rho)).max().item()
-        self._check_transport(velocity,courant,reynolds)
+        advection_diffusion = (self.dt*speeds.square().sum()/(2*self.mu/self.rho)).item()
+        self._check_transport(velocity,courant,reynolds,advection_diffusion)
         vel = zero_normal(velocity)
         adv = convection(vel, self.grid.spacing)
         star = zero_normal(tuple(u+self.dt*(-a+self.mu/self.rho*
@@ -145,4 +150,5 @@ class MACFlow:
         result = self.project(star, pressure_initial)
         return MACFlowResult(result.velocity, result.pressure,
                              dict(result.diagnostics, courant=courant, cell_reynolds=reynolds,
+                                  advection_diffusion_number=advection_diffusion,
                                   viscous_number=self.viscous_number))
