@@ -80,6 +80,10 @@ def test_reduced_newton_jacobian_and_new_time_momentum_kinematics_power(real_cas
         direction = driver.pack(zero_normal(tuple(torch.cos(u) for u in state.velocity)))
         action = kwargs['linearization_factory'](x0)
         actual = action(direction)
+        # Krylov unit vectors and late-Newton tiny corrections must use the
+        # same accuracy despite absolute tolerances in both inner solves.
+        torch.testing.assert_close(action(1e-9*direction),1e-9*actual,atol=2e-17,rtol=2e-9)
+        torch.testing.assert_close(action(torch.zeros_like(direction)),torch.zeros_like(direction),atol=0,rtol=0)
         finite = (residual(x0+1e-5*direction)-residual(x0-1e-5*direction))/2e-5
         torch.testing.assert_close(actual,finite,atol=2e-7,rtol=2e-6)
         comparisons.append(True)
@@ -87,6 +91,8 @@ def test_reduced_newton_jacobian_and_new_time_momentum_kinematics_power(real_cas
     monkeypatch.setattr(module,'newton',checked)
     new,info = driver.step(state)
     assert comparisons and info['nonlinear']['iterations'] > 0
+    assert all(item['linear']['effective_atol'] >= .2*info['nonlinear']['tolerance']
+               for item in info['nonlinear']['history'][1:])
     assert info['nonlinear']['residual_norm'] <= info['nonlinear']['tolerance']
     assert new.force_time == new.time == pytest.approx(.6001)
     torch.testing.assert_close(new.force,model.force(new.x,new.time),rtol=1e-10,atol=1e-7)
@@ -175,6 +181,10 @@ def test_implicit_config_cli_and_legacy_force_clock(real_case,tmp_path,monkeypat
     path = tmp_path/'implicit.json'
     save_config(path,config)
     assert load_config(path,config) == config
+    legacy = json.loads(path.read_text())
+    legacy['coupling']['newton'].pop('linear_tolerance_fraction')
+    path.write_text(json.dumps(legacy))
+    assert load_config(path,config).coupling.newton.linear_tolerance_fraction == .2
     run_mac.main(['--config',str(path),'--coupling','explicit-lagged',
                   '--write-config',str(tmp_path/'explicit.json')])
     assert load_config(tmp_path/'explicit.json',config).coupling.scheme == 'explicit-lagged'

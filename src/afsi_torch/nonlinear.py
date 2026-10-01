@@ -1,10 +1,11 @@
 """Forward Newton--GMRES on the tensor device, with a true-residual check.
 
-No assembled global Jacobian, CPU linear solve or differentiation through the
-solver. JVPs differentiate the complete residual, including follower loads.
+Default JVPs differentiate the complete residual, including follower loads;
+an optional factory supplies an assembled or reduced Jacobian action instead.
+No CPU linear solve or differentiation through an iterative solver.
 Dirichlet data are absolute unknown values, not displacement increments.
 """
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from math import isfinite
 import torch
 
@@ -33,6 +34,7 @@ class NewtonOptions:
     max_backtracks: int = 20
     armijo: float = 1e-4
     linear: GMRESOptions = field(default_factory=GMRESOptions)
+    linear_tolerance_fraction: float = 0.
 
     def __post_init__(self):
         if not all(isfinite(t) and t >= 0 for t in (self.rtol,self.atol)) or self.rtol+self.atol == 0:
@@ -44,6 +46,9 @@ class NewtonOptions:
             raise ValueError('Armijo constant must be between zero and one')
         if not isinstance(self.linear,GMRESOptions) or self.linear.rtol >= 1-self.armijo:
             raise ValueError('linear relative tolerance must ensure a descent direction')
+        if (not isfinite(self.linear_tolerance_fraction) or
+                not 0 <= self.linear_tolerance_fraction < 1-self.armijo):
+            raise ValueError('linear tolerance fraction must be nonnegative and ensure descent')
 
 
 @dataclass(frozen=True)
@@ -69,6 +74,23 @@ def _check(value,reference,name):
         raise ValueError(f'{name} must match unknown shape, dtype and device')
     if not torch.isfinite(value).all():
         raise FloatingPointError(f'nonfinite {name}')
+
+
+def normalized_linear_action(action):
+    """Evaluate an approximately linear action at unit input norm, then rescale.
+
+    Nested iterative mass/pressure solves have absolute stopping tolerances.
+    Using the same input scale in Arnoldi and in correction residual checks
+    prevents tiny corrections from being dominated by those absolute errors.
+    The zero action is exact and does not reuse a nonzero warm-start solution.
+    This does not normalize the nonlinear residual or its acceptance test.
+    """
+    def apply(direction):
+        scale = torch.linalg.vector_norm(direction)
+        if scale.item() == 0:
+            return torch.zeros_like(direction)
+        return scale*action(direction/scale)
+    return apply
 
 
 @torch.no_grad()
@@ -147,6 +169,9 @@ def newton(residual,x0,*,validate,fixed=None,values=None,preconditioner_factory=
     A supplied linearization_factory(x) returns an exact Jacobian action,
     allowing assembled FE tangents and pressure elimination without autograd
     through iterative linear solvers. Otherwise use the residual's exact JVP.
+    Optional linear_tolerance_fraction floors the inner absolute tolerance at
+    a fraction of the final nonlinear target to avoid oversolving. GMRES still
+    checks its true residual; Armijo and final nonlinear acceptance are intact.
     Singular tangents, nonconvergence and failed line searches raise with the
     last accepted state. Initial invalid input raises before any iteration.
     """
@@ -185,7 +210,10 @@ def newton(residual,x0,*,validate,fixed=None,values=None,preconditioner_factory=
                 return project(out).detach()
             inverse = None if preconditioner_factory is None else preconditioner_factory(x)
             precondition = None if inverse is None else lambda v: project(inverse(project(v)))
-            step,linear_info = gmres(action,-r,precondition=precondition,options=opt.linear)
+            linear = replace(opt.linear,atol=max(opt.linear.atol,opt.linear_tolerance_fraction*tol))
+            step,linear_info = gmres(action,-r,precondition=precondition,options=linear)
+            linear_info.update(nonlinear_residual_norm=norm(r),nonlinear_tolerance=tol,
+                               configured_atol=opt.linear.atol,effective_atol=linear.atol)
         except (RuntimeError,FloatingPointError) as exc:
             raise NonlinearFailure(f'Newton linear solve failed: {exc}',result(False)) from exc
         old_norm = norm(r)

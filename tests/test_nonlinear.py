@@ -1,7 +1,8 @@
 """Newton/GMRES convergence, boundary lifting, invalid-trial rejection and FEM."""
 import pytest
 import torch
-from afsi_torch.nonlinear import gmres,newton,GMRESOptions,NewtonOptions,NonlinearFailure
+from afsi_torch.nonlinear import (gmres,newton,GMRESOptions,NewtonOptions,NonlinearFailure,
+                                  normalized_linear_action)
 from afsi_torch.solid_preconditioner import guccione_blocks
 from afsi_torch import solid,boundary as bd
 from afsi_torch.tetrahedron import reference_nodes
@@ -39,6 +40,57 @@ def test_gmres_restart_and_nonconvergence(device):
     torch.testing.assert_close(A@x,rhs,atol=1e-8,rtol=1e-9)
     with pytest.raises(RuntimeError,match='failed'):
         gmres(lambda v:A@v,rhs,options=GMRESOptions(max_iterations=1,restart=1,rtol=1e-14))
+
+
+def test_tiny_rhs_with_absolute_error_in_nested_action(device):
+    A = torch.tensor([[2.,.1],[.1,1.]],device=device,dtype=torch.float64)
+    rhs = A.new_tensor([4.65e-9,1.e-9])
+    # Deterministic bounded absolute error represents a nested solve's
+    # absolute stopping floor. Unit Krylov vectors and tiny corrections
+    # otherwise see very different relative accuracy.
+    quantum = 4e-10
+    calls = []
+    def approximate(v):
+        calls.append(torch.linalg.vector_norm(v).item())
+        return torch.round((A@v)/quantum)*quantum
+    options = GMRESOptions(rtol=.01,atol=1e-11,check_every=1,max_iterations=12)
+    with pytest.raises(RuntimeError,match='failed|breakdown'):
+        gmres(approximate,rhs,options=options)
+    calls.clear()
+    action = normalized_linear_action(approximate)
+    x,info = gmres(action,rhs,options=options)
+    assert calls and all(abs(n-1.) < 1e-14 for n in calls)
+    assert info['residual_norm'] <= info['tolerance']
+    # Check the independent underlying operator, not only the noisy action.
+    torch.testing.assert_close(A@x,rhs,rtol=1e-8,atol=1e-18)
+    calls.clear()
+    torch.testing.assert_close(action(torch.zeros_like(rhs)),torch.zeros_like(rhs))
+    assert not calls
+
+
+def test_newton_coordinates_inner_floor_but_keeps_outer_acceptance(device):
+    x = torch.zeros(1,device=device,dtype=torch.float64)
+    residual = lambda y:y-4.65e-9
+    # The correction-scale action cannot achieve a 4.65e-11 true residual;
+    # the physical nonlinear residual is nevertheless solved to 1e-9.
+    tangent = lambda y:lambda v:v+1e-10*torch.sin(v/1e-9)
+    linear = GMRESOptions(rtol=.01,atol=1e-11,check_every=1,max_iterations=12)
+    with pytest.raises(NonlinearFailure,match='linear'):
+        newton(residual,x,validate=lambda y:None,linearization_factory=tangent,
+               options=NewtonOptions(atol=1e-9,rtol=0.,linear=linear))
+    options = NewtonOptions(atol=1e-9,rtol=0.,linear=linear,linear_tolerance_fraction=.2)
+    result = newton(residual,x,validate=lambda y:None,linearization_factory=tangent,options=options)
+    assert result.converged and torch.linalg.vector_norm(residual(result.x)) <= 1e-9
+    info = result.history[1]['linear']
+    assert info['residual_norm'] <= info['tolerance'] <= .2*result.history[0]['residual_norm']
+    assert info['effective_atol'] == pytest.approx(2e-10)
+    assert info['configured_atol'] == 1e-11 and result.tolerance == 1e-9
+    # A bad tangent must still fail, even with the coordinated inner floor.
+    with pytest.raises(NonlinearFailure,match='backtracking') as err:
+        newton(residual,x,validate=lambda y:None,linearization_factory=lambda y:lambda v:-v,
+               options=options)
+    assert err.value.result.residual_norm > err.value.result.tolerance
+    torch.testing.assert_close(err.value.result.x,x)
 
 
 def test_newton_rejects_invalid_trials_and_does_not_mutate(device):
@@ -119,7 +171,10 @@ def test_follower_against_dense_newton(device):
 
 
 @pytest.mark.parametrize('factory,kwargs',[(GMRESOptions,dict(restart=0)),(GMRESOptions,dict(rtol=-1)),
-    (NewtonOptions,dict(armijo=1)),(NewtonOptions,dict(linear=GMRESOptions(rtol=1.)))])
+    (NewtonOptions,dict(armijo=1)),(NewtonOptions,dict(linear=GMRESOptions(rtol=1.))),
+    (NewtonOptions,dict(linear_tolerance_fraction=-.1)),
+    (NewtonOptions,dict(linear_tolerance_fraction=1.)),
+    (NewtonOptions,dict(linear_tolerance_fraction=float('nan')))])
 def test_invalid_controls(factory,kwargs):
     with pytest.raises(ValueError):
         factory(**kwargs)

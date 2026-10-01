@@ -11,7 +11,7 @@ from math import isfinite
 import torch
 from .coupling import MACIBStepper, MACState
 from .grid import zero_normal, convection, velocity_laplacian, divergence
-from ..nonlinear import NewtonOptions, GMRESOptions, newton
+from ..nonlinear import NewtonOptions, GMRESOptions, newton, normalized_linear_action
 from ..transport import transport_numbers, implicit_policy
 
 
@@ -20,6 +20,7 @@ class MACCouplingOptions:
     scheme: str = 'explicit-lagged'
     newton: NewtonOptions = field(default_factory=lambda: NewtonOptions(
         rtol=1e-8, atol=1e-9, max_iterations=12, max_backtracks=16,
+        linear_tolerance_fraction=.2,
         linear=GMRESOptions(rtol=1e-2, atol=1e-11, restart=12, max_iterations=120, check_every=3)))
     tangent_chunk_size: int = 2048
 
@@ -111,7 +112,10 @@ class ImplicitMACIBStepper(MACIBStepper):
                 density,_ = self.transfer.spread(dforce,stencil)
                 projected = self.flow.project(self._linear_right(velocity,v,density))
                 return direction-self.pack(projected.velocity)
-            return action
+            # Mass and pressure solves use absolute as well as relative
+            # tolerances. Evaluate every Krylov direction at the same norm;
+            # especially important when Newton corrections approach zero.
+            return normalized_linear_action(action)
         initial = self.pack(zero_normal(state.velocity))
         fixed = self.pack(tuple(torch.ones_like(u) for u in state.velocity))-self.pack(
             zero_normal(tuple(torch.ones_like(u) for u in state.velocity)))

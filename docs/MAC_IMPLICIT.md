@@ -63,6 +63,25 @@ complete nonlinear residual; its position and force are consistent with its
 accepted velocity and new load time. Failed iterations preserve the previous
 accepted simulation checkpoint and record the Newton failure history.
 
+The mass and pressure inverses are iterative approximations. Their absolute
+stopping tolerances can break numerical homogeneity when a unit Arnoldi vector
+is replaced by a very small Newton correction. The implicit Jacobian action
+therefore evaluates `||v|| * DR(u)[v/||v||]`, with an exact zero result for `v=0`.
+This keeps inner-solve inputs at a common scale; it does not rescale the
+nonlinear residual, alter the assembled tangent, or change the time equations.
+
+By default the implicit Newton solver also sets each GMRES absolute target to
+`max(linear.atol, 0.2 * nonlinear_tolerance)`. Its relative target still applies,
+and GMRES still checks the true linear residual. For an outer target of `1e-9`,
+the absolute floor is `2e-10`, rather than asking the inner solve to resolve
+irrelevant corrections far below the final coupled tolerance. This floor is
+strictly below the outer target and current unconverged residual. Armijo and
+the final complete nonlinear residual check remain mandatory. Generic Newton
+defaults keep this feature disabled (`linear_tolerance_fraction=0`).
+This coordination follows the principle of avoiding oversolving in
+[inexact Newton methods](https://sundials.readthedocs.io/en/v7.5.0/kinsol/Mathematics_link.html#stopping-criteria-for-iterative-linear-solvers);
+it is not an implementation of the Eisenstat--Walker adaptive forcing formula.
+
 The quadrature-based transfer and its power identity follow the unified weak
 form described by [Griffith and Luo (2017)](https://pmc.ncbi.nlm.nih.gov/articles/PMC5650596/).
 This implementation uses first-order backward Euler and step-frozen IB
@@ -94,6 +113,7 @@ tolerances, line search, GMRES restart/iterations and tangent chunk size. Exampl
 ```json
 {"coupling": {"scheme": "implicit-newton", "tangent_chunk_size": 2048,
   "newton": {"rtol": 1e-8, "atol": 1e-9, "max_iterations": 12,
+    "linear_tolerance_fraction": 0.2,
     "linear": {"rtol": 0.01, "restart": 12, "max_iterations": 120}}}}
 ```
 
@@ -107,7 +127,12 @@ are reused when configured. There is currently no coupled block preconditioner.
 
 Reports/CSV record Newton iteration count, true residual and acceptance
 tolerance. GMRES and line-search histories are in `last_solver_info.nonlinear`
-or `failure.nonlinear`. GPU benchmark/trajectory validation is still required
+or `failure.nonlinear`. Accepted GMRES history entries include configured and
+effective absolute targets and the outer nonlinear target. Real-LV JSON or
+checkpoint Newton sections without `linear_tolerance_fraction` inherit the
+current coupling default `0.2`. An explicitly stored value is preserved;
+set it to zero in a new-run JSON to disable the floor for a strict comparison.
+GPU benchmark/trajectory validation is still required
 on the actual real-LV mesh; local development verification uses CPU execution
 plus full-graph tracing, with explicit CUDA test cases skipped when unavailable.
 
