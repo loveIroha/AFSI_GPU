@@ -10,7 +10,7 @@ from afsi_torch.ho_tangent import HOTangentAssembler
 from afsi_torch.mac.implicit import MACCouplingOptions, implicit_policy
 from afsi_torch.mac.execution import build_driver
 from afsi_torch.mac.grid import convection, velocity_laplacian, zero_normal, gradient, divergence
-from afsi_torch.nonlinear import NewtonOptions, GMRESOptions, NonlinearFailure
+from afsi_torch.nonlinear import NewtonOptions, GMRESOptions, NewtonResult, NonlinearFailure
 from afsi_torch.real_lv_checkpoint import load_real_lv, save_real_lv, refine_checkpoint_dt
 from afsi_torch.mac.checkpoint import digest
 
@@ -230,3 +230,65 @@ def test_reference_and_fused_implicit_paths_match_during_contraction(real_case,d
             torch.testing.assert_close(u,v,rtol=1e-7,atol=1e-9)
         assert ia['nonlinear']['residual_norm'] <= ia['nonlinear']['tolerance']
         assert ib['nonlinear']['residual_norm'] <= ib['nonlinear']['tolerance']
+
+
+@pytest.mark.parametrize('device', DEVICES)
+def test_accepts_newton_state_without_unstable_postsolve_picard_update(real_case,device,monkeypatch):
+    """A stiff linear momentum mode has a valid BE root but divergent Picard.
+
+    Use the real MAC pressure projection, IB kinematics and final acceptance
+    code. Only the momentum RHS is replaced by an analytically soluble stiff
+    mode, so we can supply a root with a small known residual and show that
+    applying the old postsolve G(u) multiplies its residual by 20.
+    """
+    import afsi_torch.mac.implicit as module
+    config = replace(real_case,coupling=MACCouplingOptions(scheme='implicit-newton'))
+    model = imported_model(config,device)
+    driver = build_driver(model,settings(config),device)
+    state = driver.initialize(model.mesh.X)
+    coords = [driver.flow.grid.coordinates(c,device=device) for c in range(3)]
+    raw = zero_normal(tuple(torch.sin(q[...,(c+1)%3])*torch.sin(q[...,c]) for c,q in enumerate(coords)))
+    mode = driver.pack(driver.flow.project(raw).velocity)
+    mode /= torch.linalg.vector_norm(mode)
+    stiffness, amplitude, tolerance = 20.,1e-3,1e-9
+    driver._right = lambda old,u,density:driver.unpack(amplitude*mode-stiffness*driver.pack(u))
+    captured = {}
+    def analytic_root(residual,x0,**kwargs):
+        candidate = ((amplitude+.5*tolerance)/(1+stiffness))*mode
+        r = residual(candidate)
+        norm = torch.linalg.vector_norm(r).item()
+        assert .4*tolerance < norm < .6*tolerance
+        # G(u)=u-R(u) is precisely the removed postsolve update.
+        post_norm = torch.linalg.vector_norm(residual(candidate-r)).item()
+        assert post_norm > 8*tolerance
+        captured.update(value=candidate.clone(),post_residual=post_norm)
+        return NewtonResult(candidate,True,norm,tolerance,0,[dict(iteration=0,residual_norm=norm)])
+    monkeypatch.setattr(module,'newton',analytic_root)
+    new,info = driver.step(state)
+    torch.testing.assert_close(driver.pack(new.velocity),captured['value'],rtol=0,atol=0)
+    assert info['nonlinear']['residual_norm'] < tolerance
+    acceptance = info['nonlinear']['acceptance']
+    assert acceptance['divergence_norm'] <= acceptance['divergence_tolerance']
+    assert captured['post_residual'] > 8*info['nonlinear']['residual_norm']
+
+
+def test_final_recheck_rejects_bad_newton_result_and_records_details(real_case,tmp_path,monkeypatch):
+    import afsi_torch.mac.implicit as module
+    from afsi_torch.simulation.real_lv_mac import run
+    def false_success(residual,x0,**kwargs):
+        # A claimed convergence flag must not bypass the actual equations.
+        return NewtonResult(x0.clone(),True,0.,1e-16,0,[dict(iteration=0,residual_norm=0.)])
+    monkeypatch.setattr(module,'newton',false_success)
+    config = replace(real_case,coupling=MACCouplingOptions(scheme='implicit-newton'),
+                     output=replace(real_case.output,write_vtk=False))
+    folder = tmp_path/'acceptance_failure'
+    with pytest.raises(NonlinearFailure,match='final coupled-state check failed'):
+        run(case_config=config,device='cpu',output=folder)
+    report = json.loads((folder/'report.json').read_text())
+    details = report['failure']['coupled_acceptance']
+    assert details['newton_residual_norm'] == 0.
+    assert details['residual_norm'] > details['tolerance']
+    assert details['pressure']['residual_norm'] <= details['pressure']['tolerance']
+    assert details['step'] == 1 and report['accepted_steps'] == 0
+    _,state,_,_,_ = load_real_lv(folder/'checkpoint.npz')
+    assert state.time == 0. and state.step == 0

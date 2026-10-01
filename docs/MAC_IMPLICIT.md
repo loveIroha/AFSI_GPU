@@ -58,10 +58,32 @@ through their stopping logic. Their actual residual checks remain enabled.
 
 Newton uses restarted GMRES on the tensor device and Armijo backtracking, with
 positive-J, surface/cavity, finite-value, IB support and solid displacement
-checks on trial states. The final projected state is rechecked against the
-complete nonlinear residual; its position and force are consistent with its
-accepted velocity and new load time. Failed iterations preserve the previous
+checks on trial states. The final Newton velocity itself is rechecked against
+the complete nonlinear residual; pressure, position and force are recovered
+at that same velocity and new load time. Failed iterations preserve the previous
 accepted simulation checkpoint and record the Newton failure history.
+
+### Accept the Newton state without an additional fixed-point step
+
+Writing `G(u)=P[right(u)]`, the nonlinear equation is `R(u)=u-G(u)=0`.
+Once Newton has converged to a finite tolerance, replacing `u` by `G(u)` is
+an additional undamped Picard iteration. It is not merely projecting `u` to
+remove divergence. Newton convergence does not imply that this fixed-point
+map is contractive. For example, `G(u)=b-20*u` gives `R(u)=21*u-b` and
+`R(G(u))=-20*R(u)`: a residual of `5e-10` becomes `1e-8`, even though the
+Newton state already met a `1e-9` target. A stiff solid/IB response can likewise
+amplify a small terminal residual. The driver therefore preserves the Newton
+velocity and independently verifies the equations at that unchanged state.
+
+Continuity is checked as well. From `u=G(u)+R(u)`, the discrete MAC divergence
+satisfies `||D u|| <= ||D G(u)|| + 2*sqrt(sum(h_c^-2))*nonlinear_tolerance`.
+The first term includes the pressure solve's finite accuracy; a floating-point
+roundoff allowance is added to the bound. Actual divergence, its acceptance
+bound, the fresh momentum residual and all final inner-solve residuals are
+recorded under `nonlinear.acceptance`. Failed final checks preserve the last
+accepted checkpoint and write the same details to `failure.coupled_acceptance`.
+This is an algebraic acceptance check, not a mesh-convergence or physical-error
+estimate. The final nonlinear target and the time discretization are unchanged.
 
 The mass and pressure inverses are iterative approximations. Their absolute
 stopping tolerances can break numerical homogeneity when a unit Arnoldi vector

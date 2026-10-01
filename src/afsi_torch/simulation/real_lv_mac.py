@@ -206,5 +206,7 @@ def run(*, case_config=None, device='cuda', output=None, resume=None, end_time=N
             result = exc.result
             progress['failure']['nonlinear'] = dict(iterations=result.iterations,
                 residual_norm=result.residual_norm,tolerance=result.tolerance,history=result.history)
+        if hasattr(exc, 'coupled_diagnostics'):
+            progress['failure']['coupled_acceptance'] = exc.coupled_diagnostics
         save('failed')
         raise

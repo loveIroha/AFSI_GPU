@@ -6,12 +6,13 @@ are evaluated at the new state. The exact reduced Newton action uses an
 assembled CSR solid-force tangent; no differentiation through linear solves.
 The IB stencil is frozen at x_n, a deliberate geometric semi-implicit choice.
 """
-from dataclasses import dataclass, field, asdict
-from math import isfinite
+from dataclasses import dataclass, field, asdict, replace
+from math import isfinite, sqrt
 import torch
 from .coupling import MACIBStepper, MACState
 from .grid import zero_normal, convection, velocity_laplacian, divergence
-from ..nonlinear import NewtonOptions, GMRESOptions, newton, normalized_linear_action
+from ..nonlinear import (NewtonOptions, GMRESOptions, NonlinearFailure,
+                         newton, normalized_linear_action)
 from ..transport import transport_numbers, implicit_policy
 
 
@@ -121,15 +122,38 @@ class ImplicitMACIBStepper(MACIBStepper):
             zero_normal(tuple(torch.ones_like(u) for u in state.velocity)))
         result = newton(residual,initial,validate=validate,fixed=fixed.bool(), values=torch.zeros_like(initial),
                         linearization_factory=linearization,options=self.options.newton)
-        # Project final velocity, then re-evaluate the complete coupled residual:
-        # accepted x is derived from the accepted u, and force is at (x,t_new).
-        value = self.pack(evaluate(result.x)[1].velocity)
+        # Keep the Newton unknown. Replacing u by G(u)=P[right(u)] here is
+        # an unguarded Picard iteration, not a projection of u. For a stiff
+        # problem it can amplify an already acceptable residual arbitrarily.
+        # Recover pressure/force at the SAME u and independently recheck it.
+        value = result.x
         validate(value)
         r, flow, force, density, spread, interpolation = evaluate(value)
         true_norm = torch.linalg.vector_norm(r).item()
-        if true_norm > result.tolerance:
-            raise RuntimeError('implicit MAC final projected residual exceeds Newton tolerance')
         velocity,x,_ = kinematics(value)
+        div_norm = torch.linalg.vector_norm(divergence(velocity,grid.spacing)).item()
+        projected_div_norm = torch.linalg.vector_norm(divergence(flow.velocity,grid.spacing)).item()
+        # u=G(u)+R(u): ||D u|| <= ||D G(u)|| + ||D||*tol. The MAC
+        # difference operator has ||D||_2 <= 2*sqrt(sum(h_c**-2)). Allow
+        # floating-point evaluation error, while checking the actual D u.
+        div_operator_bound = 2*sqrt(sum(h**-2 for h in grid.spacing))
+        roundoff = 64*torch.finfo(value.dtype).eps*div_operator_bound*max(
+            torch.linalg.vector_norm(value).item(),1.)
+        div_tolerance = projected_div_norm+div_operator_bound*result.tolerance+roundoff
+        acceptance = dict(stage='final-coupled-state',step=state.step+1,time_s=target_time,
+            newton_residual_norm=result.residual_norm,residual_norm=true_norm,tolerance=result.tolerance,
+            divergence_norm=div_norm,divergence_tolerance=div_tolerance,
+            projected_divergence_norm=projected_div_norm,pressure=flow.diagnostics['pressure'],
+            force_mass=asdict(spread),velocity_mass=asdict(interpolation))
+        if not isfinite(true_norm) or true_norm > result.tolerance or not isfinite(div_norm) or div_norm > div_tolerance:
+            failure = NonlinearFailure(
+                f'implicit MAC final coupled-state check failed at step {state.step+1}: '
+                f'residual={true_norm:.9g}, tolerance={result.tolerance:.9g}, '
+                f'Newton residual={result.residual_norm:.9g}; '
+                f'divergence={div_norm:.9g}, divergence tolerance={div_tolerance:.9g}',
+                replace(result,converged=False,residual_norm=true_norm))
+            failure.coupled_diagnostics = acceptance
+            raise failure
         fraction = ((x-state.x).abs()/x.new_tensor(grid.spacing)).max().item()
         new = MACState(state.step+1,target_time,x,velocity,flow.pressure,force,target_time)
         numbers = transport_numbers([u.abs().max().item() for u in velocity], grid.spacing, dt, self.flow.mu/self.flow.rho)
@@ -138,6 +162,7 @@ class ImplicitMACIBStepper(MACIBStepper):
                     max_grid_displacement=fraction, used_force_time_s=target_time,next_force_time_s=target_time,
                     nonlinear=dict(iterations=result.iterations,residual_norm=true_norm,
                                    tolerance=result.tolerance,history=result.history,
+                                   acceptance=acceptance,
                                    solid_tangent='assembled CSR',ib_geometry='frozen at preceding accepted position'))
         if diagnostics:
             U,_ = self.transfer.interpolate(velocity,stencil)
@@ -145,5 +170,5 @@ class ImplicitMACIBStepper(MACIBStepper):
             fluid_power = grid.volume*sum((u*f).sum() for u,f in zip(velocity,density))
             info.update(solid_power=solid_power.item(),fluid_power=fluid_power.item(),
                         power_error=abs((solid_power-fluid_power).item()),
-                        divergence_l2=(grid.volume*divergence(velocity,grid.spacing).square().sum()).sqrt().item())
+                        divergence_l2=sqrt(grid.volume)*div_norm)
         return new,info
