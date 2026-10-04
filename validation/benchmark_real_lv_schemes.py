@@ -14,9 +14,11 @@ from afsi_torch.cycle_checkpoint import atomic_json
 
 @torch.no_grad()
 def benchmark(checkpoint,*,device='cuda',schemes=('explicit-rk3','implicit-newton'),warmup=2,steps=10,
-              nonlinear_solvers=None):
+              nonlinear_solvers=None,initial_state='checkpoint'):
     if type(warmup) is not int or warmup<0 or type(steps) is not int or steps<1:
         raise ValueError('warmup must be nonnegative and steps positive')
+    if initial_state not in ('checkpoint','reference'):
+        raise ValueError('initial_state must be checkpoint or reference')
     if not schemes or len(set(schemes))!=len(schemes) or any(s not in
             ('explicit-lagged','explicit-rk3','implicit-newton','cnab-midpoint','cnab-semiimplicit') for s in schemes):
         raise ValueError('choose distinct supported schemes')
@@ -27,8 +29,9 @@ def benchmark(checkpoint,*,device='cuda',schemes=('explicit-rk3','implicit-newto
     synchronize = lambda:torch.cuda.synchronize(device) if torch.device(device).type=='cuda' else None
     report = dict(checkpoint=str(checkpoint),device=str(device),torch=torch.__version__,
         gpu=torch.cuda.get_device_name(device) if torch.device(device).type=='cuda' else None,dt_s=config.time.dt,
-        start_time_s=initial.time,warmup_steps=warmup,measured_steps=steps,
-        note='Different time schemes: performance comparison, not numerical equivalence or full-cycle stability validation.',cases={})
+        initial_state=initial_state,source_checkpoint_step=initial.step,source_checkpoint_time_s=initial.time,
+        start_time_s=0. if initial_state=='reference' else initial.time,warmup_steps=warmup,measured_steps=steps,
+        note='Performance comparison, not full-cycle stability validation. Reference mode starts at t=0 with undeformed solid and zero flow; checkpoint mode retains the saved physical state. Different schemes need not be numerically equivalent.',cases={})
     cases = [(s,s,None) for s in schemes] if nonlinear_solvers is None else [
         ('cnab-semiimplicit',f'cnab-semiimplicit/{s}',s) for s in nonlinear_solvers]
     for scheme,label,solver in cases:
@@ -38,10 +41,13 @@ def benchmark(checkpoint,*,device='cuda',schemes=('explicit-rk3','implicit-newto
         if solver is not None:
             coupling = replace(coupling,semiimplicit_solver=solver)
         driver = build_driver(model,dict(settings,coupling=asdict(coupling)),device)
-        force_time = None if initial.step==0 else initial.time if scheme in ('implicit-newton','cnab-midpoint','cnab-semiimplicit') else (initial.step-1)*config.time.dt
-        state = replace(initial,force_time=force_time,
-                        previous_advection=initial.previous_advection if scheme==config.coupling.scheme else None,
-                        force=torch.zeros_like(initial.x) if force_time is None else model.force(initial.x,force_time))
+        if initial_state=='reference':
+            state = driver.initialize(model.mesh.X)
+        else:
+            force_time = None if initial.step==0 else initial.time if scheme in ('implicit-newton','cnab-midpoint','cnab-semiimplicit') else (initial.step-1)*config.time.dt
+            state = replace(initial,force_time=force_time,
+                            previous_advection=initial.previous_advection if scheme==config.coupling.scheme else None,
+                            force=torch.zeros_like(initial.x) if force_time is None else model.force(initial.x,force_time))
         counters = dict(pressure_solves=0,pressure_cycles=0,mass_solves=0,mass_iterations=0,stokes_solves=0)
         pressure_solve,mass_solve = driver.flow.pressure_solver.solve,driver.transfer.solve_mass
         stokes_solve = getattr(driver.flow,'stokes',None)
@@ -96,7 +102,8 @@ def benchmark(checkpoint,*,device='cuda',schemes=('explicit-rk3','implicit-newto
                   f'pressure solves={counters["pressure_solves"]/count:.1f}/step, '
                   f'mass solves={counters["mass_solves"]/count:.1f}/step',flush=True)
         except (ValueError,RuntimeError,FloatingPointError) as exc:
-            case = dict(completed=False,measured_steps=count,failure=dict(type=type(exc).__name__,message=str(exc)))
+            case = dict(completed=False,measured_steps=count,counts=dict(counters),
+                        failure=dict(type=type(exc).__name__,message=str(exc)))
             print(f'{label}: failed: {exc}',flush=True)
         report['cases'][label] = case
         # Release bound-method closures/graph owners before the next scheme.
@@ -116,6 +123,8 @@ def benchmark(checkpoint,*,device='cuda',schemes=('explicit-rk3','implicit-newto
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--checkpoint',required=True)
+    parser.add_argument('--initial-state',choices=('checkpoint','reference'),default='checkpoint',
+                        help='checkpoint: saved physical state; reference: embedded reference mesh, zero flow and t=0 (startup cost only)')
     parser.add_argument('--device',default='cuda')
     parser.add_argument('--schemes',nargs='+',default=['explicit-rk3','implicit-newton'])
     parser.add_argument('--warmup',type=int,default=2)
@@ -124,7 +133,7 @@ def main():
     parser.add_argument('--output',required=True)
     args = parser.parse_args()
     report = benchmark(args.checkpoint,device=args.device,schemes=tuple(args.schemes),warmup=args.warmup,steps=args.steps,
-                       nonlinear_solvers=args.nonlinear_solvers)
+                       nonlinear_solvers=args.nonlinear_solvers,initial_state=args.initial_state)
     path = Path(args.output)
     path.parent.mkdir(parents=True,exist_ok=True)
     atomic_json(path,report)

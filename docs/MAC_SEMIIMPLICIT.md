@@ -201,6 +201,30 @@ The report separates setup time and warmed time and counts Stokes, pressure,
 mass, Anderson, GMRES, tangent assemblies and fallback steps. GPU comparisons
 should run without another simulation competing on the same GPU.
 
+If an existing checkpoint already violates the convection CFL screen, both
+solvers stop before nonlinear iteration. Switching solvers does not repair
+the saved velocity. To measure startup costs using the reference mesh,
+fiber/sheet fields, material and fluid settings embedded in that checkpoint,
+explicitly select `--initial-state reference`:
+
+```bash
+CUDA_VISIBLE_DEVICES=0 python -u validation/benchmark_real_lv_schemes.py \
+  --checkpoint results/real_lv_cnab_3cycles/checkpoint.npz \
+  --initial-state reference \
+  --schemes cnab-semiimplicit --nonlinear-solvers newton anderson-newton \
+  --device cuda --warmup 2 --steps 5 \
+  --output results/real_lv_solver_performance_reference/report.json
+```
+
+Each case starts independently at t=0, with undeformed solid, zero velocity,
+pressure and force, and no AB2 history. The source checkpoint is read only;
+no mesh regeneration or external mesh files are required. The report records
+both the source checkpoint time/step and the actual benchmark start time.
+All transport and nonlinear acceptance checks remain enabled. This short
+measurement describes early low-load performance, not the cost or stability
+at the failed saved state or during active contraction. The default
+`--initial-state checkpoint` retains the saved state and time history.
+
 To switch an existing checkpoint to the accelerated solver while preserving
 its AB2 time history, use a new branch directory:
 

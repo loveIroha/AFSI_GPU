@@ -157,6 +157,41 @@ def test_benchmark_counts_reduced_unknown_and_nested_costs(real_case,tmp_path):
     assert case['jacobian_actions']>=case['gmres_iterations']
 
 
+def test_benchmark_reference_restarts_high_cfl_checkpoint_without_modifying_it(real_case,tmp_path):
+    from afsi_torch.real_lv_checkpoint import save_real_lv
+    from validation.benchmark_real_lv_schemes import benchmark
+    cfg = config(real_case)
+    model = imported_model(cfg)
+    opts = settings(cfg)
+    driver = build_driver(model,opts,'cpu')
+    initial = driver.initialize(model.mesh.X)
+    velocity = zero_normal(tuple(torch.full_like(v,10000.) for v in initial.velocity))
+    source = replace(initial,step=1,time=cfg.time.dt,velocity=velocity,
+                     force_time=cfg.time.dt,force=model.force(initial.x,cfg.time.dt),
+                     previous_advection=driver.flow.advection(velocity))
+    checkpoint = tmp_path/'high_cfl.npz'
+    save_real_lv(checkpoint,model,source,opts,{},cfg)
+    original = checkpoint.read_bytes()
+    kwargs = dict(device='cpu',schemes=('cnab-semiimplicit',),
+                  nonlinear_solvers=('newton','anderson-newton'),warmup=0,steps=2)
+    saved = benchmark(checkpoint,**kwargs)
+    assert saved['initial_state']=='checkpoint' and saved['start_time_s']==source.time
+    for case in saved['cases'].values():
+        assert not case['completed'] and 'CFL' in case['failure']['message']
+        assert case['counts']['stokes_solves']==0
+    reference = benchmark(checkpoint,initial_state='reference',**kwargs)
+    assert reference['initial_state']=='reference' and reference['start_time_s']==0.
+    assert reference['source_checkpoint_step']==source.step
+    assert reference['source_checkpoint_time_s']==source.time
+    assert reference['dt_s']==cfg.time.dt
+    for case in reference['cases'].values():
+        assert case['completed'] and case['measured_steps']==2
+        assert case['end_time_s']==pytest.approx(2*cfg.time.dt)
+        assert case['outer_unknown_dofs']==source.x.numel()
+        assert case['final_solid']['max_total_displacement_cm']<1e-4
+    assert checkpoint.read_bytes()==original
+
+
 @pytest.mark.parametrize('device',DEVICES)
 def test_acceleration_solves_same_active_ho_equations_with_fewer_stokes(real_case,device):
     cfg = config(real_case)
