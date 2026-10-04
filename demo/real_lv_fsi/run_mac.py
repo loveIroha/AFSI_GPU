@@ -58,6 +58,10 @@ def main(argv=None):
     parser.add_argument('--ib-rule-family',choices=('conical','xiao-gimbutas'))
     parser.add_argument('--ib-transfer-backend',choices=('reference','fused','cell'),
                         help='adaptive FE/IB execution; fused/cell are experimental GPU paths')
+    parser.add_argument('--ib-stencil-backend',choices=('component','shared'),
+                        help='adaptive reference transfer: per-component or shared face/center tables')
+    parser.add_argument('--stokes-warm-start',action=argparse.BooleanOptionalAction,default=None,
+                        help='reuse successful nonlinear pressures within each midpoint solve')
     parser.add_argument('--ib-point-density',type=float,help='adaptive Gaussian density parameter, >=2')
     parser.add_argument('--reference', action='store_true', help='torch/PCG reference execution for small CPU tests')
     parser.add_argument('--no-vtk', action='store_true')
@@ -76,7 +80,8 @@ def main(argv=None):
         overrides = (args.config, args.mesh_dir, args.dt, args.fluid_cells, args.fluid_lengths,
                      args.fluid_origin, args.rho, args.mu, args.kappa, args.beta,
                      args.log_every, args.output_every, args.checkpoint_every, args.write_config)
-        overrides += (args.interaction_quadrature,args.ib_point_density,args.ib_rule_family,args.ib_transfer_backend)
+        overrides += (args.interaction_quadrature,args.ib_point_density,args.ib_rule_family,args.ib_transfer_backend,
+                      args.ib_stencil_backend,args.stokes_warm_start)
         if any(v is not None for v in overrides) or args.reference or args.no_vtk:
             parser.error('resume restores settings; only device, output, end time/cycles, --resume-dt and --coupling may change')
         return run(device=args.device, output=args.output, resume=args.resume,
@@ -86,9 +91,11 @@ def main(argv=None):
     config = replace(config,
         interaction_quadrature=replace(config.interaction_quadrature,
             **{k:v for k,v in dict(mode=args.interaction_quadrature,point_density=args.ib_point_density,
-                                 rule_family=args.ib_rule_family,transfer_backend=args.ib_transfer_backend).items() if v is not None}),
+                                 rule_family=args.ib_rule_family,transfer_backend=args.ib_transfer_backend,
+                                 stencil_backend=args.ib_stencil_backend).items() if v is not None}),
         coupling=replace(config.coupling,scheme=config.coupling.scheme if args.coupling is None else args.coupling,
-            semiimplicit_solver=config.coupling.semiimplicit_solver if args.nonlinear_solver is None else args.nonlinear_solver),
+            semiimplicit_solver=config.coupling.semiimplicit_solver if args.nonlinear_solver is None else args.nonlinear_solver,
+            stokes_warm_start=config.coupling.stokes_warm_start if args.stokes_warm_start is None else args.stokes_warm_start),
         source_dir=config.source_dir if args.mesh_dir is None else args.mesh_dir,
         time=TimeConfig(config.time.dt if args.dt is None else args.dt,
                         config.time.end_time if end_time is None else end_time),
@@ -101,6 +108,8 @@ def main(argv=None):
         output=replace(config.output, **{k: v for k, v in dict(
             write_vtk=False if args.no_vtk else None, log_every=args.log_every,
             output_every=args.output_every, checkpoint_every=args.checkpoint_every).items() if v is not None}))
+    if config.coupling.stokes_warm_start and config.coupling.scheme!='cnab-semiimplicit':
+        parser.error('--stokes-warm-start requires cnab-semiimplicit')
     if args.write_config:
         save_config(args.write_config, config)
         return

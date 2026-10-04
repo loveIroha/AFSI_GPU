@@ -26,6 +26,8 @@ class MidpointProblem:
         self.evaluations = self.actions = self.assemblies = 0
         self._last_y = None
         self._last_stokes_call = None
+        self._pressure_guess = None
+        self.pressure_warm_starts = self.pressure_warm_fallbacks = 0
 
     def validate(self, y):
         x = self.predicted+y
@@ -47,7 +49,17 @@ class MidpointProblem:
         force = d._force_geometry(x, self.half_time)
         density, spread = d.transfer.spread(force, self.stencil)
         rhs = zero_normal(tuple(b+self.dt/d.flow.rho*f for b,f in zip(self.base_rhs,density)))
-        flow = d.flow.stokes(rhs, self.state.pressure)
+        if d.options.stokes_warm_start and self._pressure_guess is not None:
+            self.pressure_warm_starts += 1
+            try:
+                flow = d.flow.stokes(rhs,self._pressure_guess)
+            except RuntimeError:
+                # A difficult warm guess cannot weaken acceptance or turn an
+                # otherwise solvable residual into a rejected time step.
+                self.pressure_warm_fallbacks += 1
+                flow = d.flow.stokes(rhs,self.state.pressure)
+        else:
+            flow = d.flow.stokes(rhs,self.state.pressure)
         average = blend(self.state.velocity, flow.velocity)
         U, interpolation = d.transfer.interpolate(average, self.stencil)
         residual = x-self.state.x-.5*self.dt*U
@@ -56,6 +68,10 @@ class MidpointProblem:
         self.last_evaluation = (residual, flow, force, density, spread, interpolation, U)
         self._last_y = y.detach().clone()
         self._last_stokes_call = d.flow.stokes_calls
+        if d.options.stokes_warm_start:
+            # An owned snapshot: linear responses, graph workspaces and later
+            # trials must not overwrite the last successful nonlinear guess.
+            self._pressure_guess = flow.pressure.detach().clone()
         return self.last_evaluation
 
     def final_evaluation(self,y,*,reuse=True):
@@ -211,6 +227,8 @@ class SemiImplicitMACIBStepper(MidpointMACIBStepper):
                 history=result.history, acceptance=acceptance, solid_tangent='assembled CSR nodal-force derivative',
                 unknown_dofs=state.x.numel(), residual_evaluations=problem.evaluations,
                 final_evaluation_reused=final_reused,
+                stokes_pressure_warm_starts=problem.pressure_warm_starts,
+                stokes_pressure_warm_fallbacks=problem.pressure_warm_fallbacks,
                 stokes_solves=self.flow.stokes_calls-start_stokes_calls,
                 tangent_assemblies=problem.assemblies, jacobian_actions=problem.actions,
                 preconditioner='diagonal mass/stiffness approximation; consistent mass retained in equations'))

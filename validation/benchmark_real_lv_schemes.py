@@ -52,9 +52,9 @@ def benchmark(checkpoint,*,device='cuda',schemes=('explicit-rk3','implicit-newto
     model,initial,settings,_,config = load_real_lv(checkpoint,device)
     if execution_variants is not None:
         if (not execution_variants or len(set(execution_variants))!=len(execution_variants)
-                or any(v not in ('baseline','reuse','compact','fused','cell') for v in execution_variants)
+                or any(v not in ('baseline','reuse','compact','fused','cell','shared','pressure-warm','shared-warm') for v in execution_variants)
                 or tuple(schemes)!=('cnab-semiimplicit',) or config.interaction_quadrature.mode!='adaptive'):
-            raise ValueError('execution_variants requires adaptive cnab-semiimplicit and distinct baseline/reuse/compact/fused/cell')
+            raise ValueError('execution_variants requires adaptive cnab-semiimplicit and distinct supported variants')
     if profile and tuple(schemes)!=('cnab-semiimplicit',):
         raise ValueError('phase profiling currently requires only cnab-semiimplicit')
     synchronize = lambda:torch.cuda.synchronize(device) if torch.device(device).type=='cuda' else None
@@ -77,10 +77,12 @@ def benchmark(checkpoint,*,device='cuda',schemes=('explicit-rk3','implicit-newto
             coupling = replace(coupling,semiimplicit_solver=solver)
         quadrature = config.interaction_quadrature
         if variant is not None:
-            coupling = replace(coupling,reuse_final_evaluation=variant!='baseline')
+            coupling = replace(coupling,reuse_final_evaluation=variant!='baseline',
+                stokes_warm_start=variant in ('pressure-warm','shared-warm'))
             quadrature = replace(quadrature,
-                rule_family='xiao-gimbutas' if variant in ('compact','fused','cell') else 'conical',
-                transfer_backend=variant if variant in ('fused','cell') else 'reference')
+                rule_family='conical' if variant in ('baseline','reuse') else 'xiao-gimbutas',
+                transfer_backend=variant if variant in ('fused','cell') else 'reference',
+                stencil_backend='shared' if variant in ('shared','shared-warm') else 'component')
         driver = build_driver(model,dict(settings,coupling=asdict(coupling),interaction_quadrature=asdict(quadrature)),device)
         if initial_state=='reference':
             state = driver.initialize(model.mesh.X)
@@ -109,6 +111,7 @@ def benchmark(checkpoint,*,device='cuda',schemes=('explicit-rk3','implicit-newto
         count,newton_iterations,gmres_iterations,stokes_iterations,tangent_assemblies,jacobian_actions,anderson_iterations,fallback_steps = 0,0,0,0,0,0,0,0
         measured_start = None
         final_reuses = 0
+        pressure_warm_starts = pressure_warm_fallbacks = 0
         try:
             for _ in range(warmup):
                 state,_ = driver.step(state,diagnostics=False)
@@ -122,6 +125,8 @@ def benchmark(checkpoint,*,device='cuda',schemes=('explicit-rk3','implicit-newto
                 count+=1
                 nonlinear = info.get('nonlinear',{})
                 final_reuses += int(nonlinear.get('final_evaluation_reused',False))
+                pressure_warm_starts += nonlinear.get('stokes_pressure_warm_starts',0)
+                pressure_warm_fallbacks += nonlinear.get('stokes_pressure_warm_fallbacks',0)
                 newton_iterations+=nonlinear.get('newton_iterations',nonlinear.get('iterations',0))
                 anderson_iterations+=nonlinear.get('anderson_iterations',0)
                 fallback_steps+=int(nonlinear.get('newton_fallback',False))
@@ -139,6 +144,8 @@ def benchmark(checkpoint,*,device='cuda',schemes=('explicit-rk3','implicit-newto
                 nonlinear_solver=coupling.semiimplicit_solver if scheme=='cnab-semiimplicit' else None,
                 execution_variant=variant,final_evaluation_reuses=final_reuses,
                 reuse_final_evaluation=coupling.reuse_final_evaluation,
+                stokes_warm_start=coupling.stokes_warm_start,
+                stokes_pressure_warm_starts=pressure_warm_starts,stokes_pressure_warm_fallbacks=pressure_warm_fallbacks,
                 interaction_quadrature=driver.transfer.quadrature_summary() if hasattr(driver.transfer,'quadrature_summary') else dict(mode='fixed'),
                 anderson_iterations=anderson_iterations,newton_fallback_steps=fallback_steps,
                 outer_unknown_dofs=initial.x.numel() if scheme=='cnab-semiimplicit' else sum(v.numel() for v in initial.velocity) if scheme=='implicit-newton' else 0,
@@ -188,7 +195,7 @@ def benchmark(checkpoint,*,device='cuda',schemes=('explicit-rk3','implicit-newto
         report['execution_comparisons'] = {}
         for label in final_states:
             prefix = label.rsplit('/',1)[0]
-            base = prefix+('/compact' if label.endswith(('/fused','/cell')) else '/baseline')
+            base = prefix+('/compact' if label.endswith(('/fused','/cell','/shared','/pressure-warm','/shared-warm')) else '/baseline')
             if label==base or base not in final_states:
                 continue
             reference,candidate = final_states[base],final_states[label]
@@ -208,7 +215,7 @@ def benchmark(checkpoint,*,device='cuda',schemes=('explicit-rk3','implicit-newto
                 measured_speedup=report['cases'][base]['ms_per_step']/report['cases'][label]['ms_per_step'],
                 final_state_differences=differences,
                 reference_field_max_abs=scales,relative_l2=relative,
-                interpretation='reuse/fused/cell: same quadrature as reference and same acceptance; compact vs baseline: changed IB sampling')
+                interpretation='Execution/warm-start variants retain reference quadrature and acceptance; compact vs baseline changes IB sampling')
     return report
 
 
@@ -223,8 +230,8 @@ def main():
     parser.add_argument('--steps',type=int,default=10)
     parser.add_argument('--profile',action='store_true',help='separate subsequent replay with phase timings; excluded from speedup')
     parser.add_argument('--nonlinear-solvers',nargs='+',choices=('newton','anderson-newton'))
-    parser.add_argument('--execution-variants',nargs='+',choices=('baseline','reuse','compact','fused','cell'),
-                        help='adaptive CNAB: baseline/reuse/compact; fused/cell compare execution on compact quadrature; input checkpoint is read only')
+    parser.add_argument('--execution-variants',nargs='+',choices=('baseline','reuse','compact','fused','cell','shared','pressure-warm','shared-warm'),
+                        help='adaptive CNAB: compact controls shared stencils and same-step pressure warm starts; input checkpoint is read only')
     parser.add_argument('--output',required=True)
     args = parser.parse_args()
     report = benchmark(args.checkpoint,device=args.device,schemes=tuple(args.schemes),warmup=args.warmup,steps=args.steps,

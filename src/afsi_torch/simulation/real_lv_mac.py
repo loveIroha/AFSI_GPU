@@ -141,6 +141,8 @@ def run(*, case_config=None, device='cuda', output=None, resume=None, end_time=N
                     nonlinear_residual=info.get('nonlinear',{}).get('residual_norm'),
                     nonlinear_tolerance=info.get('nonlinear',{}).get('tolerance'),
                     final_evaluation_reused=info.get('nonlinear',{}).get('final_evaluation_reused'),
+                    stokes_pressure_warm_starts=info.get('nonlinear',{}).get('stokes_pressure_warm_starts'),
+                    stokes_pressure_warm_fallbacks=info.get('nonlinear',{}).get('stokes_pressure_warm_fallbacks'),
                     interaction_points=transfer.quadrature_summary()['point_count'] if hasattr(transfer,'quadrature_summary') else transfer.geometry.weights.numel())
 
     if not history or int(history[-1]['step']) != state.step:
@@ -216,9 +218,11 @@ def run(*, case_config=None, device='cuda', output=None, resume=None, end_time=N
         print(f'Interaction quadrature: {config.interaction_quadrature.mode}; '
               f'point density={config.interaction_quadrature.point_density:g}; '
               f'rule family={config.interaction_quadrature.rule_family}; '
-              f'transfer={config.interaction_quadrature.transfer_backend}',flush=True)
+              f'transfer={config.interaction_quadrature.transfer_backend}; '
+              f'stencil={config.interaction_quadrature.stencil_backend}',flush=True)
         if semiimplicit:
-            print(f'Nonlinear solver: {config.coupling.semiimplicit_solver}',flush=True)
+            print(f'Nonlinear solver: {config.coupling.semiimplicit_solver}; '
+                  f'Stokes pressure warm start={config.coupling.stokes_warm_start}',flush=True)
         for _ in range(state.step, steps):
             sample = (state.step+1) % config.output.log_every == 0 or state.step+1 == steps
             state, info = driver.step(state, diagnostics=sample)

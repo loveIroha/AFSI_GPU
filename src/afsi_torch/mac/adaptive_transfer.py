@@ -12,6 +12,7 @@ import numpy as np
 import torch
 from .compact_transfer import CompactFETransfer, CompactStencil, _prepare, _evaluate, _weighted, _assemble
 from ..p1 import tetra_rule
+from .shared_stencil import SharedStencil
 
 
 @dataclass(frozen=True)
@@ -22,6 +23,7 @@ class InteractionQuadratureOptions:
     max_points: int = 12000000
     rule_family: str = 'conical'
     transfer_backend: str = 'reference'
+    stencil_backend: str = 'component'
 
     def __post_init__(self):
         if self.mode not in ('fixed','adaptive'):
@@ -30,6 +32,10 @@ class InteractionQuadratureOptions:
             raise ValueError('interaction rule_family must be conical or xiao-gimbutas')
         if self.transfer_backend not in ('reference','fused','cell'):
             raise ValueError('adaptive transfer_backend must be reference, fused or cell')
+        if self.stencil_backend not in ('component','shared'):
+            raise ValueError('stencil_backend must be component or shared')
+        if self.stencil_backend=='shared' and (self.mode!='adaptive' or self.transfer_backend!='reference'):
+            raise ValueError('shared stencil requires adaptive quadrature with reference transfer execution')
         if isinstance(self.point_density,bool) or not isfinite(self.point_density) or self.point_density < 2:
             raise ValueError('interaction point_density must be finite and >=2')
         if type(self.max_order) is not int or not 2 <= self.max_order <= 22:
@@ -105,6 +111,11 @@ class AdaptiveStencil(CompactStencil):
     rule: InteractionRule
 
 
+@dataclass(frozen=True)
+class SharedAdaptiveStencil(SharedStencil):
+    rule: InteractionRule
+
+
 def _orders(x,cells,edges,dx,density):
     nodes = x[cells]
     hmax = torch.linalg.vector_norm(nodes[:,edges[:,0]]-nodes[:,edges[:,1]],dim=-1).amax(-1)
@@ -135,9 +146,15 @@ class AdaptiveP1Transfer(CompactFETransfer):
         if self.geometry.cells.shape[1]!=4:
             raise ValueError('adaptive interaction quadrature currently requires affine P1 tetrahedra')
         self.quadrature_options = quadrature_options or InteractionQuadratureOptions(mode='adaptive')
+        if self.quadrature_options.stencil_backend=='shared':
+            # Use identical subtraction/division as the component-specific
+            # origins, computing each face/center axis table only once.
+            self.origins = self.geometry.weights.new_tensor([self.grid.origin,
+                tuple(o+.5*h for o,h in zip(self.grid.origin,self.grid.spacing))])
         self._rules,self._last_rule = {},None
         self._last_prepared_rule = None
         self.quadrature_builds = 0
+        self._last_stencil_bytes = None
         device = self.geometry.weights.device
         # Groups change size as elements deform. Static-shape compilation here
         # would repeatedly compile and eventually hit Dynamo's cache limit.
@@ -209,12 +226,25 @@ class AdaptiveP1Transfer(CompactFETransfer):
         self.check_support(points)
         kernel = self.from_points(points)
         self._last_prepared_rule = rule
-        return AdaptiveStencil(kernel.base,kernel.phi,rule)
+        cls = SharedAdaptiveStencil if self.quadrature_options.stencil_backend=='shared' else AdaptiveStencil
+        stencil = cls(kernel.base,kernel.phi,rule)
+        self._last_stencil_bytes = stencil.storage_bytes
+        return stencil
+
+    def spread_grid(self,force_q,stencil):
+        if isinstance(stencil,SharedStencil) and not force_q.is_cuda:
+            stencil = stencil.expanded()
+        return super().spread_grid(force_q,stencil)
+
+    def gather_grid(self,velocity,stencil):
+        if isinstance(stencil,SharedStencil) and not velocity[0].is_cuda:
+            stencil = stencil.expanded()
+        return super().gather_grid(velocity,stencil)
 
     @torch.no_grad()
     def spread(self,nodal_force,stencil):
         self._nodal(nodal_force)
-        if not isinstance(stencil,AdaptiveStencil):
+        if not isinstance(stencil,(AdaptiveStencil,SharedAdaptiveStencil)):
             raise ValueError('adaptive transfer requires a stencil with its paired quadrature')
         coefficient,info = self.solve_mass(nodal_force,self._force_coefficient if self.warm_start else None)
         if self.warm_start:
@@ -232,7 +262,7 @@ class AdaptiveP1Transfer(CompactFETransfer):
         if (any(u.device!=g.weights.device or u.dtype!=g.weights.dtype for u in velocity)
                 or not self._finite_kernel(*velocity)):
             raise ValueError('invalid MAC interpolation field')
-        if not isinstance(stencil,AdaptiveStencil):
+        if not isinstance(stencil,(AdaptiveStencil,SharedAdaptiveStencil)):
             raise ValueError('adaptive transfer requires a stencil with its paired quadrature')
         if self.quadrature_options.transfer_backend!='reference':
             from .adaptive_cell import assemble_velocity
@@ -253,6 +283,8 @@ class AdaptiveP1Transfer(CompactFETransfer):
         rule = self._last_prepared_rule or self._last_rule
         return dict(mode='adaptive',point_density=self.quadrature_options.point_density,
                     transfer_backend=self.quadrature_options.transfer_backend,
+                    stencil_backend=self.quadrature_options.stencil_backend,
+                    stencil_storage_bytes=self._last_stencil_bytes,
                     rule_family=self.quadrature_options.rule_family,
                     points_per_order={n:len(table[1]) for n,table in self._rules.items()},
                     high_order_fallback='positive conical above order 8' if self.quadrature_options.rule_family=='xiao-gimbutas' else None,
