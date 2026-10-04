@@ -11,6 +11,8 @@
 
 新运行默认采用按变形后单元尺寸选择的自适应 Gaussian IB 积分点，参考 Gao/IBTK
 的积分阶数准则，保留用户本构、主动应力、载荷和边界参数。
+默认用正权 Xiao–Gimbutas 规则减少积分点；收敛点完全一致时复用已计算的耦合响应，
+继续验收残差、动量和散度。旧自适应检查点保留原 conical 规则。
 [积分点选择、PyTorch/CSR 实现与适用范围](../../docs/GAO_FE_ALIGNMENT.md)。
 旧检查点仍恢复原积分规则；可用 `--interaction-quadrature fixed` 做独立初态对照。
 
@@ -51,7 +53,7 @@ H–O 对应用户 UFL：只对 I1 做等容修正；I4f/I4s 不小于 1，I8fs 
 ```bash
 git pull --ff-only
 conda activate afsi-torch
-python -m pip install -e ".[test,geometry,mesh,fused]"
+python -m pip install -e ".[test,geometry,mesh,fused,quadrature]"
 ```
 
 默认目录 `/mnt/large2/gjh/realistic_left_ventricle` 包含：
@@ -72,7 +74,7 @@ sheet 文件名不同可在 `CONFIG.sheet_files` 或 JSON 中修改。
 只运行本次改动的检查：
 
 ```bash
-CUDA_VISIBLE_DEVICES=0 python -m pytest -q tests/test_adaptive_p1_transfer.py
+CUDA_VISIBLE_DEVICES=0 python -m pytest -q tests/test_mac_compact_quadrature.py
 ```
 
 先统计真实网格初始所需积分点；此命令不启动流体模拟：
@@ -88,7 +90,8 @@ python -u validation/inspect_real_lv_interaction.py \
 ```bash
 CUDA_VISIBLE_DEVICES=0 python -u demo/real_lv_fsi/run_mac.py \
   --device cuda --interaction-quadrature adaptive --dt 1e-4 \
-  --end-time 0.005 --output results/real_lv_adaptive_early
+  --ib-rule-family xiao-gimbutas \
+  --end-time 0.005 --output results/real_lv_compact_early
 ```
 
 先完成新路径的 0.005 s 启动和预热性能实验，再推进至 0.20 s，跨过此前 0.1685 s
@@ -177,3 +180,18 @@ CUDA_VISIBLE_DEVICES=0 python -u validation/benchmark_real_lv_schemes.py \
 流体 CN/AB2 位于 `mac/cnab.py`，PPM 位于 `mac/ppm.py`；
 `real_lv.py`/`holzapfel_ogden.py` 管理固体与载荷，
 `simulation/real_lv_mac.py` 管理输出与运行，`real_lv_checkpoint.py` 管理续算。
+
+用已有的短段检查点分别测量两项改动，无需重跑网格生成或长周期：
+
+```bash
+CUDA_VISIBLE_DEVICES=0 python -u validation/benchmark_real_lv_schemes.py \
+  --checkpoint results/real_lv_adaptive_early/checkpoint.npz \
+  --schemes cnab-semiimplicit --nonlinear-solvers anderson-newton \
+  --execution-variants baseline reuse compact \
+  --device cuda --warmup 5 --steps 20 \
+  --output results/real_lv_compact_performance/report.json
+```
+
+三组分别为原积分/重算、原积分/复用、紧凑积分/复用。报告记录点数、耗时、
+求解次数及最终状态差异，原检查点保持只读。紧凑积分保持多项式精度，但改变
+IB 核采样位置；其完整轨迹仍需验证，不能把点数减半当作整体速度翻倍。

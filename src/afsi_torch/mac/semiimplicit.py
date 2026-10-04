@@ -24,6 +24,8 @@ class MidpointProblem:
         self.base_rhs = driver.flow._right(state.velocity, advection, zeros)
         self.tangent = self.inverse_diagonal = self.last_evaluation = None
         self.evaluations = self.actions = self.assemblies = 0
+        self._last_y = None
+        self._last_stokes_call = None
 
     def validate(self, y):
         x = self.predicted+y
@@ -38,6 +40,8 @@ class MidpointProblem:
             raise ValueError('semi-implicit solid displacement exceeds grid-based limit; reduce dt')
 
     def evaluate(self, y):
+        # A failed evaluation must never leave an eligible older response.
+        self._last_y = None
         d = self.driver
         x = self.predicted+y
         force = d._force_geometry(x, self.half_time)
@@ -50,7 +54,24 @@ class MidpointProblem:
         self.evaluations += 1
         self.last_midpoint = x.detach()
         self.last_evaluation = (residual, flow, force, density, spread, interpolation, U)
+        self._last_y = y.detach().clone()
+        self._last_stokes_call = d.flow.stokes_calls
         return self.last_evaluation
+
+    def final_evaluation(self,y,*,reuse=True):
+        """Reuse only the exact last nonlinear point with untouched flow state.
+
+        Geometry validation and final residual/momentum/divergence acceptance
+        are still performed by the caller. This is not tolerance-based reuse.
+        """
+        same = (reuse and self._last_y is not None and
+                y.shape==self._last_y.shape and y.dtype==self._last_y.dtype and
+                y.device==self._last_y.device and
+                self.driver.flow.stokes_calls==self._last_stokes_call and
+                torch.equal(y,self._last_y))
+        if same:
+            return self.last_evaluation,True
+        return self.evaluate(y),False
 
     def residual(self, y):
         return self.evaluate(y)[0]
@@ -77,6 +98,9 @@ class MidpointProblem:
         diagonal = d.tangent.diagonal(T)
         self.inverse_diagonal = (1+self.dt**2/(4*d.flow.rho)*diagonal.abs().reshape_as(y)/d.lumped_mass).reciprocal()
         def action(v):
+            # Linear solves may reuse pressure/mass workspaces. Their response
+            # cannot be mistaken for an eligible nonlinear acceptance cache.
+            self._last_y = None
             with self.cold_linear_transfer():
                 force = torch.sparse.mm(T, v.reshape(-1,1)).reshape_as(v)
                 density, _ = d.transfer.spread(force, self.stencil)
@@ -144,7 +168,8 @@ class SemiImplicitMACIBStepper(MidpointMACIBStepper):
                 solver_info = dict(solver='newton',anderson_iterations=0,newton_iterations=result.iterations,
                                    newton_fallback=False,fallback_reason=None)
             problem.validate(result.x)
-            r, flow, half_force, density, spread, interpolation, U = problem.evaluate(result.x)
+            final,final_reused = problem.final_evaluation(result.x,reuse=self.options.reuse_final_evaluation)
+            r, flow, half_force, density, spread, interpolation, U = final
             norm = torch.linalg.vector_norm(r).item()
             acceptance = dict(stage='solid-midpoint-coupled-state', residual_norm=norm, tolerance=result.tolerance,
                 step=state.step+1, time_s=(state.step+1)*dt, unknown_dofs=state.x.numel(),
@@ -185,6 +210,7 @@ class SemiImplicitMACIBStepper(MidpointMACIBStepper):
                 **solver_info,
                 history=result.history, acceptance=acceptance, solid_tangent='assembled CSR nodal-force derivative',
                 unknown_dofs=state.x.numel(), residual_evaluations=problem.evaluations,
+                final_evaluation_reused=final_reused,
                 stokes_solves=self.flow.stokes_calls-start_stokes_calls,
                 tangent_assemblies=problem.assemblies, jacobian_actions=problem.actions,
                 preconditioner='diagonal mass/stiffness approximation; consistent mass retained in equations'))

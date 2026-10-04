@@ -47,6 +47,7 @@ Lengths, time, density, viscosity, and stress use **cm–g–s units**. The 2D c
 | External XDMF/HDF5 meshes, DOLFIN boundary tags, and cellwise fibers | [Mesh input API](docs/MESH_INPUT.md) |
 | Real-LV H–O/P1 model, three cycles, input files, and background execution | [Real LV demo](demo/real_lv_fsi/README.md) |
 | CN–AB2 fluid, midpoint FE/IB, wall Stokes residuals, startup and restart | [CN–AB2 method](docs/MAC_CNAB.md) |
+| Adaptive FE/IB quadrature, compact positive rules, and alignment limits | [Gao/FE alignment](docs/GAO_FE_ALIGNMENT.md) |
 | Left-ventricle MAC/FEM demos, restart, and VTK output | [Ideal LV demo](demo/ideal_lv_fsi/README.md) |
 | Two-dimensional valve demo and boundary conditions | [Ideal valve demo](demo/ideal_valve_fsi/README.md) |
 | AFSI `demo_337` material, loading, geometry, and reference differences | [AFSI337 alignment](docs/AFSI337_ALIGNMENT.md) |
@@ -120,9 +121,12 @@ The editable install makes changes to the Python source available immediately. T
 | `test` | pytest |
 | `io` | meshio and Matplotlib for additional I/O and plotting tools |
 | `mesh` | h5py and meshio for external XDMF/HDF5 input and mesh inspection |
+| `quadrature` | Basix 0.10.0 for compact positive tetrahedral reference tables in the real-LV demo |
 | `reference` | Optional Basix dependency for reference checks |
 
 The native PyTorch demos run without a FEniCSx, PETSc, AFSI, Docker, or Taichi installation. Separate native-AFSI comparison scripts require their own reference environment.
+
+For the imported real-LV demo, install `python -m pip install -e ".[test,mesh,fused,quadrature]"`. Its compact Xiao–Gimbutas rules preserve the selected polynomial degree while reducing interaction-point count. Basix constructs small reference tables during preparation; FE assembly, consistent-mass solves and IB transfer remain PyTorch/GPU computations. The midpoint solver reuses an unchanged converged response while retaining final acceptance checks. Different quadrature rules can change IB kernel sampling; use the [same-checkpoint comparison](docs/GAO_FE_ALIGNMENT.md) to measure both numerical differences and speed.
 
 ### 5. Verify the environment
 

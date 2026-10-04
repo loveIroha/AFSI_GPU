@@ -29,8 +29,11 @@ class MACCouplingOptions:
     cnab: CNABOptions = field(default_factory=CNABOptions)
     semiimplicit_solver: str = 'newton'
     anderson: AndersonOptions = field(default_factory=AndersonOptions)
+    reuse_final_evaluation: bool = True
 
     def __post_init__(self):
+        if type(self.reuse_final_evaluation) is not bool:
+            raise ValueError('reuse_final_evaluation must be a bool')
         if self.scheme not in ('explicit-lagged', 'explicit-rk3', 'implicit-newton', 'cnab-midpoint', 'cnab-semiimplicit'):
             raise ValueError('unsupported MAC coupling scheme')
         if not isinstance(self.cnab,CNABOptions):

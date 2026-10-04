@@ -20,10 +20,13 @@ class InteractionQuadratureOptions:
     point_density: float = 2.
     max_order: int = 8
     max_points: int = 12000000
+    rule_family: str = 'conical'
 
     def __post_init__(self):
         if self.mode not in ('fixed','adaptive'):
             raise ValueError('interaction quadrature mode must be fixed or adaptive')
+        if self.rule_family not in ('conical','xiao-gimbutas'):
+            raise ValueError('interaction rule_family must be conical or xiao-gimbutas')
         if isinstance(self.point_density,bool) or not isfinite(self.point_density) or self.point_density < 2:
             raise ValueError('interaction point_density must be finite and >=2')
         if type(self.max_order) is not int or not 2 <= self.max_order <= 22:
@@ -44,15 +47,33 @@ def _gauss_jacobi_unit(n, alpha):
     return (nodes+1)/2, vectors[0]**2/(alpha+1)
 
 
-def gaussian_tetra_rule(order, like):
-    """Positive degree 2*order-1 rule; Keast degree 5, otherwise conical Gauss.
+def gaussian_tetra_rule(order, like, family='conical'):
+    """Positive degree 2*order-1 rule, with selectable compact reference tables.
 
     This matches the IBTK degree criterion, not libMesh's exact point tables.
+    Compact Xiao--Gimbutas tables cover order<=8; higher orders fall back to
+    conical Gauss. The conical family retains its Keast degree-5 table.
     The Jacobi factors include the Duffy Jacobian, so P1 mass is integrated
     exactly even for order=2. Plain 2x2x2 Legendre/Duffy would not suffice.
     """
     if type(order) is not int or order < 2:
         raise ValueError('Gaussian order must be an integer >=2')
+    if family not in ('conical','xiao-gimbutas'):
+        raise ValueError('unknown Gaussian rule family')
+    if family=='xiao-gimbutas' and order<=8:
+        try:
+            import basix
+        except ImportError as exc:
+            raise ImportError('Compact quadrature needs: pip install -e ".[quadrature]"') from exc
+        q,w = basix.make_quadrature(basix.CellType.tetrahedron,2*order-1,
+                                  rule=basix.QuadratureType.xiao_gimbutas)
+        if (np.any(w<=0) or np.any(q<0) or np.any(q.sum(-1)>1+1e-13)
+                or not np.isfinite(q).all() or not np.isfinite(w).all()
+                or abs(w.sum()-1/6)>1e-13):
+            raise ValueError('invalid compact Gaussian quadrature table')
+        return like.new_tensor(q),like.new_tensor(w)
+    # Basix 0.10 tetrahedral XG tables stop at degree 15. Higher orders use
+    # the original positive conical rule at the full requested degree.
     if order==3:
         return tetra_rule(5,like)
     nodes,weights = zip(*(_gauss_jacobi_unit(order,a) for a in (2,1,0)))
@@ -93,8 +114,10 @@ def interaction_quadrature_plan(x,cells,grid,options):
     orders = _orders(x,cells,edges,min(grid.spacing),options.point_density)
     distinct,counts = torch.unique(orders,return_counts=True)
     histogram = {int(n):int(c) for n,c in zip(distinct.cpu().tolist(),counts.cpu().tolist())}
-    total = sum(count*(15 if n==3 else n**3) for n,count in histogram.items())
+    table_sizes = {n:len(gaussian_tetra_rule(n,x,options.rule_family)[1]) for n in histogram}
+    total = sum(count*table_sizes[n] for n,count in histogram.items())
     return dict(point_density=options.point_density,point_count=total,
+        rule_family=options.rule_family,points_per_order=table_sizes,
         gaussian_order_cell_counts=histogram,maximum_order=max(histogram),
         max_order=options.max_order,max_points=options.max_points,
         within_budget=max(histogram)<=options.max_order and total<=options.max_points,
@@ -148,7 +171,7 @@ class AdaptiveP1Transfer(CompactFETransfer):
             if not count:
                 continue
             if n not in self._rules:
-                q,w = gaussian_tetra_rule(n,x)
+                q,w = gaussian_tetra_rule(n,x,opt.rule_family)
                 self._rules[n] = torch.cat((1-q.sum(-1,keepdim=True),q),-1),w
             tables[n] = self._rules[n]
             total += count*len(tables[n][1])
@@ -218,6 +241,9 @@ class AdaptiveP1Transfer(CompactFETransfer):
     def quadrature_summary(self):
         rule = self._last_prepared_rule or self._last_rule
         return dict(mode='adaptive',point_density=self.quadrature_options.point_density,
+                    rule_family=self.quadrature_options.rule_family,
+                    points_per_order={n:len(table[1]) for n,table in self._rules.items()},
+                    high_order_fallback='positive conical above order 8' if self.quadrature_options.rule_family=='xiao-gimbutas' else None,
                     point_count=rule.point_count if rule else None,
                     gaussian_order_cell_counts=torch.bincount(rule.orders).cpu().tolist() if rule else [],
                     degree_selection='2*max(2,ceil(point_density*hmax/dx_min))-1',

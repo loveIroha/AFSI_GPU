@@ -22,12 +22,32 @@ quadrature_degree = 2*n - 1
 ```
 
 The default density parameter is 2. Each affine P1 cell uses its own order.
-Positive Gauss–Jacobi conical rules provide degree 2*n−1; order 3 uses the
-existing positive degree-5 Keast rule. These are valid degree-matched rules,
-not a copy of libMesh's exact point tables. Order 2 has eight points rather
-than the old degree-2 four-point rule; order 3 has 15 points; higher orders
-have n³ points. This criterion controls sampling but does not prove FSI
-stability or grid convergence.
+Fresh demos use positive Xiao–Gimbutas tetrahedral rules from Basix 0.10
+at degree 2*n−1. They use fewer points than the original conical construction:
+
+| Order n | Degree | Conical/Keast points | Compact points |
+| --- | --- | --- | --- |
+| 2 | 3 | 8 | 6 |
+| 3 | 5 | 15 | 14 |
+| 4 | 7 | 64 | 31 |
+| 5 | 9 | 125 | 57 |
+| 6 | 11 | 216 | 95 |
+| 7 | 13 | 343 | 146 |
+| 8 | 15 | 512 | 214 |
+
+Above degree 15 the compact family explicitly falls back to the original
+positive conical rule at the full requested degree. No degree/density clipping
+is introduced. The user's histogram (1634/123506/10268/22 cells at orders
+3/4/5/6) requires 4,438,928 compact points versus 9,217,146 old points.
+This 51.8% point reduction is not a measured whole-solver speedup.
+
+Basix generates only small reference tables during preparation; the numerical
+FE/IB operations remain PyTorch/GPU. Install `.[quadrature]` to enable this
+family. The conical family has no Basix dependency. The rules have the same
+polynomial exactness, but the regularized IB kernel is not a single polynomial
+over a cell, so compact sampling changes the discrete IB operators. Compare
+deformation, velocity and coupling errors as well as timing. The criterion
+does not prove FSI stability or grid convergence.
 
 ## GPU finite element implementation
 
@@ -64,7 +84,7 @@ solve; they are reselected on subsequent preparations.
 
 ## Configuration, inspection and comparison
 
-The fresh `demo/real_lv_fsi/run_mac.py` defaults to adaptive quadrature.
+The fresh `demo/real_lv_fsi/run_mac.py` defaults to adaptive compact quadrature.
 `RealLVConfig()` and legacy checkpoints retain fixed quadrature for backward
 compatibility. New configuration/checkpoints store the choice explicitly.
 
@@ -74,7 +94,8 @@ compatibility. New configuration/checkpoints store the choice explicitly.
     "mode": "adaptive",
     "point_density": 2.0,
     "max_order": 8,
-    "max_points": 12000000
+    "max_points": 12000000,
+    "rule_family": "xiao-gimbutas"
   }
 }
 ```
@@ -95,11 +116,13 @@ implications before raising it through `--config`; do not silently clip
 density. `max_order` supports up to 22 (degree 43).
 
 ```bash
-CUDA_VISIBLE_DEVICES=0 python -m pytest -q tests/test_adaptive_p1_transfer.py
+python -m pip install -e ".[test,mesh,fused,quadrature]"
+CUDA_VISIBLE_DEVICES=0 python -m pytest -q tests/test_mac_compact_quadrature.py
 
 CUDA_VISIBLE_DEVICES=0 python -u demo/real_lv_fsi/run_mac.py \
   --device cuda --interaction-quadrature adaptive --ib-point-density 2 \
-  --dt 1e-4 --end-time 0.005 --output results/real_lv_adaptive_early
+  --ib-rule-family xiao-gimbutas \
+  --dt 1e-4 --end-time 0.005 --output results/real_lv_compact_early
 ```
 
 For a controlled comparison, start a separate fresh run with identical
@@ -108,6 +131,44 @@ Compare point count, power error, deformation, velocity and wall-clock time.
 An old fixed-rule checkpoint resumes its fixed rule; it is not automatically
 converted to the new trajectory. The CSV reports interaction point counts;
 the JSON reports the last prepared stencil's order histogram.
+
+An existing adaptive checkpoint without `rule_family` restores its original
+conical rule. A normal resume does not silently convert its quadrature.
+Fresh demos choose compact explicitly; use `--ib-rule-family conical` for
+the previous family. Compare both using the embedded mesh in the existing
+checkpoint, without modifying it or producing a long simulation:
+
+```bash
+CUDA_VISIBLE_DEVICES=0 python -u validation/benchmark_real_lv_schemes.py \
+  --checkpoint results/real_lv_adaptive_early/checkpoint.npz \
+  --schemes cnab-semiimplicit --nonlinear-solvers anderson-newton \
+  --execution-variants baseline reuse compact \
+  --device cuda --warmup 5 --steps 20 \
+  --output results/real_lv_compact_performance/report.json
+```
+
+The variants respectively use conical/recompute, conical/reuse and compact/reuse.
+All start from the same saved x/u/p and AB2 history. Reports include point
+counts, final response reuse counts, warmed timings, solver counts, measured
+speedups and endpoint differences. The benchmark does not save a continuation.
+
+## Reusing the converged coupled response
+
+`coupling.reuse_final_evaluation` defaults to true. The most recent nonlinear
+residual evaluation retains its complete Stokes response, FE force, propagated
+force density, interpolated velocity and actual residual. Final acceptance
+can reuse that response only when the nodal unknown is exactly equal to a
+copied snapshot and no intervening Stokes/linear action has invalidated it.
+Different points, in-place mutations and overwritten workspaces cause a fresh
+evaluation. A linear Jacobian action always invalidates eligibility.
+
+Geometry validation, nonlinear tolerance, flow momentum/divergence checks,
+endpoint force and CFL screens remain active. No approximate-point reuse or
+tolerance relaxation is used. Reuse usually saves one Stokes solve and two
+mass solves per step. For the measured AA=2 non-startup pattern, the intended
+counts are Stokes 4→3, pressure 8→6 and mass 9→7; counts can differ with
+convergence and startup. Set `reuse_final_evaluation:false` in JSON for a
+recompute control. The CSV/nonlinear report records whether final reuse occurred.
 
 ## Remaining differences and validation limits
 

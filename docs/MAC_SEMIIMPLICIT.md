@@ -242,3 +242,21 @@ cover the unchanged active H–O equations with fewer fluid/mass solves, growth
 and invalid-probe fallback, stiff modal energy bounds, independent final
 acceptance, restart and actual benchmark counts. A small-case success is not
 a full real-mesh performance or three-cycle validation.
+
+## Compact quadrature and final response reuse
+
+The solver can reuse its last complete residual response when the accepted
+unknown is exactly the evaluated point and no intervening linear response
+has overwritten the fluid workspace. It still validates geometry, the actual
+nonlinear residual, Stokes momentum/divergence, and endpoint transport.
+Otherwise it recomputes the final response. This saves one Stokes response
+and two consistent-mass solves on eligible steps; reports record
+`final_evaluation_reused` and benchmarks count actual reuse.
+
+Fresh real-LV demos use compact positive Xiao–Gimbutas interaction rules;
+existing checkpoints retain their saved rule family. Compact rules have the
+same selected polynomial degree but different samples of the IB kernel.
+The [quadrature and execution comparison](GAO_FE_ALIGNMENT.md) documents
+installation and a read-only, same-checkpoint benchmark of `baseline`,
+`reuse`, and `compact`, including timing, nested-solve counts and field
+differences. Changing the quadrature does not establish nonlinear stability.

@@ -14,7 +14,7 @@ from afsi_torch.cycle_checkpoint import atomic_json
 
 @torch.no_grad()
 def benchmark(checkpoint,*,device='cuda',schemes=('explicit-rk3','implicit-newton'),warmup=2,steps=10,
-              nonlinear_solvers=None,initial_state='checkpoint'):
+              nonlinear_solvers=None,initial_state='checkpoint',execution_variants=None):
     if type(warmup) is not int or warmup<0 or type(steps) is not int or steps<1:
         raise ValueError('warmup must be nonnegative and steps positive')
     if initial_state not in ('checkpoint','reference'):
@@ -26,6 +26,11 @@ def benchmark(checkpoint,*,device='cuda',schemes=('explicit-rk3','implicit-newto
             or any(s not in ('newton','anderson-newton') for s in nonlinear_solvers) or tuple(schemes)!=('cnab-semiimplicit',)):
         raise ValueError('nonlinear_solvers requires only cnab-semiimplicit and distinct supported solvers')
     model,initial,settings,_,config = load_real_lv(checkpoint,device)
+    if execution_variants is not None:
+        if (not execution_variants or len(set(execution_variants))!=len(execution_variants)
+                or any(v not in ('baseline','reuse','compact') for v in execution_variants)
+                or tuple(schemes)!=('cnab-semiimplicit',) or config.interaction_quadrature.mode!='adaptive'):
+            raise ValueError('execution_variants requires adaptive cnab-semiimplicit and distinct baseline/reuse/compact')
     synchronize = lambda:torch.cuda.synchronize(device) if torch.device(device).type=='cuda' else None
     report = dict(checkpoint=str(checkpoint),device=str(device),torch=torch.__version__,
         gpu=torch.cuda.get_device_name(device) if torch.device(device).type=='cuda' else None,dt_s=config.time.dt,
@@ -34,13 +39,20 @@ def benchmark(checkpoint,*,device='cuda',schemes=('explicit-rk3','implicit-newto
         note='Performance comparison, not full-cycle stability validation. Reference mode starts at t=0 with undeformed solid and zero flow; checkpoint mode retains the saved physical state. Different schemes need not be numerically equivalent.',cases={})
     cases = [(s,s,None) for s in schemes] if nonlinear_solvers is None else [
         ('cnab-semiimplicit',f'cnab-semiimplicit/{s}',s) for s in nonlinear_solvers]
-    for scheme,label,solver in cases:
+    cases = [(scheme,label,solver,None) for scheme,label,solver in cases] if execution_variants is None else [
+        (scheme,f'{label}/{variant}',solver,variant) for scheme,label,solver in cases for variant in execution_variants]
+    final_states = {}
+    for scheme,label,solver,variant in cases:
         print(f'{label}: preparing and warming up...',flush=True)
         started = perf_counter()
         coupling = replace(config.coupling,scheme=scheme)
         if solver is not None:
             coupling = replace(coupling,semiimplicit_solver=solver)
-        driver = build_driver(model,dict(settings,coupling=asdict(coupling)),device)
+        quadrature = config.interaction_quadrature
+        if variant is not None:
+            coupling = replace(coupling,reuse_final_evaluation=variant!='baseline')
+            quadrature = replace(quadrature,rule_family='xiao-gimbutas' if variant=='compact' else 'conical')
+        driver = build_driver(model,dict(settings,coupling=asdict(coupling),interaction_quadrature=asdict(quadrature)),device)
         if initial_state=='reference':
             state = driver.initialize(model.mesh.X)
         else:
@@ -67,6 +79,7 @@ def benchmark(checkpoint,*,device='cuda',schemes=('explicit-rk3','implicit-newto
             driver.flow.stokes = stokes
         count,newton_iterations,gmres_iterations,stokes_iterations,tangent_assemblies,jacobian_actions,anderson_iterations,fallback_steps = 0,0,0,0,0,0,0,0
         measured_start = None
+        final_reuses = 0
         try:
             for _ in range(warmup):
                 state,_ = driver.step(state,diagnostics=False)
@@ -79,6 +92,7 @@ def benchmark(checkpoint,*,device='cuda',schemes=('explicit-rk3','implicit-newto
                 state,info = driver.step(state,diagnostics=False)
                 count+=1
                 nonlinear = info.get('nonlinear',{})
+                final_reuses += int(nonlinear.get('final_evaluation_reused',False))
                 newton_iterations+=nonlinear.get('newton_iterations',nonlinear.get('iterations',0))
                 anderson_iterations+=nonlinear.get('anderson_iterations',0)
                 fallback_steps+=int(nonlinear.get('newton_fallback',False))
@@ -94,9 +108,15 @@ def benchmark(checkpoint,*,device='cuda',schemes=('explicit-rk3','implicit-newto
                 stokes_iterations=stokes_iterations,
                 tangent_assemblies=tangent_assemblies,jacobian_actions=jacobian_actions,
                 nonlinear_solver=coupling.semiimplicit_solver if scheme=='cnab-semiimplicit' else None,
+                execution_variant=variant,final_evaluation_reuses=final_reuses,
+                reuse_final_evaluation=coupling.reuse_final_evaluation,
+                interaction_quadrature=driver.transfer.quadrature_summary() if hasattr(driver.transfer,'quadrature_summary') else dict(mode='fixed'),
                 anderson_iterations=anderson_iterations,newton_fallback_steps=fallback_steps,
                 outer_unknown_dofs=initial.x.numel() if scheme=='cnab-semiimplicit' else sum(v.numel() for v in initial.velocity) if scheme=='implicit-newton' else 0,
                 final_solid=model.diagnostics(state.x))
+            if execution_variants is not None:
+                final_states[label] = dict(x=state.x.clone(),pressure=state.pressure.clone(),
+                    force=state.force.clone(),velocity=tuple(u.clone() for u in state.velocity))
             print(f'{label}: {case["ms_per_step"]:.3f} ms/step; '
                   f'Stokes={counters["stokes_solves"]/count:.1f}/step, '
                   f'pressure solves={counters["pressure_solves"]/count:.1f}/step, '
@@ -117,6 +137,20 @@ def benchmark(checkpoint,*,device='cuda',schemes=('explicit-rk3','implicit-newto
     old,new = (report['cases'].get(f'cnab-semiimplicit/{s}',{}) for s in ('newton','anderson-newton'))
     if old.get('completed') and new.get('completed'):
         report['nonlinear_solver_speedup'] = old['ms_per_step']/new['ms_per_step']
+    if execution_variants is not None:
+        report['execution_comparisons'] = {}
+        for label in final_states:
+            base = label.rsplit('/',1)[0]+'/baseline'
+            if label==base or base not in final_states:
+                continue
+            reference,candidate = final_states[base],final_states[label]
+            differences = {f'{name}_max_abs':(candidate[name]-reference[name]).abs().max().item()
+                           for name in ('x','pressure','force')}
+            differences['velocity_max_abs'] = max((a-b).abs().max().item() for a,b in zip(candidate['velocity'],reference['velocity']))
+            report['execution_comparisons'][label] = dict(reference=base,
+                measured_speedup=report['cases'][base]['ms_per_step']/report['cases'][label]['ms_per_step'],
+                final_state_differences=differences,
+                interpretation='reuse: same quadrature and acceptance; compact: same polynomial degree, changed IB sampling')
     return report
 
 
@@ -130,10 +164,13 @@ def main():
     parser.add_argument('--warmup',type=int,default=2)
     parser.add_argument('--steps',type=int,default=10)
     parser.add_argument('--nonlinear-solvers',nargs='+',choices=('newton','anderson-newton'))
+    parser.add_argument('--execution-variants',nargs='+',choices=('baseline','reuse','compact'),
+                        help='adaptive CNAB: conical/recompute, conical/reuse, compact/reuse; input checkpoint is read only')
     parser.add_argument('--output',required=True)
     args = parser.parse_args()
     report = benchmark(args.checkpoint,device=args.device,schemes=tuple(args.schemes),warmup=args.warmup,steps=args.steps,
-                       nonlinear_solvers=args.nonlinear_solvers,initial_state=args.initial_state)
+                       nonlinear_solvers=args.nonlinear_solvers,initial_state=args.initial_state,
+                       execution_variants=args.execution_variants)
     path = Path(args.output)
     path.parent.mkdir(parents=True,exist_ok=True)
     atomic_json(path,report)
