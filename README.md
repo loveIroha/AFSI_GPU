@@ -10,7 +10,7 @@ AFSI_GPU is a research implementation of immersed-boundary fluid–structure int
 
 The project brings together three ideas: the cardiac and valve examples in [AFSI](https://github.com/loveIroha/afsi), the use of PyTorch tensors and sparse operators for GPU finite elements demonstrated by [torchcor](https://github.com/sagebei/torchcor), and a staggered-grid fluid solver suited to GPU stencil computation. The implementation provides:
 
-- **Nonlinear finite-element solids:** quadratic tetrahedra in 3D and quadratic triangles in 2D; anisotropic constitutive models, boundary tractions, and spring constraints.
+- **Nonlinear finite-element solids:** P1/P2 tetrahedra in 3D and quadratic triangles in 2D; anisotropic constitutive models, boundary tractions, and spring constraints.
 - **Two fluid discretizations:** MAC staggered finite differences with geometric multigrid, and a 3D Q2/Q1 finite-element Chorin solver with assembled CSR operators.
 - **GPU IB coupling:** quadrature-based force spreading and velocity interpolation for the MAC solvers, using an assembled consistent FE mass matrix and adjoint transfer operators.
 - **Execution optimizations:** compiled tensor kernels, Triton stencil and transfer kernels, reusable workspaces, CUDA Graph replay, and warm-started iterative solves.
@@ -29,9 +29,11 @@ The generated ideal left-ventricle demos follow the **loading-and-holding protoc
 
 The separate [real-LV demo](demo/real_lv_fsi/README.md) reads user-provided XDMF/HDF5 meshes and DOLFIN XML directions. It uses a supplied H–O variant, radial basal constraints and 0.8 s periodic loading; it is distinct from the generated `demo_337` cases. Patient input files are not distributed. Full GPU trajectory validation is pending.
 
+The real-LV demo defaults to **CN–AB2 with midpoint FE/IB coupling** (`--coupling cnab-midpoint`), following the time discretization of Gao and Griffith–Luo: CN viscosity, AB2 convection, predicted half-step geometry/force, and an average-velocity structural update with predictor/corrector startup. Its wall Stokes solver checks actual momentum and divergence residuals; checkpoints preserve AB2 history. The GPU path reuses compact IB, consistent CSR mass, compiled solid kernels and graph multigrid. Its monotone parabolic reconstruction and pressure-Schur iteration are documented implementation choices rather than exact copies of IBAMR's PPM/FGMRES. See the [CN–AB2 method guide](docs/MAC_CNAB.md).
+
 The real-LV case also provides optional **backward-Euler coupled Newton stepping** (`--coupling implicit-newton`): new-time fluid transport and FE force, an assembled CSR H–O tangent, and pressure elimination by multigrid. IB transfer geometry is frozen within each step. It changes time integration and adds iterative-solve cost; full-scale GPU performance and trajectory validation are pending. See the [implicit coupling guide](docs/MAC_IMPLICIT.md).
 
-For lower per-step cost, `--coupling explicit-rk3` uses three projected RK3 fluid stages with the existing explicit FE/IB update. This reuses the optimized kernels and avoids coupled Newton solves; the complete FSI scheme remains first order and subject to explicit elastic stability limits. A same-checkpoint benchmark counts all nested pressure/mass solves. See the [RK3 method and performance experiment](docs/MAC_RK3.md).
+The comparison option `--coupling explicit-rk3` uses three projected RK3 fluid stages with the first-order explicit FE/IB update. A same-checkpoint benchmark counts nested pressure/mass solves for the supported time schemes. CN–AB2 still predicts elastic forces explicitly, so removing explicit viscosity restrictions does not establish full nonlinear FSI stability. See the [RK3 comparison guide](docs/MAC_RK3.md).
 
 Lengths, time, density, viscosity, and stress use **cm–g–s units**. The 2D case assumes unit out-of-plane thickness. Mesh generation runs on the CPU; with `--device cuda`, solid force evaluation, sparse mass solves, IB transfer, and fluid advancement use GPU tensors. Logging, mesh generation, convergence decisions, and file output still involve the host.
 
@@ -42,6 +44,7 @@ Lengths, time, density, viscosity, and stress use **cm–g–s units**. The 2D c
 | Public configuration API, parameter units, and project structure | [Configuration guide](docs/CONFIGURATION.md) |
 | External XDMF/HDF5 meshes, DOLFIN boundary tags, and cellwise fibers | [Mesh input API](docs/MESH_INPUT.md) |
 | Real-LV H–O/P1 model, three cycles, input files, and background execution | [Real LV demo](demo/real_lv_fsi/README.md) |
+| CN–AB2 fluid, midpoint FE/IB, wall Stokes residuals, startup and restart | [CN–AB2 method](docs/MAC_CNAB.md) |
 | Left-ventricle MAC/FEM demos, restart, and VTK output | [Ideal LV demo](demo/ideal_lv_fsi/README.md) |
 | Two-dimensional valve demo and boundary conditions | [Ideal valve demo](demo/ideal_valve_fsi/README.md) |
 | AFSI `demo_337` material, loading, geometry, and reference differences | [AFSI337 alignment](docs/AFSI337_ALIGNMENT.md) |

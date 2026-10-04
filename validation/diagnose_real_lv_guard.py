@@ -5,7 +5,7 @@ from pathlib import Path
 import sys
 import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]/'src'))
-from afsi_torch.transport import transport_numbers, coupling_policy, transport_violations, rk3_violations
+from afsi_torch.transport import transport_numbers, coupling_policy, transport_violations, rk3_violations, COURANT_LIMIT
 
 
 def diagnose(checkpoint):
@@ -42,16 +42,25 @@ def diagnose(checkpoint):
     scheme = settings.get('coupling', {}).get('scheme', 'explicit-lagged')
     implicit = scheme == 'implicit-newton'
     violations = transport_violations(numbers['courant'], numbers['advection_diffusion_number'],numbers['viscous_number'])
+    if implicit:
+        triggered = []
+    elif scheme == 'cnab-midpoint':
+        triggered = ['courant'] if numbers['courant'] > COURANT_LIMIT else []
+    elif scheme == 'explicit-rk3':
+        triggered = rk3_violations(numbers['courant'],numbers['viscous_number'])
+    else:
+        triggered = violations
     return dict(checkpoint=str(Path(checkpoint)), step=meta['step'], time_s=meta['time'],
                 attempted_next_step=meta['step']+1, dt=dt, rho=rho, mu=mu,
                 spacing_cm=spacing.tolist(), component_peaks=peaks,
                 **numbers, transport_policy=coupling_policy(scheme),
-                triggered=[] if implicit else rk3_violations(numbers['courant'],numbers['viscous_number']) if scheme=='explicit-rk3' else violations,
+                triggered=triggered,
                 explicit_screen_triggered=violations,
                 legacy_cell_re_gt_one=numbers['cell_reynolds'] > 1.,
                 saved_failure=meta.get('progress', {}).get('failure'),
                 inspection='selected saved fields; no full checksum validation or advancement',
-                interpretation=('implicit transport diagnostics; explicit CFL/D/A vetoes do not apply; cell_Re monitors spatial resolution'
+                interpretation=('CN viscosity/explicit AB2 convection and midpoint elasticity; only convection CFL screened; elastic restrictions remain'
+                    if scheme=='cnab-midpoint' else 'implicit transport diagnostics; explicit CFL/D/A vetoes do not apply; cell_Re monitors spatial resolution'
                     if implicit else 'SSPRK3 stage CFL/D screen; A and cell_Re monitor only; explicit elastic stability still required'
                     if scheme=='explicit-rk3' else 'current transport screen; cell_Re monitors spatial resolution, not time stability; saved failure may use an older policy'))
 

@@ -31,8 +31,16 @@ def rk3_violations(courant, viscous_number):
             (('courant',courant,COURANT_LIMIT),('viscous',viscous_number,VISCOUS_LIMIT)) if value > limit]
 
 
+def cnab_policy():
+    return dict(name='cn-ab2-midpoint-fe-ib-v1',courant_limit=COURANT_LIMIT,
+                viscous_number_monitor_only=True,advection_diffusion_monitor_only=True,
+                cell_reynolds_monitor_only=True,
+                scope='implicit CN viscosity; explicit AB2 convection and midpoint elasticity; no unconditional FSI stability claim')
+
+
 def coupling_policy(scheme):
-    return implicit_policy() if scheme == 'implicit-newton' else rk3_policy() if scheme == 'explicit-rk3' else transport_policy()
+    return (cnab_policy() if scheme == 'cnab-midpoint' else implicit_policy() if scheme == 'implicit-newton'
+            else rk3_policy() if scheme == 'explicit-rk3' else transport_policy())
 
 
 def transport_policy():

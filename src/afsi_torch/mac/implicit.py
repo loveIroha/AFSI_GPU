@@ -13,6 +13,7 @@ from .coupling import MACIBStepper, MACState
 from .grid import zero_normal, convection, velocity_laplacian, divergence
 from ..nonlinear import (NewtonOptions, GMRESOptions, NonlinearFailure,
                          newton, normalized_linear_action)
+from .cnab import CNABOptions
 from ..transport import transport_numbers, implicit_policy
 
 
@@ -24,10 +25,13 @@ class MACCouplingOptions:
         linear_tolerance_fraction=.2,
         linear=GMRESOptions(rtol=1e-2, atol=1e-11, restart=12, max_iterations=120, check_every=3)))
     tangent_chunk_size: int = 2048
+    cnab: CNABOptions = field(default_factory=CNABOptions)
 
     def __post_init__(self):
-        if self.scheme not in ('explicit-lagged', 'explicit-rk3', 'implicit-newton'):
-            raise ValueError('coupling scheme must be explicit-lagged, explicit-rk3 or implicit-newton')
+        if self.scheme not in ('explicit-lagged', 'explicit-rk3', 'implicit-newton', 'cnab-midpoint'):
+            raise ValueError('unsupported MAC coupling scheme')
+        if not isinstance(self.cnab,CNABOptions):
+            raise ValueError('cnab must be CNABOptions')
         if not isinstance(self.newton, NewtonOptions):
             raise ValueError('coupling newton must be NewtonOptions')
         if type(self.tangent_chunk_size) is not int or self.tangent_chunk_size < 1:

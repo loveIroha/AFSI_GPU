@@ -40,11 +40,13 @@ def build_driver(model, settings, device):
     coupling = _decode(MACCouplingOptions, settings.get('coupling', {}))
     grid = lv_grid(settings)
     from .rk3 import MACRK3Flow
-    flow_class = MACRK3Flow if coupling.scheme == 'explicit-rk3' else MACFlow
+    from .cnab import MACCNABFlow, MidpointMACIBStepper
+    flow_class = MACCNABFlow if coupling.scheme == 'cnab-midpoint' else MACRK3Flow if coupling.scheme == 'explicit-rk3' else MACFlow
+    flow_options = dict(cnab_options=coupling.cnab) if coupling.scheme == 'cnab-midpoint' else {}
     flow = flow_class(grid, dt=settings['dt'], rho=settings['rho'], mu=settings['mu'],
                    device=device, pressure_backend=settings.get('pressure_backend','torch'),
                    execution_backend=backend, options=MGOptions(**settings.get('pressure_solver',{})),
-                   implicit_transport=coupling.scheme == 'implicit-newton')
+                   implicit_transport=coupling.scheme == 'implicit-newton',**flow_options)
     degree = settings['interaction_degree']
     if model.mesh.cells.shape[1] == 4:
         from ..p1 import prepare_p1
@@ -76,5 +78,6 @@ def build_driver(model, settings, device):
         if not isinstance(model, RealLVSolid):
             raise ValueError('implicit-newton currently requires the P1 H-O real-LV model')
         return ImplicitMACIBStepper(flow,transfer,model,coupling,solid if backend=='fused' else None)
-    return MACIBStepper(flow,transfer,solid.force,solid.validate,
+    stepper = MidpointMACIBStepper if coupling.scheme == 'cnab-midpoint' else MACIBStepper
+    return stepper(flow,transfer,solid.force,solid.validate,
         optimized=coupling_backend=='optimized',solid_execution=solid if backend=='fused' else None)

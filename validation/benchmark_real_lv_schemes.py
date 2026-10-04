@@ -17,7 +17,7 @@ def benchmark(checkpoint,*,device='cuda',schemes=('explicit-rk3','implicit-newto
     if type(warmup) is not int or warmup<0 or type(steps) is not int or steps<1:
         raise ValueError('warmup must be nonnegative and steps positive')
     if not schemes or len(set(schemes))!=len(schemes) or any(s not in
-            ('explicit-lagged','explicit-rk3','implicit-newton') for s in schemes):
+            ('explicit-lagged','explicit-rk3','implicit-newton','cnab-midpoint') for s in schemes):
         raise ValueError('choose distinct supported schemes')
     model,initial,settings,_,config = load_real_lv(checkpoint,device)
     synchronize = lambda:torch.cuda.synchronize(device) if torch.device(device).type=='cuda' else None
@@ -30,8 +30,9 @@ def benchmark(checkpoint,*,device='cuda',schemes=('explicit-rk3','implicit-newto
         started = perf_counter()
         coupling = replace(config.coupling,scheme=scheme)
         driver = build_driver(model,dict(settings,coupling=asdict(coupling)),device)
-        force_time = None if initial.step==0 else initial.time if scheme=='implicit-newton' else (initial.step-1)*config.time.dt
+        force_time = None if initial.step==0 else initial.time if scheme in ('implicit-newton','cnab-midpoint') else (initial.step-1)*config.time.dt
         state = replace(initial,force_time=force_time,
+                        previous_advection=initial.previous_advection if scheme==config.coupling.scheme else None,
                         force=torch.zeros_like(initial.x) if force_time is None else model.force(initial.x,force_time))
         counters = dict(pressure_solves=0,pressure_cycles=0,mass_solves=0,mass_iterations=0)
         pressure_solve,mass_solve = driver.flow.pressure_solver.solve,driver.transfer.solve_mass
@@ -44,7 +45,7 @@ def benchmark(checkpoint,*,device='cuda',schemes=('explicit-rk3','implicit-newto
             counters['mass_solves']+=1; counters['mass_iterations']+=info.iterations
             return value,info
         driver.flow.pressure_solver.solve,driver.transfer.solve_mass = pressure,mass
-        count,newton_iterations,gmres_iterations = 0,0,0
+        count,newton_iterations,gmres_iterations,stokes_iterations = 0,0,0,0
         measured_start = None
         try:
             for _ in range(warmup):
@@ -60,11 +61,13 @@ def benchmark(checkpoint,*,device='cuda',schemes=('explicit-rk3','implicit-newto
                 nonlinear = info.get('nonlinear',{})
                 newton_iterations+=nonlinear.get('iterations',0)
                 gmres_iterations+=sum(h.get('linear',{}).get('iterations',0) for h in nonlinear.get('history',[]))
+                stokes_iterations+=info.get('flow',{}).get('pressure',{}).get('schur_iterations',0)
             synchronize()
             elapsed = perf_counter()-measured_start
             case = dict(completed=True,setup_warmup_seconds=setup_seconds,elapsed_seconds=elapsed,
                 measured_steps=count,ms_per_step=elapsed/count*1000,end_time_s=state.time,
                 counts=dict(counters),newton_iterations=newton_iterations,gmres_iterations=gmres_iterations,
+                stokes_iterations=stokes_iterations,
                 final_solid=model.diagnostics(state.x))
             print(f'{scheme}: {case["ms_per_step"]:.3f} ms/step; '
                   f'pressure solves={counters["pressure_solves"]/count:.1f}/step, '
