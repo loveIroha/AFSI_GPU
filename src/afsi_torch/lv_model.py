@@ -80,6 +80,14 @@ class LVSolid:
         return (solid.guccione_force(x, self.geometry, fields, self.parameters)+
                 bd.pressure_force(x, self.endo, pressure)+bd.spring_force(x, self.base, self.beta))
 
+    def execution_factory(self):
+        from .mac.solid_execution import SolidExecution
+        return SolidExecution(self)
+
+    def pointwise_execution_factory(self):
+        from .mac.solid_pointwise import PointwiseSolidExecution
+        return PointwiseSolidExecution(self)
+
     def diagnostics(self, x):
         F = solid.deformation_gradient(x, self.geometry)
         J = determinant3(F)
@@ -90,4 +98,3 @@ class LVSolid:
             passive_energy_erg=(W*self.geometry.weights).sum().item(),
             spring_energy_erg=bd.spring_energy(x, self.base, self.beta).item(),
             max_total_displacement_cm=torch.linalg.vector_norm(x-self.mesh.X, dim=-1).max().item())
-

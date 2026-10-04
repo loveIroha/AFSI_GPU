@@ -1,8 +1,8 @@
 """CN--AB2 with nonlinear midpoint elasticity, reduced to FE node unknowns.
 
 IB geometry is frozen at the predicted midpoint. The actual force is evaluated
-at the solved midpoint; its assembled CSR derivative includes H-O, follower
-pressure and basal traction. Fluid pressure/velocity are eliminated with the
+at the solved midpoint; the solid adapter supplies its complete assembled CSR
+force derivative, including boundary loads. Fluid pressure/velocity are eliminated with the
 same no-slip CN Stokes solver, not a commuting or single-projection substitute.
 """
 from contextlib import contextmanager
@@ -137,9 +137,9 @@ class SemiImplicitMACIBStepper(MidpointMACIBStepper):
         solid = model if solid_execution is None else solid_execution
         super().__init__(flow, transfer, solid.force, solid.validate,
                          optimized=optimized, solid_execution=solid_execution)
-        from ..ho_tangent import HOTangentAssembler
+        from ..solids.contracts import make_tangent
         self.model, self.options = model, options
-        self.tangent = HOTangentAssembler(model, options.tangent_chunk_size)
+        self.tangent = make_tangent(model, options.tangent_chunk_size)
         self.lumped_mass = transfer.mass_action(torch.ones_like(model.mesh.X))
         if not torch.isfinite(self.lumped_mass).all() or (self.lumped_mass <= 0).any():
             raise ValueError('positive P1 row-sum mass required for the preconditioner')
@@ -206,9 +206,9 @@ class SemiImplicitMACIBStepper(MidpointMACIBStepper):
                 from ..transport import semiimplicit_policy
                 exc.diagnostics.update(semiimplicit_policy(),sampled_velocity=transport_sample)
             try:
-                from ..real_lv_diagnostics import coupled_failure_diagnostics
+                from ..solids.contracts import failure_diagnostics
                 exc.coupled_diagnostics = dict(getattr(exc, 'coupled_diagnostics', {}),
-                    local=coupled_failure_diagnostics(self.model, self.flow.grid, state, problem))
+                    local=failure_diagnostics(self.model, self.flow.grid, state, problem))
             except Exception as diagnosis_error:
                 exc.coupled_diagnostics = dict(getattr(exc, 'coupled_diagnostics', {}),
                     diagnostic_error=str(diagnosis_error))

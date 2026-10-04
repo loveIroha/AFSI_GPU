@@ -178,6 +178,14 @@ class RealLVSolid:
     def execution_factory(self):
         return HOExecution(self)
 
+    def tangent_factory(self,chunk_size=2048):
+        from .ho_tangent import HOTangentAssembler
+        return HOTangentAssembler(self,chunk_size)
+
+    def failure_diagnostics(self,grid,state,problem):
+        from .real_lv_diagnostics import coupled_failure_diagnostics
+        return coupled_failure_diagnostics(self,grid,state,problem)
+
 
 from .mac.solid_execution import SolidExecution
 

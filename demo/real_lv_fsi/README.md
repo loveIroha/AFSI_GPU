@@ -218,3 +218,51 @@ CUDA_VISIBLE_DEVICES=0 python -u validation/benchmark_real_lv_schemes.py \
 额外的短段回放，单独记录时间区间，不计入整体加速比。默认仍保留原执行路径；
 验证并实测后，新算例可用 `--ib-transfer-backend fused` 或 `cell` 选择。
 详细说明见 [自适应 FE/IB 执行优化](../../docs/ADAPTIVE_IB_EXECUTION.md)。
+
+## 完整三周期测试
+
+使用当前数值格式和已通过短段性能/一致性检查的共享模板、Triton 准备及
+Stokes 压力初值。从初态运行，保持用户 H–O、P1、128³、dt=1e-4；
+三周期总时长 2.4 s、24,000 步。该命令不降低容差或去掉有效性检查，
+也不启动每步性能分析。
+
+```bash
+git pull --ff-only
+conda activate afsi-torch
+CUDA_VISIBLE_DEVICES=0 python -m pytest -q \
+  tests/test_solid_api.py tests/test_cycle_completion.py \
+  tests/test_mac_semiimplicit.py tests/test_mac_implicit.py
+
+run_dir="results/real_lv_3cycles_$(date +%Y%m%d_%H%M%S)"
+mkdir -p "$run_dir"
+CUDA_VISIBLE_DEVICES=0 nohup /usr/bin/time \
+  -f 'elapsed_seconds=%e exit_code=%x' -o "$run_dir/runtime.txt" \
+  python -u demo/real_lv_fsi/run_mac.py \
+  --mesh-dir /mnt/large2/gjh/realistic_left_ventricle \
+  --device cuda --dt 1e-4 --fluid-cells 128 --cycles 3 \
+  --coupling cnab-semiimplicit --nonlinear-solver anderson-newton \
+  --interaction-quadrature adaptive --ib-rule-family xiao-gimbutas \
+  --ib-transfer-backend reference --ib-stencil-backend shared \
+  --ib-prepare-backend triton --stokes-warm-start \
+  --output "$run_dir" > "$run_dir/run.log" 2>&1 < /dev/null &
+echo "PID=$! output=$run_dir"
+tail -f "$run_dir/run.log"
+```
+
+在宿主机项目根目录执行；后台作业可在终端退出后继续运行。
+`tail` 的 Ctrl+C 只停止查看日志。默认保存 VTK、历史与检查点。
+不同终端查看或检查时，将 `$run_dir` 替换为打印出的实际目录。
+
+**进程结束后**检查完成状态和已有采样的有效性：
+
+```bash
+cat "$run_dir/runtime.txt"
+python validation/check_real_lv_cycles.py "$run_dir" --cycles 3
+```
+
+检查器要求退出码 0、`completed`、24,000 个接受步和终点 2.4 s，检查
+历史时钟、J/体积有限且正、采样非线性残差达到容差。输出周期端点样本，
+但不把“能跑完”解释为周期稳态、网格/时间收敛或患者物理验证。
+检查失败会返回非零退出码；运行输出保持只读。
+
+接口扩展与材料/边界替换见 [固体架构](../../docs/SOLID_API.md)。

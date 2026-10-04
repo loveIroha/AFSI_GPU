@@ -15,6 +15,7 @@ The project brings together three ideas: the cardiac and valve examples in [AFSI
 - **GPU IB coupling:** quadrature-based force spreading and velocity interpolation for the MAC solvers, using an assembled consistent FE mass matrix and adjoint transfer operators.
 - **Execution optimizations:** compiled tensor kernels, Triton stencil and transfer kernels, reusable workspaces, CUDA Graph replay, and warm-started iterative solves.
 - **Reusable case configuration:** Python configuration objects, JSON files, command-line overrides, recorded effective parameters, and restartable simulations.
+- **Replaceable 3D solid adapters:** material-independent force, assembled CSR tangent and validity interfaces; a composable P1 material/boundary implementation and a small runnable extension example.
 
 ### Included demos
 
@@ -44,6 +45,7 @@ Lengths, time, density, viscosity, and stress use **cm–g–s units**. The 2D c
 | Topic | Guide |
 | --- | --- |
 | Public configuration API, parameter units, and project structure | [Configuration guide](docs/CONFIGURATION.md) |
+| Solid interfaces, replaceable P1 materials/boundaries and migration limits | [Solid API](docs/SOLID_API.md) |
 | External XDMF/HDF5 meshes, DOLFIN boundary tags, and cellwise fibers | [Mesh input API](docs/MESH_INPUT.md) |
 | Real-LV H–O/P1 model, three cycles, input files, and background execution | [Real LV demo](demo/real_lv_fsi/README.md) |
 | CN–AB2 fluid, midpoint FE/IB, wall Stokes residuals, startup and restart | [CN–AB2 method](docs/MAC_CNAB.md) |

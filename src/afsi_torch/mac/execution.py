@@ -38,6 +38,9 @@ def build_driver(model, settings, device):
     from .implicit import MACCouplingOptions, ImplicitMACIBStepper
     from ..config import _decode
     coupling = _decode(MACCouplingOptions, settings.get('coupling', {}))
+    if coupling.scheme in ('implicit-newton','cnab-semiimplicit'):
+        from ..solids.contracts import require_tangent
+        require_tangent(model)
     grid = lv_grid(settings)
     from .rk3 import MACRK3Flow
     from .cnab import MACCNABFlow, MidpointMACIBStepper
@@ -62,21 +65,13 @@ def build_driver(model, settings, device):
         raise ValueError('adaptive interaction requires P1 CNAB coupling')
     if backend == 'fused':
         from .compact_transfer import CompactFETransfer
-        from .solid_execution import SolidExecution
         transfer_class = AdaptiveP1Transfer if adaptive else CompactFETransfer
         transfer_options = dict(quadrature_options=quadrature,fused=True) if adaptive else {}
         transfer = transfer_class(grid,geometry,warm_start=settings.get('warm_start',False),
                                      mass_backend=mass_backend,
                                      options=SolverOptions(**settings['mass_solver']) if 'mass_solver' in settings else None,**transfer_options)
-        if hasattr(model, 'execution_factory'):
-            if solid_backend != 'reference':
-                raise ValueError('custom solid model requires its own execution factory')
-            solid = model.execution_factory()
-        elif solid_backend=='pointwise':
-            from .solid_pointwise import PointwiseSolidExecution
-            solid = PointwiseSolidExecution(model)
-        else:
-            solid = SolidExecution(model)
+        from ..solids.contracts import make_execution
+        solid = make_execution(model,solid_backend,optimized=coupling_backend=='optimized')
     else:
         transfer_class = AdaptiveP1Transfer if adaptive else FETransfer
         transfer_options = dict(quadrature_options=quadrature,fused=False,mass_backend='pcg') if adaptive else {}
@@ -84,9 +79,6 @@ def build_driver(model, settings, device):
                               options=SolverOptions(**settings['mass_solver']) if 'mass_solver' in settings else None,**transfer_options)
         solid = model
     if coupling.scheme in ('implicit-newton','cnab-semiimplicit'):
-        from ..real_lv import RealLVSolid
-        if not isinstance(model, RealLVSolid):
-            raise ValueError('implicit elasticity currently requires the P1 H-O real-LV model')
         if coupling.scheme == 'cnab-semiimplicit':
             from .semiimplicit import SemiImplicitMACIBStepper
             return SemiImplicitMACIBStepper(flow,transfer,model,coupling,solid if backend=='fused' else None,

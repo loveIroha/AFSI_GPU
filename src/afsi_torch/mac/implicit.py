@@ -54,10 +54,10 @@ class MACCouplingOptions:
 class ImplicitMACIBStepper(MACIBStepper):
     def __init__(self, flow, transfer, model, options, solid_execution=None):
         super().__init__(flow, transfer, model.force, model.validate)
-        from ..ho_tangent import HOTangentAssembler
+        from ..solids.contracts import make_tangent
         from .execution import tensor_kernel
         self.model, self.options, self.solid_execution = model, options, solid_execution
-        self.tangent = HOTangentAssembler(model, options.tangent_chunk_size)
+        self.tangent = make_tangent(model, options.tangent_chunk_size)
         self._sizes = tuple(u.numel() for u in flow.grid.zeros(device='meta'))
         self._shapes = tuple(flow.grid.face_shape(c) for c in range(3))
         self._right = tensor_kernel(self._right, model.mesh.X.device)
