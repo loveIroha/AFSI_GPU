@@ -50,6 +50,7 @@ def accelerated_midpoint(problem, initial, options, acceleration, *, newton_solv
     x = initial.detach().clone()
     r = evaluate(x)
     initial_norm = norm(r)
+    current_norm = initial_norm
     tolerance = max(options.atol,options.rtol*initial_norm)
     best_x,best_norm = x.clone(),initial_norm
     history = [dict(iteration=0,method='anderson',residual_norm=initial_norm)]
@@ -57,8 +58,8 @@ def accelerated_midpoint(problem, initial, options, acceleration, *, newton_solv
     completed = 0
     reason = 'acceleration iteration budget reached'
     for _ in range(acceleration.max_iterations):
-        if norm(r) <= tolerance:
-            result = NewtonResult(x.clone(),True,norm(r),tolerance,completed,history)
+        if current_norm <= tolerance:
+            result = NewtonResult(x.clone(),True,current_norm,tolerance,completed,history)
             return result,dict(solver='anderson-newton',anderson_iterations=completed,
                 newton_iterations=0,newton_fallback=False,fallback_reason=None)
         step = -r
@@ -84,14 +85,15 @@ def accelerated_midpoint(problem, initial, options, acceleration, *, newton_solv
             reason = 'acceleration residual growth guard'
             break
         x,r = trial,candidate
+        current_norm = candidate_norm
         completed += 1
         history.append(dict(iteration=completed,method='anderson',residual_norm=candidate_norm))
         if candidate_norm < best_norm:
             best_x,best_norm = x.clone(),candidate_norm
         xs.append(x.clone()); rs.append(r.clone())
         xs,rs = xs[-acceleration.history_size-1:],rs[-acceleration.history_size-1:]
-    if norm(r) <= tolerance:
-        return NewtonResult(x.clone(),True,norm(r),tolerance,completed,history),dict(
+    if current_norm <= tolerance:
+        return NewtonResult(x.clone(),True,current_norm,tolerance,completed,history),dict(
             solver='anderson-newton',anderson_iterations=completed,newton_iterations=0,
             newton_fallback=False,fallback_reason=None)
     # Preserve the target derived from the ORIGINAL residual. Starting Newton

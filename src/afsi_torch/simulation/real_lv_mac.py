@@ -143,6 +143,8 @@ def run(*, case_config=None, device='cuda', output=None, resume=None, end_time=N
                     final_evaluation_reused=info.get('nonlinear',{}).get('final_evaluation_reused'),
                     stokes_pressure_warm_starts=info.get('nonlinear',{}).get('stokes_pressure_warm_starts'),
                     stokes_pressure_warm_fallbacks=info.get('nonlinear',{}).get('stokes_pressure_warm_fallbacks'),
+                    validation_evaluations=info.get('nonlinear',{}).get('validation_evaluations'),
+                    validation_reuses=info.get('nonlinear',{}).get('validation_reuses'),
                     interaction_points=transfer.quadrature_summary()['point_count'] if hasattr(transfer,'quadrature_summary') else transfer.geometry.weights.numel())
 
     if not history or int(history[-1]['step']) != state.step:
@@ -223,7 +225,8 @@ def run(*, case_config=None, device='cuda', output=None, resume=None, end_time=N
               f'prepare={config.interaction_quadrature.prepare_backend}',flush=True)
         if semiimplicit:
             print(f'Nonlinear solver: {config.coupling.semiimplicit_solver}; '
-                  f'Stokes pressure warm start={config.coupling.stokes_warm_start}',flush=True)
+                  f'Stokes pressure warm start={config.coupling.stokes_warm_start}; '
+                  f'validation reuse={config.coupling.reuse_validation}',flush=True)
         for _ in range(state.step, steps):
             sample = (state.step+1) % config.output.log_every == 0 or state.step+1 == steps
             state, info = driver.step(state, diagnostics=sample)

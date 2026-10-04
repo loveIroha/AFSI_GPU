@@ -6,13 +6,27 @@ force derivative, including boundary loads. Fluid pressure/velocity are eliminat
 same no-slip CN Stokes solver, not a commuting or single-projection substitute.
 """
 from contextlib import contextmanager
-from dataclasses import asdict, replace
+from dataclasses import asdict, replace, dataclass
 from math import isfinite
 import torch
 from .cnab import MidpointMACIBStepper, blend
 from .coupling import MACState
 from .grid import zero_normal, divergence
 from ..nonlinear import newton, normalized_linear_action, NonlinearFailure
+
+
+@dataclass(frozen=True)
+class _ValidatedMidpoint:
+    source: torch.Tensor
+    version: int
+    anchors: tuple
+    snapshot: torch.Tensor
+    midpoint: torch.Tensor
+    endpoint: torch.Tensor
+    mid_geometry: tuple | None
+    end_geometry: tuple | None
+    midpoint_version: int
+    endpoint_version: int
 
 
 class MidpointProblem:
@@ -28,24 +42,79 @@ class MidpointProblem:
         self._last_stokes_call = None
         self._pressure_guess = None
         self.pressure_warm_starts = self.pressure_warm_fallbacks = 0
+        self._validated = None
+        self.validation_evaluations = self.validation_reuses = 0
+
+    def _anchors(self):
+        tensors=(self.predicted,self.state.x)
+        if any(torch.is_inference(x) for x in tensors):
+            return None
+        return tuple((id(x),x._version) for x in tensors)
+
+    def _validation_cache(self,y,*,equal=False):
+        cache=self._validated
+        if not self.driver.options.reuse_validation or cache is None or torch.is_inference(y):
+            return None
+        if y.shape!=cache.snapshot.shape or y.dtype!=cache.snapshot.dtype or y.device!=cache.snapshot.device:
+            return None
+        if (self._anchors()!=cache.anchors or cache.midpoint._version!=cache.midpoint_version or
+                cache.endpoint._version!=cache.endpoint_version):
+            return None
+        if (cache.source is y and cache.version==y._version) or (equal and torch.equal(y,cache.snapshot)):
+            return cache
+        return None
 
     def validate(self, y):
+        if self._validation_cache(y) is not None:
+            self.validation_reuses += 1
+            return
+        self._validated=None
+        self.validation_evaluations += 1
         x = self.predicted+y
         self.driver.validate(x)
-        self.driver.validate(2*x-self.state.x)
+        execution=self.driver.solid_execution
+        checked=getattr(execution,'checked_geometry',lambda x:None)
+        mid_geometry=checked(x)
+        endpoint=2*x-self.state.x
+        self.driver.validate(endpoint)
+        end_geometry=checked(endpoint)
         transfer = self.driver.transfer
-        endpoint = 2*x-self.state.x
         points = transfer.validation_points(endpoint) if hasattr(transfer,'validation_points') else transfer.interaction_points(endpoint)
         transfer.check_support(points)
         fraction = ((2*x-2*self.state.x).abs()/x.new_tensor(self.driver.flow.grid.spacing)).max().item()
         if not isfinite(fraction) or fraction > self.driver.max_displacement:
             raise ValueError('semi-implicit solid displacement exceeds grid-based limit; reduce dt')
+        anchors=self._anchors()
+        if (self.driver.options.reuse_validation and anchors is not None and
+                not any(torch.is_inference(t) for t in (y,x,endpoint))):
+            self._validated=_ValidatedMidpoint(y,y._version,anchors,y.detach().clone(),x,endpoint,
+                                               mid_geometry,end_geometry,x._version,endpoint._version)
+
+    def validate_final(self,y):
+        # Solver results may be owned clones of the last checked iterate. Exact
+        # equality and untouched anchors/coordinates permit that final reuse.
+        cache=self._validation_cache(y,equal=True)
+        if cache is None:
+            return self.validate(y)
+        self.validation_reuses += 1
+        self._validated=replace(cache,source=y,version=y._version)
+
+    def endpoint(self,y):
+        cache=self._validation_cache(y)
+        if cache is None:
+            return 2*(self.predicted+y)-self.state.x
+        if cache.end_geometry is not None:
+            self.driver.solid_execution.remember_geometry(cache.endpoint,cache.end_geometry)
+        return cache.endpoint
 
     def evaluate(self, y):
         # A failed evaluation must never leave an eligible older response.
         self._last_y = None
         d = self.driver
-        x = self.predicted+y
+        cache=self._validation_cache(y)
+        x = self.predicted+y if cache is None else cache.midpoint
+        if cache is not None and cache.mid_geometry is not None:
+            d.solid_execution.remember_geometry(x,cache.mid_geometry)
         force = d._force_geometry(x, self.half_time)
         density, spread = d.transfer.spread(force, self.stencil)
         rhs = zero_normal(tuple(b+self.dt/d.flow.rho*f for b,f in zip(self.base_rhs,density)))
@@ -183,7 +252,7 @@ class SemiImplicitMACIBStepper(MidpointMACIBStepper):
                     options=self.options.newton)
                 solver_info = dict(solver='newton',anderson_iterations=0,newton_iterations=result.iterations,
                                    newton_fallback=False,fallback_reason=None)
-            problem.validate(result.x)
+            problem.validate_final(result.x)
             final,final_reused = problem.final_evaluation(result.x,reuse=self.options.reuse_final_evaluation)
             r, flow, half_force, density, spread, interpolation, U = final
             norm = torch.linalg.vector_norm(r).item()
@@ -197,7 +266,7 @@ class SemiImplicitMACIBStepper(MidpointMACIBStepper):
                 raise error
             # Retain the solved structural unknown. An extra unguarded Picard
             # update can amplify the very stiffness that this solve controls.
-            x_new = 2*(predicted+result.x)-state.x
+            x_new = problem.endpoint(result.x)
             force_new = self._force_geometry(x_new, (state.step+1)*dt)
             transport_sample = 'candidate endpoint; rejected if the screen fails'
             numbers = self.flow.check_transport(flow.velocity, density)
@@ -231,6 +300,7 @@ class SemiImplicitMACIBStepper(MidpointMACIBStepper):
                 stokes_pressure_warm_fallbacks=problem.pressure_warm_fallbacks,
                 stokes_solves=self.flow.stokes_calls-start_stokes_calls,
                 tangent_assemblies=problem.assemblies, jacobian_actions=problem.actions,
+                validation_evaluations=problem.validation_evaluations,validation_reuses=problem.validation_reuses,
                 preconditioner='diagonal mass/stiffness approximation; consistent mass retained in equations'))
         if diagnostics:
             average = blend(state.velocity, flow.velocity)

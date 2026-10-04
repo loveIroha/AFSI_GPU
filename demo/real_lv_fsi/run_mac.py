@@ -62,6 +62,8 @@ def main(argv=None):
                         help='adaptive reference transfer: per-component or shared face/center tables')
     parser.add_argument('--stokes-warm-start',action=argparse.BooleanOptionalAction,default=None,
                         help='reuse successful nonlinear pressures within each midpoint solve')
+    parser.add_argument('--reuse-validation',action=argparse.BooleanOptionalAction,default=None,
+                        help='reuse version-checked midpoint/endpoint geometry and final identical iterate checks')
     parser.add_argument('--ib-prepare-backend',choices=('torch','triton'),
                         help='shared adaptive templates: reference tensors or direct P1/Peskin CUDA preparation')
     parser.add_argument('--ib-point-density',type=float,help='adaptive Gaussian density parameter, >=2')
@@ -83,7 +85,7 @@ def main(argv=None):
                      args.fluid_origin, args.rho, args.mu, args.kappa, args.beta,
                      args.log_every, args.output_every, args.checkpoint_every, args.write_config)
         overrides += (args.interaction_quadrature,args.ib_point_density,args.ib_rule_family,args.ib_transfer_backend,
-                      args.ib_stencil_backend,args.stokes_warm_start,args.ib_prepare_backend)
+                      args.ib_stencil_backend,args.stokes_warm_start,args.ib_prepare_backend,args.reuse_validation)
         if any(v is not None for v in overrides) or args.reference or args.no_vtk:
             parser.error('resume restores settings; only device, output, end time/cycles, --resume-dt and --coupling may change')
         return run(device=args.device, output=args.output, resume=args.resume,
@@ -97,7 +99,8 @@ def main(argv=None):
                                  stencil_backend=args.ib_stencil_backend,prepare_backend=args.ib_prepare_backend).items() if v is not None}),
         coupling=replace(config.coupling,scheme=config.coupling.scheme if args.coupling is None else args.coupling,
             semiimplicit_solver=config.coupling.semiimplicit_solver if args.nonlinear_solver is None else args.nonlinear_solver,
-            stokes_warm_start=config.coupling.stokes_warm_start if args.stokes_warm_start is None else args.stokes_warm_start),
+            stokes_warm_start=config.coupling.stokes_warm_start if args.stokes_warm_start is None else args.stokes_warm_start,
+            reuse_validation=config.coupling.reuse_validation if args.reuse_validation is None else args.reuse_validation),
         source_dir=config.source_dir if args.mesh_dir is None else args.mesh_dir,
         time=TimeConfig(config.time.dt if args.dt is None else args.dt,
                         config.time.end_time if end_time is None else end_time),
@@ -112,6 +115,8 @@ def main(argv=None):
             output_every=args.output_every, checkpoint_every=args.checkpoint_every).items() if v is not None}))
     if config.coupling.stokes_warm_start and config.coupling.scheme!='cnab-semiimplicit':
         parser.error('--stokes-warm-start requires cnab-semiimplicit')
+    if config.coupling.reuse_validation and config.coupling.scheme!='cnab-semiimplicit':
+        parser.error('--reuse-validation requires cnab-semiimplicit')
     if args.write_config:
         save_config(args.write_config, config)
         return

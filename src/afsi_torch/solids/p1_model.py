@@ -138,6 +138,14 @@ class P1Execution:
 
     def force_with_geometry(self,x,time):
         self.model.check_coordinates(x)
-        geometry=self._geometry_kernel(x)
+        geometry=self.checked_geometry(x)
+        if geometry is None:
+            geometry=self._geometry_kernel(x)
         self._set_time(time)
         return self._force_kernel(x,geometry[0],self._time),geometry
+
+    def checked_geometry(self,x):
+        if (not torch.is_inference(x) and x is self._cached_x and
+                x._version==self._cached_version):
+            return self._cached_geometry
+        return None

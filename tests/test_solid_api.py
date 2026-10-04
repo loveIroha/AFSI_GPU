@@ -72,7 +72,7 @@ def test_generic_solid_uses_shared_coupler_and_csr_newton(real_case,device,schem
 @pytest.mark.parametrize('device',DEVICES)
 def test_generic_optimized_midpoint_matches_reference_and_linearization(real_case,device):
     m=block(device)
-    cfg=replace(real_case,coupling=MACCouplingOptions(scheme='cnab-semiimplicit',semiimplicit_solver='anderson-newton',stokes_warm_start=True),
+    cfg=replace(real_case,coupling=MACCouplingOptions(scheme='cnab-semiimplicit',semiimplicit_solver='anderson-newton',stokes_warm_start=True,reuse_validation=True),
         interaction_quadrature=InteractionQuadratureOptions(mode='adaptive',stencil_backend='shared',prepare_backend='triton'))
     a=build_driver(m,settings(cfg),device)
     opt=replace(cfg,execution=replace(cfg.execution,execution_backend='fused',coupling_backend='optimized'))

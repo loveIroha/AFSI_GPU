@@ -5,7 +5,7 @@ import triton.language as tl
 
 
 @triton.jit
-def _links(BASE,PHI,p,k,NY:tl.constexpr,NZ:tl.constexpr,NP:tl.constexpr,
+def _links(BASE,PHI,p,k,NY:tl.constexpr,NZ:tl.constexpr,NP,
            SHARED:tl.constexpr=False,C:tl.constexpr=0):
     ox,oy,oz = k//16,(k//4)%4,k%4
     sx:tl.constexpr = int(C!=0) if SHARED else 0

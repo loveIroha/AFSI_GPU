@@ -31,8 +31,11 @@ class MACCouplingOptions:
     anderson: AndersonOptions = field(default_factory=AndersonOptions)
     reuse_final_evaluation: bool = True
     stokes_warm_start: bool = False
+    reuse_validation: bool = False
 
     def __post_init__(self):
+        if type(self.reuse_validation) is not bool:
+            raise ValueError('reuse_validation must be a bool')
         if type(self.reuse_final_evaluation) is not bool:
             raise ValueError('reuse_final_evaluation must be a bool')
         if type(self.stokes_warm_start) is not bool:

@@ -35,12 +35,12 @@ class InteractionQuadratureOptions:
             raise ValueError('adaptive transfer_backend must be reference, fused or cell')
         if self.stencil_backend not in ('component','shared'):
             raise ValueError('stencil_backend must be component or shared')
-        if self.stencil_backend=='shared' and (self.mode!='adaptive' or self.transfer_backend!='reference'):
-            raise ValueError('shared stencil requires adaptive quadrature with reference transfer execution')
+        if self.stencil_backend=='shared' and (self.mode!='adaptive' or self.transfer_backend=='cell'):
+            raise ValueError('shared stencil requires adaptive quadrature and reference/fused transfer execution')
         if self.prepare_backend not in ('torch','triton'):
             raise ValueError('prepare_backend must be torch or triton')
         if self.prepare_backend=='triton' and self.stencil_backend!='shared':
-            raise ValueError('triton preparation requires shared adaptive reference stencils')
+            raise ValueError('triton preparation requires shared adaptive stencils')
         if isinstance(self.point_density,bool) or not isfinite(self.point_density) or self.point_density < 2:
             raise ValueError('interaction point_density must be finite and >=2')
         if type(self.max_order) is not int or not 2 <= self.max_order <= 22:
@@ -299,6 +299,8 @@ class AdaptiveP1Transfer(CompactFETransfer):
                     stencil_backend=self.quadrature_options.stencil_backend,
                     prepare_backend=self.quadrature_options.prepare_backend,
                     prepare_execution='triton' if self.quadrature_options.prepare_backend=='triton' and self.geometry.weights.is_cuda else 'torch',
+                    point_intermediates_materialized=(False if self.geometry.weights.is_cuda and self.quadrature_options.transfer_backend=='fused' and self.quadrature_options.stencil_backend=='shared'
+                        else True if not self.geometry.weights.is_cuda or self.quadrature_options.transfer_backend=='reference' else None),
                     stencil_storage_bytes=self._last_stencil_bytes,
                     rule_family=self.quadrature_options.rule_family,
                     points_per_order={n:len(table[1]) for n,table in self._rules.items()},

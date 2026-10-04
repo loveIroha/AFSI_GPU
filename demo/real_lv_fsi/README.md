@@ -266,3 +266,9 @@ python validation/check_real_lv_cycles.py "$run_dir" --cycles 3
 检查失败会返回非零退出码；运行输出保持只读。
 
 接口扩展与材料/边界替换见 [固体架构](../../docs/SOLID_API.md)。
+
+共享模板可进一步融合 FE 点值/传播及插值/节点组装，省去完整点数组。
+在上述命令中改为 `--ib-transfer-backend fused`，并加上
+`--reuse-validation` 可启用检查结果复用。物理参数、积分规则及验收容差
+保持原值。新路径需先做真机等价性和耗时对照，见
+[减少显存读写与重复检查](../../docs/SHARED_FE_FUSION.md)。

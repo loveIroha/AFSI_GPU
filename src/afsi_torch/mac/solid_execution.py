@@ -105,7 +105,9 @@ class SolidExecution:
         m=self.model
         if x.shape!=m.mesh.X.shape or x.device!=m.mesh.X.device or x.dtype!=m.mesh.X.dtype:
             raise ValueError('x must match the prepared mesh shape, device and dtype')
-        geometry=self._geometry_kernel(x)
+        geometry=self.checked_geometry(x)
+        if geometry is None:
+            geometry=self._geometry_kernel(x)
         self._set_loads(time)
         F,endo,_=geometry
         return self._force_kernel(x,F,endo,self.loads),geometry
@@ -114,3 +116,9 @@ class SolidExecution:
         self._cached_x=x
         self._cached_version=None if torch.is_inference(x) else x._version
         self._cached_geometry=geometry
+
+    def checked_geometry(self,x):
+        if (not torch.is_inference(x) and x is self._cached_x and
+                x._version==self._cached_version):
+            return self._cached_geometry
+        return None

@@ -57,7 +57,7 @@ def benchmark(checkpoint,*,device='cuda',schemes=('explicit-rk3','implicit-newto
     model,initial,settings,_,config = load_real_lv(checkpoint,device)
     if execution_variants is not None:
         if (not execution_variants or len(set(execution_variants))!=len(execution_variants)
-                or any(v not in ('baseline','reuse','compact','fused','cell','shared','pressure-warm','shared-warm','prepare-warm') for v in execution_variants)
+                or any(v not in ('baseline','reuse','compact','fused','cell','shared','pressure-warm','shared-warm','prepare-warm','shared-fused-warm','shared-fused-checked') for v in execution_variants)
                 or tuple(schemes)!=('cnab-semiimplicit',) or config.interaction_quadrature.mode!='adaptive'):
             raise ValueError('execution_variants requires adaptive cnab-semiimplicit and distinct supported variants')
     if profile and tuple(schemes)!=('cnab-semiimplicit',):
@@ -83,12 +83,13 @@ def benchmark(checkpoint,*,device='cuda',schemes=('explicit-rk3','implicit-newto
         quadrature = config.interaction_quadrature
         if variant is not None:
             coupling = replace(coupling,reuse_final_evaluation=variant!='baseline',
-                stokes_warm_start=variant in ('pressure-warm','shared-warm','prepare-warm'))
+                stokes_warm_start=variant in ('pressure-warm','shared-warm','prepare-warm','shared-fused-warm','shared-fused-checked'),
+                reuse_validation=variant=='shared-fused-checked')
             quadrature = replace(quadrature,
                 rule_family='conical' if variant in ('baseline','reuse') else 'xiao-gimbutas',
-                transfer_backend=variant if variant in ('fused','cell') else 'reference',
-                stencil_backend='shared' if variant in ('shared','shared-warm','prepare-warm') else 'component',
-                prepare_backend='triton' if variant=='prepare-warm' else 'torch')
+                transfer_backend='fused' if variant in ('shared-fused-warm','shared-fused-checked') else variant if variant in ('fused','cell') else 'reference',
+                stencil_backend='shared' if variant in ('shared','shared-warm','prepare-warm','shared-fused-warm','shared-fused-checked') else 'component',
+                prepare_backend='triton' if variant in ('prepare-warm','shared-fused-warm','shared-fused-checked') else 'torch')
         driver = build_driver(model,dict(settings,coupling=asdict(coupling),interaction_quadrature=asdict(quadrature)),device)
         if initial_state=='reference':
             state = driver.initialize(model.mesh.X)
@@ -118,6 +119,7 @@ def benchmark(checkpoint,*,device='cuda',schemes=('explicit-rk3','implicit-newto
         measured_start = None
         final_reuses = 0
         pressure_warm_starts = pressure_warm_fallbacks = 0
+        validation_evaluations = validation_reuses = 0
         try:
             for _ in range(warmup):
                 state,_ = driver.step(state,diagnostics=False)
@@ -133,6 +135,8 @@ def benchmark(checkpoint,*,device='cuda',schemes=('explicit-rk3','implicit-newto
                 final_reuses += int(nonlinear.get('final_evaluation_reused',False))
                 pressure_warm_starts += nonlinear.get('stokes_pressure_warm_starts',0)
                 pressure_warm_fallbacks += nonlinear.get('stokes_pressure_warm_fallbacks',0)
+                validation_evaluations += nonlinear.get('validation_evaluations',0)
+                validation_reuses += nonlinear.get('validation_reuses',0)
                 newton_iterations+=nonlinear.get('newton_iterations',nonlinear.get('iterations',0))
                 anderson_iterations+=nonlinear.get('anderson_iterations',0)
                 fallback_steps+=int(nonlinear.get('newton_fallback',False))
@@ -152,6 +156,7 @@ def benchmark(checkpoint,*,device='cuda',schemes=('explicit-rk3','implicit-newto
                 reuse_final_evaluation=coupling.reuse_final_evaluation,
                 stokes_warm_start=coupling.stokes_warm_start,
                 stokes_pressure_warm_starts=pressure_warm_starts,stokes_pressure_warm_fallbacks=pressure_warm_fallbacks,
+                reuse_validation=coupling.reuse_validation,validation_evaluations=validation_evaluations,validation_reuses=validation_reuses,
                 interaction_quadrature=driver.transfer.quadrature_summary() if hasattr(driver.transfer,'quadrature_summary') else dict(mode='fixed'),
                 anderson_iterations=anderson_iterations,newton_fallback_steps=fallback_steps,
                 outer_unknown_dofs=initial.x.numel() if scheme=='cnab-semiimplicit' else sum(v.numel() for v in initial.velocity) if scheme=='implicit-newton' else 0,
@@ -201,7 +206,9 @@ def benchmark(checkpoint,*,device='cuda',schemes=('explicit-rk3','implicit-newto
         report['execution_comparisons'] = {}
         for label in final_states:
             prefix = label.rsplit('/',1)[0]
-            base = prefix+('/shared-warm' if label.endswith('/prepare-warm') else
+            base = prefix+('/prepare-warm' if label.endswith('/shared-fused-warm') else
+                '/shared-fused-warm' if label.endswith('/shared-fused-checked') else
+                '/shared-warm' if label.endswith('/prepare-warm') else
                 '/compact' if label.endswith(('/fused','/cell','/shared','/pressure-warm','/shared-warm')) else '/baseline')
             if label==base or base not in final_states:
                 continue
@@ -237,7 +244,7 @@ def main():
     parser.add_argument('--steps',type=int,default=10)
     parser.add_argument('--profile',action='store_true',help='separate subsequent replay with phase timings; excluded from speedup')
     parser.add_argument('--nonlinear-solvers',nargs='+',choices=('newton','anderson-newton'))
-    parser.add_argument('--execution-variants',nargs='+',choices=('baseline','reuse','compact','fused','cell','shared','pressure-warm','shared-warm','prepare-warm'),
+    parser.add_argument('--execution-variants',nargs='+',choices=('baseline','reuse','compact','fused','cell','shared','pressure-warm','shared-warm','prepare-warm','shared-fused-warm','shared-fused-checked'),
                         help='adaptive CNAB: compact controls shared stencils and same-step pressure warm starts; input checkpoint is read only')
     parser.add_argument('--output',required=True)
     args = parser.parse_args()

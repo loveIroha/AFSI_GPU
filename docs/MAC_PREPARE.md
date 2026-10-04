@@ -91,7 +91,9 @@ InteractionQuadratureOptions(
     prepare_backend='triton')
 ```
 
-直接准备要求共享模板及自适应 P1 参考传播路径；不与实验性 fused/cell 传播组合。
+直接准备要求共享模板及自适应 P1。原 `reference` 传递路径保持可用；
+`fused + shared` 可通过新的共享 FE/IB 内核省去完整点数组，详见
+[融合传递与检查复用](SHARED_FE_FUSION.md)。`cell` 归约仍要求 component 模板。
 新检查点保存准备后端；普通续算恢复配置，不能用命令行覆盖该字段。
 旧检查点缺少 `prepare_backend` 时仍使用 `torch`。
 
