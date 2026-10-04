@@ -75,7 +75,8 @@ def run(*, case_config=None, device='cuda', output=None, resume=None, end_time=N
         settings = dict(dt=config.time.dt, fluid_shape=config.fluid.shape,
                         fluid_lengths=config.fluid.lengths, fluid_origin=config.fluid.origin,
                         rho=config.fluid.rho, mu=config.fluid.mu,
-                        interaction_degree=config.interaction_degree,coupling=asdict(config.coupling),
+                        interaction_degree=config.interaction_degree,interaction_quadrature=asdict(config.interaction_quadrature),
+                        coupling=asdict(config.coupling),
                         pressure_solver=asdict(config.pressure_solver), mass_solver=asdict(config.mass_solver),
                         **asdict(config.execution))
         progress = dict(elapsed_seconds=0., segments=[], summary={})
@@ -138,7 +139,8 @@ def run(*, case_config=None, device='cuda', output=None, resume=None, end_time=N
                     residual_evaluations=info.get('nonlinear',{}).get('residual_evaluations'),
                     stokes_solves=info.get('nonlinear',{}).get('stokes_solves'),
                     nonlinear_residual=info.get('nonlinear',{}).get('residual_norm'),
-                    nonlinear_tolerance=info.get('nonlinear',{}).get('tolerance'))
+                    nonlinear_tolerance=info.get('nonlinear',{}).get('tolerance'),
+                    interaction_points=transfer.quadrature_summary()['point_count'] if hasattr(transfer,'quadrature_summary') else transfer.geometry.weights.numel())
 
     if not history or int(history[-1]['step']) != state.step:
         history.append(row())
@@ -165,8 +167,10 @@ def run(*, case_config=None, device='cuda', output=None, resume=None, end_time=N
                       direction_location='cell-DG0; unmodified fiber/sheet',
                       solid_quadrature_degree=config.solid_degree,
                       solid_quadrature_points_per_cell=model.geometry.values.shape[0],
-                      interaction_quadrature_degree=config.interaction_degree,
-                      interaction_points=transfer.geometry.weights.numel(),
+                      interaction_quadrature_degree=None if config.interaction_quadrature.mode=='adaptive' else config.interaction_degree,
+                      reference_mass_quadrature_degree=config.interaction_degree,
+                      interaction_points=transfer.quadrature_summary()['point_count'] if hasattr(transfer,'quadrature_summary') else transfer.geometry.weights.numel(),
+                      interaction_quadrature=transfer.quadrature_summary() if hasattr(transfer,'quadrature_summary') else dict(mode='fixed'),
                       fluid_pressure_cells=state.pressure.numel(),
                       fluid_velocity_dofs=sum(v.numel() for v in state.velocity),
                       fluid_spacing_cm=grid.spacing, viscous_number=flow.viscous_number,
@@ -201,12 +205,15 @@ def run(*, case_config=None, device='cuda', output=None, resume=None, end_time=N
             writer.write(state)
         save('running')
         print(f'Real LV H-O/P1: {device}, grid={grid.shape}, nodes={len(state.x)}, '
-              f'cells={len(model.mesh.cells)}, IB points={transfer.geometry.weights.numel()}, '
+              f'cells={len(model.mesh.cells)}, IB points={history[-1]["interaction_points"]}, '
               f'dt={config.time.dt:g}; steps {state.step}->{steps}', flush=True)
         print(f'kappa={config.material.kappa:g}, beta={config.beta:g}; '
               f'execution={config.execution.execution_backend}, pressure={flow.pressure_solver.backend}, '
               f'mass={config.execution.mass_backend}, coupling={config.execution.coupling_backend}', flush=True)
         print(f'Time scheme: {config.coupling.scheme}', flush=True)
+        print(f'Constitutive law: supplied H-O UFL, active stretch factor={config.material.active_stretch_slope:g}',flush=True)
+        print(f'Interaction quadrature: {config.interaction_quadrature.mode}; '
+              f'point density={config.interaction_quadrature.point_density:g}',flush=True)
         if semiimplicit:
             print(f'Nonlinear solver: {config.coupling.semiimplicit_solver}',flush=True)
         for _ in range(state.step, steps):

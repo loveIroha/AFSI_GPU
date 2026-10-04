@@ -29,7 +29,10 @@ class MidpointProblem:
         x = self.predicted+y
         self.driver.validate(x)
         self.driver.validate(2*x-self.state.x)
-        self.driver.transfer.check_support(self.driver.transfer.interaction_points(2*x-self.state.x))
+        transfer = self.driver.transfer
+        endpoint = 2*x-self.state.x
+        points = transfer.validation_points(endpoint) if hasattr(transfer,'validation_points') else transfer.interaction_points(endpoint)
+        transfer.check_support(points)
         fraction = ((2*x-2*self.state.x).abs()/x.new_tensor(self.driver.flow.grid.spacing)).max().item()
         if not isfinite(fraction) or fraction > self.driver.max_displacement:
             raise ValueError('semi-implicit solid displacement exceeds grid-based limit; reduce dt')

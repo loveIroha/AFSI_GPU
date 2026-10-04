@@ -11,6 +11,7 @@ from .config import (TimeConfig, FluidConfig, OutputConfig, LVExecutionConfig,
                      MGOptions, mass_options, validate_graph_options)
 from .fluid.solvers import SolverOptions
 from .mac.implicit import MACCouplingOptions
+from .mac.adaptive_transfer import InteractionQuadratureOptions
 
 
 @dataclass(frozen=True)
@@ -32,6 +33,7 @@ class RealLVConfig:
     loads: RealLVLoads = field(default_factory=RealLVLoads)
     solid_degree: int = 5
     interaction_degree: int = 2
+    interaction_quadrature: InteractionQuadratureOptions = field(default_factory=InteractionQuadratureOptions)
     pressure_solver: MGOptions = field(default_factory=MGOptions)
     mass_solver: SolverOptions = field(default_factory=mass_options)
     execution: LVExecutionConfig = field(default_factory=lambda: LVExecutionConfig(
@@ -64,6 +66,11 @@ class RealLVConfig:
             raise ValueError('real LV uses the compiled H-O kernel, not Guccione pointwise execution')
         if not isinstance(self.coupling, MACCouplingOptions):
             raise ValueError('coupling must be MACCouplingOptions')
+        if not isinstance(self.interaction_quadrature,InteractionQuadratureOptions):
+            raise ValueError('interaction_quadrature must be InteractionQuadratureOptions')
+        if (self.interaction_quadrature.mode=='adaptive' and self.coupling.scheme not in
+                ('cnab-midpoint','cnab-semiimplicit')):
+            raise ValueError('adaptive quadrature currently requires cnab-midpoint or cnab-semiimplicit')
         if self.coupling.scheme not in ('implicit-newton','cnab-midpoint','cnab-semiimplicit'):
             self.fluid.validate_time(self.time)
         validate_graph_options(self)

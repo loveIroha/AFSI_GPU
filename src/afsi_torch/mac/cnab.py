@@ -210,7 +210,8 @@ class MidpointMACIBStepper(MACIBStepper):
             # Evaluate geometry once; aggregate validity/support/force checks
             # into a single scalar read, using the existing compiled kernels.
             force,geometry = self.solid_execution.force_with_geometry(x,time)
-            points = self.transfer.evaluate(x).reshape(-1,3)
+            points = (self.transfer.validation_points(x) if hasattr(self.transfer,'validation_points') else
+                      self.transfer.evaluate(x).reshape(-1,3))
             valid,support,finite = self._force_checks(geometry[-1],force,points).tolist()
             if not valid:
                 raise ValueError('invalid midpoint/end-point solid geometry')

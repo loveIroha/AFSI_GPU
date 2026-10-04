@@ -8,6 +8,7 @@ from afsi_torch.real_lv import RealLVConfig
 from afsi_torch.config import TimeConfig, FluidConfig, OutputConfig, LVExecutionConfig, load_config, save_config
 from afsi_torch.holzapfel_ogden import HOParameters, RealLVLoads
 from afsi_torch.mac.implicit import MACCouplingOptions
+from afsi_torch.mac.adaptive_transfer import InteractionQuadratureOptions
 from afsi_torch.simulation.real_lv_mac import run
 
 # Confirmed user parameters. Stress: dyn/cm²; basal beta: dyn/cm³.
@@ -23,6 +24,7 @@ CONFIG = RealLVConfig(
     beta=5e6, basal_center_cm=(7.5,7.5),
     loads=RealLVLoads(period=.8, pressure_kpa=1.067, pressure_increment_kpa=13.46, tension_kpa=84.26),
     solid_degree=5, interaction_degree=2,
+    interaction_quadrature=InteractionQuadratureOptions(mode='adaptive',point_density=2.),
     coupling=MACCouplingOptions(scheme='cnab-semiimplicit',semiimplicit_solver='anderson-newton'),
     output=OutputConfig(log_every=100, checkpoint_every=1000, output_every=200, write_vtk=True),
 )
@@ -52,6 +54,8 @@ def main(argv=None):
     parser.add_argument('--mu', type=float)
     parser.add_argument('--kappa', type=float)
     parser.add_argument('--beta', type=float)
+    parser.add_argument('--interaction-quadrature',choices=('fixed','adaptive'))
+    parser.add_argument('--ib-point-density',type=float,help='adaptive Gaussian density parameter, >=2')
     parser.add_argument('--reference', action='store_true', help='torch/PCG reference execution for small CPU tests')
     parser.add_argument('--no-vtk', action='store_true')
     parser.add_argument('--log-every', type=int)
@@ -69,6 +73,7 @@ def main(argv=None):
         overrides = (args.config, args.mesh_dir, args.dt, args.fluid_cells, args.fluid_lengths,
                      args.fluid_origin, args.rho, args.mu, args.kappa, args.beta,
                      args.log_every, args.output_every, args.checkpoint_every, args.write_config)
+        overrides += (args.interaction_quadrature,args.ib_point_density)
         if any(v is not None for v in overrides) or args.reference or args.no_vtk:
             parser.error('resume restores settings; only device, output, end time/cycles, --resume-dt and --coupling may change')
         return run(device=args.device, output=args.output, resume=args.resume,
@@ -76,6 +81,8 @@ def main(argv=None):
                    nonlinear_solver=args.nonlinear_solver)
     config = load_config(args.config, CONFIG) if args.config else CONFIG
     config = replace(config,
+        interaction_quadrature=replace(config.interaction_quadrature,
+            **{k:v for k,v in dict(mode=args.interaction_quadrature,point_density=args.ib_point_density).items() if v is not None}),
         coupling=replace(config.coupling,scheme=config.coupling.scheme if args.coupling is None else args.coupling,
             semiimplicit_solver=config.coupling.semiimplicit_solver if args.nonlinear_solver is None else args.nonlinear_solver),
         source_dir=config.source_dir if args.mesh_dir is None else args.mesh_dir,

@@ -9,6 +9,11 @@
 这是 CN–AB2/半步格式的隐式弹性扩展，不声称逐项复制 Gao、Griffith–Luo 或 IBAMR。
 [公式、验收条件与实现范围](../../docs/MAC_SEMIIMPLICIT.md)。
 
+新运行默认采用按变形后单元尺寸选择的自适应 Gaussian IB 积分点，参考 Gao/IBTK
+的积分阶数准则，保留用户本构、主动应力、载荷和边界参数。
+[积分点选择、PyTorch/CSR 实现与适用范围](../../docs/GAO_FE_ALIGNMENT.md)。
+旧检查点仍恢复原积分规则；可用 `--interaction-quadrature fixed` 做独立初态对照。
+
 这是不同于生成理想左心室 `demo_337` 的外部网格算例。
 患者数据不随仓库发布；完整 GPU 三周期轨迹仍需实际运行验证。
 
@@ -25,7 +30,7 @@
 | 边界源标签 | 外膜=1，内膜=2，基底=3；内部映射为内膜=1、外膜=2、基底=3 |
 | 流体 | 128³，15×15×15 cm³，原点 (0,0,0)，rho=mu=1 |
 | 时间 | dt=1e-4 s，周期 0.8 s，3 周期至 2.4 s，共 24,000 步 |
-| 积分 | 固体 degree=5；IB degree=2，4 点/单元，共 541,720 点 |
+| 积分 | 固体 degree=5；一致质量 degree=2；IB 按变形单元/流体间距选择 Gaussian 阶数，密度参数 2 |
 | 执行 | fused 张量核、优化 IB、CSR 一致质量/CUDA Graph、Triton/CUDA Graph 压力多重网格 |
 | 输出 | 日志每 100 步，检查点每 1000 步，VTK 每 200 步（0.02 s） |
 
@@ -67,7 +72,23 @@ sheet 文件名不同可在 `CONFIG.sheet_files` 或 JSON 中修改。
 只运行本次改动的检查：
 
 ```bash
-CUDA_VISIBLE_DEVICES=0 python -m pytest -q tests/test_midpoint_solver.py tests/test_mac_semiimplicit.py tests/test_mac_cnab.py tests/test_mac_implicit.py
+CUDA_VISIBLE_DEVICES=0 python -m pytest -q tests/test_adaptive_p1_transfer.py
+```
+
+先统计真实网格初始所需积分点；此命令不启动流体模拟：
+
+```bash
+python -u validation/inspect_real_lv_interaction.py \
+  --mesh-dir /mnt/large2/gjh/realistic_left_ventricle \
+  --output results/real_lv_adaptive_plan.json
+```
+
+确认 `within_budget=true` 后运行短段：
+
+```bash
+CUDA_VISIBLE_DEVICES=0 python -u demo/real_lv_fsi/run_mac.py \
+  --device cuda --interaction-quadrature adaptive --dt 1e-4 \
+  --end-time 0.005 --output results/real_lv_adaptive_early
 ```
 
 先完成新路径的 0.005 s 启动和预热性能实验，再推进至 0.20 s，跨过此前 0.1685 s
@@ -118,6 +139,8 @@ CUDA_VISIBLE_DEVICES=0 python -u demo/real_lv_fsi/run_mac.py \
 切换方案必须使用新目录，并重置多步历史、执行启动步；这不消除已有历史误差。
 旧 `explicit-lagged`、`explicit-rk3`、`implicit-newton` 和显式力 `cnab-midpoint`
 保留用于对照；默认新运行使用 `cnab-semiimplicit`。旧检查点续算保留其原方案，完整新实验应从头运行上述命令。
+自适应积分目前支持 P1 的两种 CNAB 方案；新运行使用其他时间方案时须同时指定
+`--interaction-quadrature fixed`。切换积分规则应从独立初态实验开始。
 
 ## 配置、结果与性能
 

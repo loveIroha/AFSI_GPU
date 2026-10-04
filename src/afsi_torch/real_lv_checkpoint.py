@@ -108,6 +108,10 @@ def load_real_lv(path, device='cpu'):
         raise ValueError('inconsistent real LV checkpoint clock')
     if metadata['settings'].get('coupling', {}).get('scheme', 'explicit-lagged') != config.coupling.scheme:
         raise ValueError('checkpoint solver and configuration coupling schemes differ')
+    from .mac.adaptive_transfer import InteractionQuadratureOptions
+    saved_quadrature = _decode(InteractionQuadratureOptions,metadata['settings'].get('interaction_quadrature',{}))
+    if saved_quadrature != config.interaction_quadrature:
+        raise ValueError('checkpoint solver and configuration interaction quadratures differ')
     if state.previous_advection is not None:
         if config.coupling.scheme not in ('cnab-midpoint','cnab-semiimplicit') or state.step == 0:
             raise ValueError('unexpected AB2 history')

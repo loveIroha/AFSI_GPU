@@ -55,12 +55,19 @@ def build_driver(model, settings, device):
     else:
         prepare_geometry = prepare_p2
     geometry = model.geometry if degree is None else prepare_geometry(model.mesh.X,model.mesh.cells,degree=degree)
+    from .adaptive_transfer import InteractionQuadratureOptions, AdaptiveP1Transfer
+    quadrature = _decode(InteractionQuadratureOptions,settings.get('interaction_quadrature',{}))
+    adaptive = quadrature.mode=='adaptive'
+    if adaptive and (not cnab or model.mesh.cells.shape[1]!=4):
+        raise ValueError('adaptive interaction requires P1 CNAB coupling')
     if backend == 'fused':
         from .compact_transfer import CompactFETransfer
         from .solid_execution import SolidExecution
-        transfer = CompactFETransfer(grid,geometry,warm_start=settings.get('warm_start',False),
+        transfer_class = AdaptiveP1Transfer if adaptive else CompactFETransfer
+        transfer_options = dict(quadrature_options=quadrature,fused=True) if adaptive else {}
+        transfer = transfer_class(grid,geometry,warm_start=settings.get('warm_start',False),
                                      mass_backend=mass_backend,
-                                     options=SolverOptions(**settings['mass_solver']) if 'mass_solver' in settings else None)
+                                     options=SolverOptions(**settings['mass_solver']) if 'mass_solver' in settings else None,**transfer_options)
         if hasattr(model, 'execution_factory'):
             if solid_backend != 'reference':
                 raise ValueError('custom solid model requires its own execution factory')
@@ -71,8 +78,10 @@ def build_driver(model, settings, device):
         else:
             solid = SolidExecution(model)
     else:
-        transfer = FETransfer(grid,geometry,warm_start=settings.get('warm_start',False),
-                              options=SolverOptions(**settings['mass_solver']) if 'mass_solver' in settings else None)
+        transfer_class = AdaptiveP1Transfer if adaptive else FETransfer
+        transfer_options = dict(quadrature_options=quadrature,fused=False,mass_backend='pcg') if adaptive else {}
+        transfer = transfer_class(grid,geometry,warm_start=settings.get('warm_start',False),
+                              options=SolverOptions(**settings['mass_solver']) if 'mass_solver' in settings else None,**transfer_options)
         solid = model
     if coupling.scheme in ('implicit-newton','cnab-semiimplicit'):
         from ..real_lv import RealLVSolid

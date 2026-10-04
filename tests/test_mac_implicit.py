@@ -18,7 +18,8 @@ from afsi_torch.mac.checkpoint import digest
 def settings(config):
     return dict(dt=config.time.dt, fluid_shape=config.fluid.shape,fluid_lengths=config.fluid.lengths,
                 fluid_origin=config.fluid.origin,rho=config.fluid.rho,mu=config.fluid.mu,
-                interaction_degree=config.interaction_degree,mass_solver=asdict(config.mass_solver),
+                interaction_degree=config.interaction_degree,interaction_quadrature=asdict(config.interaction_quadrature),
+                mass_solver=asdict(config.mass_solver),
                 pressure_solver=asdict(config.pressure_solver),coupling=asdict(config.coupling),
                 **asdict(config.execution))
 
