@@ -21,12 +21,15 @@ class InteractionQuadratureOptions:
     max_order: int = 8
     max_points: int = 12000000
     rule_family: str = 'conical'
+    transfer_backend: str = 'reference'
 
     def __post_init__(self):
         if self.mode not in ('fixed','adaptive'):
             raise ValueError('interaction quadrature mode must be fixed or adaptive')
         if self.rule_family not in ('conical','xiao-gimbutas'):
             raise ValueError('interaction rule_family must be conical or xiao-gimbutas')
+        if self.transfer_backend not in ('reference','fused','cell'):
+            raise ValueError('adaptive transfer_backend must be reference, fused or cell')
         if isinstance(self.point_density,bool) or not isfinite(self.point_density) or self.point_density < 2:
             raise ValueError('interaction point_density must be finite and >=2')
         if type(self.max_order) is not int or not 2 <= self.max_order <= 22:
@@ -87,6 +90,7 @@ class QuadratureGroup:
     cells: torch.Tensor
     values: torch.Tensor
     weights: torch.Tensor
+    order: int = 0
 
 
 @dataclass(frozen=True)
@@ -180,7 +184,7 @@ class AdaptiveP1Transfer(CompactFETransfer):
         groups = []
         for n,(N,w) in tables.items():
             ids = torch.where(orders==n)[0]
-            groups.append(QuadratureGroup(self.geometry.cells[ids],N,self.reference_determinants[ids,None]*w))
+            groups.append(QuadratureGroup(self.geometry.cells[ids],N,self.reference_determinants[ids,None]*w,n))
         rule = InteractionRule(tuple(groups),orders,total)
         self._last_rule = rule
         self.quadrature_builds += 1
@@ -215,6 +219,9 @@ class AdaptiveP1Transfer(CompactFETransfer):
         coefficient,info = self.solve_mass(nodal_force,self._force_coefficient if self.warm_start else None)
         if self.warm_start:
             self._force_coefficient = coefficient
+        if self.quadrature_options.transfer_backend!='reference':
+            from .adaptive_cell import spread
+            return spread(self,coefficient,stencil,reduced=self.quadrature_options.transfer_backend=='cell'),info
         force_q = torch.cat([self._weighted_kernel(coefficient,g.values,g.cells,g.weights) for g in stencil.rule.groups])
         return self.spread_grid(force_q,stencil),info
 
@@ -227,12 +234,16 @@ class AdaptiveP1Transfer(CompactFETransfer):
             raise ValueError('invalid MAC interpolation field')
         if not isinstance(stencil,AdaptiveStencil):
             raise ValueError('adaptive transfer requires a stencil with its paired quadrature')
-        gathered = self.gather_grid(velocity,stencil)
-        rhs,offset = torch.zeros_like(self.diagonal),0
-        for group in stencil.rule.groups:
-            count = group.weights.numel()
-            rhs += self._assemble_kernel(gathered[offset:offset+count],group.values,group.cells,group.weights,self.diagonal)
-            offset += count
+        if self.quadrature_options.transfer_backend!='reference':
+            from .adaptive_cell import assemble_velocity
+            rhs = assemble_velocity(self,velocity,stencil)
+        else:
+            gathered = self.gather_grid(velocity,stencil)
+            rhs,offset = torch.zeros_like(self.diagonal),0
+            for group in stencil.rule.groups:
+                count = group.weights.numel()
+                rhs += self._assemble_kernel(gathered[offset:offset+count],group.values,group.cells,group.weights,self.diagonal)
+                offset += count
         result,info = self.solve_mass(rhs,self._velocity_coefficient if self.warm_start else None)
         if self.warm_start:
             self._velocity_coefficient = result
@@ -241,6 +252,7 @@ class AdaptiveP1Transfer(CompactFETransfer):
     def quadrature_summary(self):
         rule = self._last_prepared_rule or self._last_rule
         return dict(mode='adaptive',point_density=self.quadrature_options.point_density,
+                    transfer_backend=self.quadrature_options.transfer_backend,
                     rule_family=self.quadrature_options.rule_family,
                     points_per_order={n:len(table[1]) for n,table in self._rules.items()},
                     high_order_fallback='positive conical above order 8' if self.quadrature_options.rule_family=='xiao-gimbutas' else None,

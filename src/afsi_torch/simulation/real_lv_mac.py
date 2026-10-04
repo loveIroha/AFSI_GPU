@@ -215,7 +215,8 @@ def run(*, case_config=None, device='cuda', output=None, resume=None, end_time=N
         print(f'Constitutive law: supplied H-O UFL, active stretch factor={config.material.active_stretch_slope:g}',flush=True)
         print(f'Interaction quadrature: {config.interaction_quadrature.mode}; '
               f'point density={config.interaction_quadrature.point_density:g}; '
-              f'rule family={config.interaction_quadrature.rule_family}',flush=True)
+              f'rule family={config.interaction_quadrature.rule_family}; '
+              f'transfer={config.interaction_quadrature.transfer_backend}',flush=True)
         if semiimplicit:
             print(f'Nonlinear solver: {config.coupling.semiimplicit_solver}',flush=True)
         for _ in range(state.step, steps):

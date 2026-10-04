@@ -172,6 +172,11 @@ recompute control. The CSV/nonlinear report records whether final reuse occurred
 
 ## Remaining differences and validation limits
 
+Same-rule execution experiments fuse FE evaluation/IB spread and fluid
+gather/FE assembly, with optional cell-local spread reduction. They retain
+compact quadrature and consistent mass; see [adaptive IB execution](ADAPTIVE_IB_EXECUTION.md)
+for a read-only `compact fused cell` comparison and separate phase profiling.
+
 Gao's reported outer-box normal-traction/tangential-velocity condition is
 different from our closed no-slip box. The default `cnab-semiimplicit`
 solves nonlinear midpoint elasticity; it is an implicit elastic extension

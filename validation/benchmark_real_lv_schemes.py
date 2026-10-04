@@ -1,5 +1,6 @@
 """Compare warmed coupled step costs from one real-LV checkpoint, without I/O per step."""
 import argparse
+from contextlib import contextmanager
 from dataclasses import asdict, replace
 from pathlib import Path
 from time import perf_counter
@@ -12,9 +13,28 @@ from afsi_torch.mac.execution import build_driver
 from afsi_torch.cycle_checkpoint import atomic_json
 
 
+@contextmanager
+def record_phases(driver,recorder):
+    targets = [(driver.transfer,'prepare','ib_prepare'),
+        (driver.transfer,'spread','ib_spread_with_mass'),
+        (driver.transfer,'interpolate','ib_interpolate_with_mass'),
+        (driver.transfer,'solve_mass','mass_solves'),
+        (driver.flow,'stokes','stokes'),(driver.flow.pressure_solver,'solve','pressure_solves'),
+        (driver,'_force_geometry','solid_force'),(driver,'validate','solid_validation'),
+        (driver.flow,'check_transport','transport_checks')]
+    originals = [(obj,name,getattr(obj,name)) for obj,name,_ in targets]
+    try:
+        for (obj,name,label),(_,_,fn) in zip(targets,originals):
+            setattr(obj,name,recorder.wrap(fn,label))
+        yield
+    finally:
+        for obj,name,fn in originals:
+            setattr(obj,name,fn)
+
+
 @torch.no_grad()
 def benchmark(checkpoint,*,device='cuda',schemes=('explicit-rk3','implicit-newton'),warmup=2,steps=10,
-              nonlinear_solvers=None,initial_state='checkpoint',execution_variants=None):
+              nonlinear_solvers=None,initial_state='checkpoint',execution_variants=None,profile=False):
     if type(warmup) is not int or warmup<0 or type(steps) is not int or steps<1:
         raise ValueError('warmup must be nonnegative and steps positive')
     if initial_state not in ('checkpoint','reference'):
@@ -28,14 +48,17 @@ def benchmark(checkpoint,*,device='cuda',schemes=('explicit-rk3','implicit-newto
     model,initial,settings,_,config = load_real_lv(checkpoint,device)
     if execution_variants is not None:
         if (not execution_variants or len(set(execution_variants))!=len(execution_variants)
-                or any(v not in ('baseline','reuse','compact') for v in execution_variants)
+                or any(v not in ('baseline','reuse','compact','fused','cell') for v in execution_variants)
                 or tuple(schemes)!=('cnab-semiimplicit',) or config.interaction_quadrature.mode!='adaptive'):
-            raise ValueError('execution_variants requires adaptive cnab-semiimplicit and distinct baseline/reuse/compact')
+            raise ValueError('execution_variants requires adaptive cnab-semiimplicit and distinct baseline/reuse/compact/fused/cell')
+    if profile and tuple(schemes)!=('cnab-semiimplicit',):
+        raise ValueError('phase profiling currently requires only cnab-semiimplicit')
     synchronize = lambda:torch.cuda.synchronize(device) if torch.device(device).type=='cuda' else None
     report = dict(checkpoint=str(checkpoint),device=str(device),torch=torch.__version__,
         gpu=torch.cuda.get_device_name(device) if torch.device(device).type=='cuda' else None,dt_s=config.time.dt,
         initial_state=initial_state,source_checkpoint_step=initial.step,source_checkpoint_time_s=initial.time,
         start_time_s=0. if initial_state=='reference' else initial.time,warmup_steps=warmup,measured_steps=steps,
+        timing_scope='warmed wall time; excludes compilation, output and optional subsequent profile replay',
         note='Performance comparison, not full-cycle stability validation. Reference mode starts at t=0 with undeformed solid and zero flow; checkpoint mode retains the saved physical state. Different schemes need not be numerically equivalent.',cases={})
     cases = [(s,s,None) for s in schemes] if nonlinear_solvers is None else [
         ('cnab-semiimplicit',f'cnab-semiimplicit/{s}',s) for s in nonlinear_solvers]
@@ -51,7 +74,9 @@ def benchmark(checkpoint,*,device='cuda',schemes=('explicit-rk3','implicit-newto
         quadrature = config.interaction_quadrature
         if variant is not None:
             coupling = replace(coupling,reuse_final_evaluation=variant!='baseline')
-            quadrature = replace(quadrature,rule_family='xiao-gimbutas' if variant=='compact' else 'conical')
+            quadrature = replace(quadrature,
+                rule_family='xiao-gimbutas' if variant in ('compact','fused','cell') else 'conical',
+                transfer_backend=variant if variant in ('fused','cell') else 'reference')
         driver = build_driver(model,dict(settings,coupling=asdict(coupling),interaction_quadrature=asdict(quadrature)),device)
         if initial_state=='reference':
             state = driver.initialize(model.mesh.X)
@@ -121,6 +146,24 @@ def benchmark(checkpoint,*,device='cuda',schemes=('explicit-rk3','implicit-newto
                   f'Stokes={counters["stokes_solves"]/count:.1f}/step, '
                   f'pressure solves={counters["pressure_solves"]/count:.1f}/step, '
                   f'mass solves={counters["mass_solves"]/count:.1f}/step',flush=True)
+            if profile:
+                from validation.benchmark_mac import PhaseRecorder
+                recorder = PhaseRecorder(torch.device(device))
+                profile_before = dict(counters)
+                profile_start_time = state.time
+                try:
+                    with record_phases(driver,recorder):
+                        for _ in range(steps):
+                            state,_ = driver.step(state,diagnostics=False)
+                    synchronize()
+                    case['phases'] = recorder.summary(steps)
+                    case['profile_counts'] = {k:counters[k]-profile_before[k] for k in counters}
+                    case['profile_start_time_s'],case['profile_end_time_s'] = profile_start_time,state.time
+                    case['phase_scope'] = 'Separate subsequent replay; mass is nested inside IB and pressure inside Stokes. Do not sum nested phases.'
+                    for name,values in case['phases'].items():
+                        print(f'  {name}: {values["ms_per_step"]:.3f} ms/step',flush=True)
+                except (ValueError,RuntimeError,FloatingPointError) as exc:
+                    case['profile_failure'] = dict(type=type(exc).__name__,message=str(exc))
         except (ValueError,RuntimeError,FloatingPointError) as exc:
             case = dict(completed=False,measured_steps=count,counts=dict(counters),
                         failure=dict(type=type(exc).__name__,message=str(exc)))
@@ -140,17 +183,28 @@ def benchmark(checkpoint,*,device='cuda',schemes=('explicit-rk3','implicit-newto
     if execution_variants is not None:
         report['execution_comparisons'] = {}
         for label in final_states:
-            base = label.rsplit('/',1)[0]+'/baseline'
+            prefix = label.rsplit('/',1)[0]
+            base = prefix+('/compact' if label.endswith(('/fused','/cell')) else '/baseline')
             if label==base or base not in final_states:
                 continue
             reference,candidate = final_states[base],final_states[label]
             differences = {f'{name}_max_abs':(candidate[name]-reference[name]).abs().max().item()
                            for name in ('x','pressure','force')}
             differences['velocity_max_abs'] = max((a-b).abs().max().item() for a,b in zip(candidate['velocity'],reference['velocity']))
+            scales = {f'{name}_max_abs':reference[name].abs().max().item() for name in ('pressure','force')}
+            scales['velocity_max_abs'] = max(u.abs().max().item() for u in reference['velocity'])
+            relative = {name:(torch.linalg.vector_norm(candidate[name]-reference[name])/
+                torch.linalg.vector_norm(reference[name]).clamp_min(1e-30)).item() for name in ('pressure','force')}
+            velocity_error = sum((a-b).square().sum() for a,b in zip(candidate['velocity'],reference['velocity']))
+            velocity_scale = sum(u.square().sum() for u in reference['velocity'])
+            relative['velocity'] = (velocity_error/velocity_scale.clamp_min(1e-60)).sqrt().item()
+            relative['displacement'] = (torch.linalg.vector_norm(candidate['x']-reference['x'])/
+                torch.linalg.vector_norm(reference['x']-model.mesh.X).clamp_min(1e-30)).item()
             report['execution_comparisons'][label] = dict(reference=base,
                 measured_speedup=report['cases'][base]['ms_per_step']/report['cases'][label]['ms_per_step'],
                 final_state_differences=differences,
-                interpretation='reuse: same quadrature and acceptance; compact: same polynomial degree, changed IB sampling')
+                reference_field_max_abs=scales,relative_l2=relative,
+                interpretation='reuse/fused/cell: same quadrature as reference and same acceptance; compact vs baseline: changed IB sampling')
     return report
 
 
@@ -163,14 +217,15 @@ def main():
     parser.add_argument('--schemes',nargs='+',default=['explicit-rk3','implicit-newton'])
     parser.add_argument('--warmup',type=int,default=2)
     parser.add_argument('--steps',type=int,default=10)
+    parser.add_argument('--profile',action='store_true',help='separate subsequent replay with phase timings; excluded from speedup')
     parser.add_argument('--nonlinear-solvers',nargs='+',choices=('newton','anderson-newton'))
-    parser.add_argument('--execution-variants',nargs='+',choices=('baseline','reuse','compact'),
-                        help='adaptive CNAB: conical/recompute, conical/reuse, compact/reuse; input checkpoint is read only')
+    parser.add_argument('--execution-variants',nargs='+',choices=('baseline','reuse','compact','fused','cell'),
+                        help='adaptive CNAB: baseline/reuse/compact; fused/cell compare execution on compact quadrature; input checkpoint is read only')
     parser.add_argument('--output',required=True)
     args = parser.parse_args()
     report = benchmark(args.checkpoint,device=args.device,schemes=tuple(args.schemes),warmup=args.warmup,steps=args.steps,
                        nonlinear_solvers=args.nonlinear_solvers,initial_state=args.initial_state,
-                       execution_variants=args.execution_variants)
+                       execution_variants=args.execution_variants,profile=args.profile)
     path = Path(args.output)
     path.parent.mkdir(parents=True,exist_ok=True)
     atomic_json(path,report)

@@ -195,3 +195,20 @@ CUDA_VISIBLE_DEVICES=0 python -u validation/benchmark_real_lv_schemes.py \
 三组分别为原积分/重算、原积分/复用、紧凑积分/复用。报告记录点数、耗时、
 求解次数及最终状态差异，原检查点保持只读。紧凑积分保持多项式精度，但改变
 IB 核采样位置；其完整轨迹仍需验证，不能把点数减半当作整体速度翻倍。
+
+对紧凑积分继续优化执行效率，比较融合 FE/IB 内核与单元内传播归约：
+
+```bash
+CUDA_VISIBLE_DEVICES=0 python -m pytest -q tests/test_adaptive_cell_execution.py
+CUDA_VISIBLE_DEVICES=0 python -u validation/benchmark_real_lv_schemes.py \
+  --checkpoint results/real_lv_adaptive_early/checkpoint.npz \
+  --schemes cnab-semiimplicit --nonlinear-solvers anderson-newton \
+  --execution-variants compact fused cell \
+  --device cuda --warmup 5 --steps 20 --profile \
+  --output results/real_lv_cell_performance/report.json
+```
+
+三组使用相同积分规则、质量矩阵和非线性容差；原检查点只读。阶段计时使用
+额外的短段回放，单独记录时间区间，不计入整体加速比。默认仍保留原执行路径；
+验证并实测后，新算例可用 `--ib-transfer-backend fused` 或 `cell` 选择。
+详细说明见 [自适应 FE/IB 执行优化](../../docs/ADAPTIVE_IB_EXECUTION.md)。
