@@ -46,7 +46,7 @@ def run(*, case_config=None, device='cuda', output=None, resume=None, end_time=N
             config = replace(config, time=TimeConfig(config.time.dt, end_time))
         if coupling_scheme is not None:
             config = replace(config,coupling=replace(config.coupling,scheme=coupling_scheme))
-            force_time = None if state.step == 0 else state.time if coupling_scheme in ('implicit-newton','cnab-midpoint') else (state.step-1)*config.time.dt
+            force_time = None if state.step == 0 else state.time if coupling_scheme in ('implicit-newton','cnab-midpoint','cnab-semiimplicit') else (state.step-1)*config.time.dt
             state = replace(state, force_time=force_time, force=state.force if force_time is None else model.force(state.x,force_time),
                             previous_advection=state.previous_advection if old_scheme==coupling_scheme and not refinement else None)
             settings = dict(settings,coupling=asdict(config.coupling))
@@ -57,7 +57,7 @@ def run(*, case_config=None, device='cuda', output=None, resume=None, end_time=N
                 checkpoint=str(Path(resume).resolve()), source_elapsed_seconds=progress['elapsed_seconds'],
                 source_failure=progress.get('failure'), **details))
     else:
-        config = replace(RealLVConfig(),coupling=replace(RealLVConfig().coupling,scheme='cnab-midpoint')) if case_config is None else case_config
+        config = replace(RealLVConfig(),coupling=replace(RealLVConfig().coupling,scheme='cnab-semiimplicit')) if case_config is None else case_config
         if not isinstance(config, RealLVConfig):
             raise TypeError('case_config must be RealLVConfig')
         if end_time is not None:
@@ -73,6 +73,8 @@ def run(*, case_config=None, device='cuda', output=None, resume=None, end_time=N
                         **asdict(config.execution))
         progress = dict(elapsed_seconds=0., segments=[], summary={})
     implicit = config.coupling.scheme == 'implicit-newton'
+    cnab = config.coupling.scheme in ('cnab-midpoint','cnab-semiimplicit')
+    semiimplicit = config.coupling.scheme == 'cnab-semiimplicit'
     policy = coupling_policy(config.coupling.scheme)
     steps = round(config.time.end_time/config.time.dt)
     driver = build_driver(model, settings, device)
@@ -154,15 +156,16 @@ def run(*, case_config=None, device='cuda', output=None, resume=None, end_time=N
                       fluid_velocity_dofs=sum(v.numel() for v in state.velocity),
                       fluid_spacing_cm=grid.spacing, viscous_number=flow.viscous_number,
                       transport_policy=policy,
+                      coupled_unknown_dofs=state.x.numel() if semiimplicit else sum(v.numel() for v in state.velocity) if implicit else 0,
                       pressure_backend=flow.pressure_solver.backend, mg_levels=flow.pressure_solver.shapes,
                       coupling='quadrature FE/IB with consistent CSR mass and shared MAC solver',
                       boundary='endo follower pressure; basal radial projection in xy plus fixed z; free epi',
-                      time_scheme=('CN viscosity/AB2 convection; predicted-midpoint FE force/IB geometry; average-velocity structure update; predictor-corrector startup'
-                                   if config.coupling.scheme=='cnab-midpoint' else 'backward Euler transport and new-time FE force; reduced coupled Newton; IB geometry frozen at old position'
+                      time_scheme=('CN viscosity/AB2 convection; solved nonlinear midpoint FE force; IB geometry frozen at predicted midpoint; solid-node CSR tangent correction' if semiimplicit else 'CN viscosity/AB2 convection; predicted-midpoint FE force/IB geometry; average-velocity structure update; predictor-corrector startup'
+                                   if cnab else 'backward Euler transport and new-time FE force; reduced coupled Newton; IB geometry frozen at old position'
                                    if implicit else 'SSPRK3 fluid with step-frozen force; first-order explicit partitioned FE/IB; preceding-time force sampling'
                                    if config.coupling.scheme == 'explicit-rk3' else 'explicit partitioned MAC; updated solid force sampled at preceding state time'),
-                      pressure_time_meaning='half-time Stokes multiplier' if config.coupling.scheme=='cnab-midpoint' else 'RK-weighted step average' if config.coupling.scheme == 'explicit-rk3' else 'projection multiplier',
-                      advection=config.coupling.cnab.advection if config.coupling.scheme=='cnab-midpoint' else 'centered',
+                      pressure_time_meaning='half-time Stokes multiplier' if cnab else 'RK-weighted step average' if config.coupling.scheme == 'explicit-rk3' else 'projection multiplier',
+                      advection=config.coupling.cnab.advection if cnab else 'centered',
                       pressure_gauge='closed box, homogeneous Neumann, zero mean',
                       cavity_measurement='endocardium plus virtual mean-rim triangle fan; no cap traction',
                       volume_penalty='kappa*(ln J)^2; finite penalty, not a mixed incompressible constraint',
@@ -170,6 +173,10 @@ def run(*, case_config=None, device='cuda', output=None, resume=None, end_time=N
                       visualization=writer.summary() if writer else dict(enabled=False),
                       full_horizon_validated=False, mesh_convergence_established=False, **progress)
         save_real_lv(folder/'checkpoint.npz', model, state, settings, progress, config)
+        if semiimplicit and status=='running' and state.step % config.output.checkpoint_every == 0:
+            # Scheduled snapshots survive the failure-save of checkpoint.npz.
+            # A restart candidate is not a claim of numerical convergence.
+            save_real_lv(folder/'recovery_checkpoint.npz', model, state, settings, progress, config)
         atomic_json(folder/'configuration.json', asdict(config))
         atomic_json(folder/'report.json', report)
         return report
@@ -195,7 +202,7 @@ def run(*, case_config=None, device='cuda', output=None, resume=None, end_time=N
                 last = history[-1]
                 nonlinear = info.get('nonlinear',{})
                 suffix = (f', Newton={nonlinear["iterations"]}, residual={nonlinear["residual_norm"]:.3g}' if nonlinear else '')
-                if config.coupling.scheme=='cnab-midpoint':
+                if cnab and not semiimplicit:
                     suffix = f', Stokes={last["stokes_iterations"]}, momentum={last["momentum_residual"]:.3g}'
                 print(f'step {state.step}/{steps}, t={state.time:.6f}, V={last["cavity_volume_ml"]:.8g} mL, '
                       f'minJ={last["minimum_detF"]:.6g}, div={last["divergence_l2"]:.3g}, '

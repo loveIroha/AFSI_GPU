@@ -1,9 +1,11 @@
 # 真实左心室 H–O/P1 + MAC/IB 算例
 
 读取外部真实网格与 fiber/sheet，使用 PyTorch GPU 有限元固体、MAC 有限差分
-流体和积分点 IB 耦合。默认采用 Gao、Griffith–Luo 的 CN–AB2/半步耦合时序：
-预测半步位置并计算力；CN 黏性、AB2 对流求解不可压流体；用新旧平均速度更新固体。
-启动步使用预测–校正。[公式、壁面 Stokes 求解及实现差异](../../docs/MAC_CNAB.md)。
+流体和积分点 IB 耦合。默认采用 `cnab-semiimplicit`：保留 CN 黏性、AB2 对流和
+预测中点 IB 几何，同时通过 CSR 固体切线求解非线性中点力反馈。外层未知量仅为
+固体节点位置修正，流体仍使用完整 MAC 网格；运动学、动量和散度均验收。
+这是 CN–AB2/半步格式的隐式弹性扩展，不声称逐项复制 Gao、Griffith–Luo 或 IBAMR。
+[公式、验收条件与实现范围](../../docs/MAC_SEMIIMPLICIT.md)。
 
 这是不同于生成理想左心室 `demo_337` 的外部网格算例。
 患者数据不随仓库发布；完整 GPU 三周期轨迹仍需实际运行验证。
@@ -63,48 +65,54 @@ sheet 文件名不同可在 `CONFIG.sheet_files` 或 JSON 中修改。
 只运行本次改动的检查：
 
 ```bash
-CUDA_VISIBLE_DEVICES=0 python -m pytest -q tests/test_mac_cnab.py
+CUDA_VISIBLE_DEVICES=0 python -m pytest -q tests/test_mac_semiimplicit.py tests/test_mac_cnab.py tests/test_mac_implicit.py
 ```
 
-从未变形初态重新推进三个周期，使用新输出目录：
+先完成新路径的 0.005 s 启动和预热性能实验，再推进至 0.20 s，跨过此前 0.1685 s
+失败位置；通过后继续收缩阶段，再跑三个周期。具体分阶段命令见
+[验证指南](../../docs/MAC_SEMIIMPLICIT.md#gpu-verification-and-staged-experiment)。
+
+以下是从未变形初态推进三个周期的后台命令模板；完整 GPU 三周期仍待验证，
+不要把模板本身当作已经验证通过。使用新输出目录：
 
 ```bash
-run_dir="results/real_lv_cnab_3cycles"
+run_dir="results/real_lv_semiimplicit_3cycles"
 mkdir -p "$run_dir"
 
 CUDA_VISIBLE_DEVICES=0 nohup /usr/bin/time \
   -f 'elapsed_seconds=%e exit_code=%x' -o "$run_dir/runtime.txt" \
   python -u demo/real_lv_fsi/run_mac.py \
   --mesh-dir /mnt/large2/gjh/realistic_left_ventricle \
-  --device cuda --coupling cnab-midpoint --dt 1e-4 \
+  --device cuda --coupling cnab-semiimplicit --dt 1e-4 \
   --fluid-cells 128 --cycles 3 --output "$run_dir" \
   > "$run_dir/run.log" 2>&1 < /dev/null &
 
 echo "PID=$! output=$run_dir"
 ```
 
-退出终端后仍继续运行。`tail -f results/real_lv_cnab_3cycles/run.log` 查看进度。
+退出终端后仍继续运行。`tail -f results/real_lv_semiimplicit_3cycles/run.log` 查看进度。
 完成后 `runtime.txt` 写入墙钟耗时/退出码。
 如需先检查新方案能否跨过此前 0.169 s 的失败位置，将 `--cycles 3` 改为
 `--end-time 0.2`，并使用独立新目录；其余设置保持一致。
 
 日志记录真实动量残差、散度、Stokes 修正次数和 MG 周期数。
-CN 黏性不再使用显式 D/A 停止条件；显式对流仍检查 CFL，弹性/IB 稳定性限制仍存在。
+CN 黏性不再使用显式 D/A 停止条件，弹性力在中点隐式反馈；显式对流仍检查 CFL。
+日志还记录非线性残差和迭代数。隐式力反馈不代表完整 FSI 无条件稳定。
 `dt=1e-4` 是本次指定的时间步，不是三个周期必然稳定或已收敛的证明。
 
 ## 保存与续算
 
 ```bash
 CUDA_VISIBLE_DEVICES=0 python -u demo/real_lv_fsi/run_mac.py \
-  --device cuda --resume results/real_lv_cnab_3cycles/checkpoint.npz --cycles 3
+  --device cuda --resume results/real_lv_semiimplicit_3cycles/checkpoint.npz --cycles 3
 ```
 
 普通续算使用原目录，恢复原配置、x/u/p、端点力与 AB2 上一时刻对流项。
 检查点自包含，无需再访问原始网格文件。三周期表示总目标时刻 2.4 s。
 异常保存最后接受状态；失败试探不会写入 AB2 历史。
 切换方案必须使用新目录，并重置多步历史、执行启动步；这不消除已有历史误差。
-旧 `explicit-lagged`、`explicit-rk3`、`implicit-newton` 保留用于对照；默认新运行使用
-`cnab-midpoint`。旧检查点续算保留其原方案，完整新实验应从头运行上述命令。
+旧 `explicit-lagged`、`explicit-rk3`、`implicit-newton` 和显式力 `cnab-midpoint`
+保留用于对照；默认新运行使用 `cnab-semiimplicit`。旧检查点续算保留其原方案，完整新实验应从头运行上述命令。
 
 ## 配置、结果与性能
 
@@ -121,7 +129,8 @@ CUDA_VISIBLE_DEVICES=0 python demo/real_lv_fsi/run_mac.py \
 本实现的 PPM 为单调抛物重构配合 AB2，不逐项复制 IBAMR 的特征追踪算法。
 
 - `configuration.json`：实际参数；`history.csv`：体积、J、载荷和求解诊断。
-- `report.json`：状态、真实残差、离散说明；`checkpoint.npz`：可续算状态和 AB2 历史。
+- `report.json`：真实残差、迭代数和失败时局部力分量/速度峰值诊断。
+- `checkpoint.npz`：最后接受状态和 AB2 历史；`recovery_checkpoint.npz`：最近一次定期快照，失败保存不覆盖它。快照仍需检查是否适合续算。
 - `vtk/solid.pvd`：固体位移、节点力、fiber/sheet、J。
 - `vtk/fluid.pvd`：端点速度与半步压力（压力时刻为显示时间减 dt/2）。
 
@@ -131,11 +140,12 @@ CUDA_VISIBLE_DEVICES=0 python demo/real_lv_fsi/run_mac.py \
 
 ```bash
 CUDA_VISIBLE_DEVICES=0 python -u validation/benchmark_real_lv_schemes.py \
-  --checkpoint results/real_lv_cnab_3cycles/checkpoint.npz \
-  --schemes cnab-midpoint explicit-rk3 --device cuda --warmup 3 --steps 20 \
-  --output results/real_lv_cnab_performance/report.json
+  --checkpoint results/real_lv_semiimplicit_3cycles/checkpoint.npz \
+  --schemes cnab-semiimplicit cnab-midpoint --device cuda --warmup 3 --steps 20 \
+  --output results/real_lv_semiimplicit_performance/report.json
 ```
 
-流体 CN/AB2 和半步耦合位于 `mac/cnab.py`，PPM 位于 `mac/ppm.py`；
+非线性中点修正位于 `mac/semiimplicit.py`，CSR 切线位于 `ho_tangent.py`；
+流体 CN/AB2 位于 `mac/cnab.py`，PPM 位于 `mac/ppm.py`；
 `real_lv.py`/`holzapfel_ogden.py` 管理固体与载荷，
 `simulation/real_lv_mac.py` 管理输出与运行，`real_lv_checkpoint.py` 管理续算。

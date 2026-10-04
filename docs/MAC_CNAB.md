@@ -1,6 +1,8 @@
 # CN–AB2 with midpoint finite-element/immersed-boundary coupling
 
-The real-LV demo defaults to `coupling.scheme="cnab-midpoint"`. The time
+This guide describes `coupling.scheme="cnab-midpoint"`, the explicit-force
+comparison mode. The real-LV demo now defaults to the [implicit-elastic
+extension](MAC_SEMIIMPLICIT.md), `cnab-semiimplicit`. The time
 discretization follows Griffith–Luo, Appendix A, equations (71)–(81), and the
 CN–AB treatment described by Gao et al. for immersed FE ventricular models.
 This replaces the RK3-fluid/first-order-solid combination for this demo.

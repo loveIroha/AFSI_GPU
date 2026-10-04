@@ -44,7 +44,7 @@ def diagnose(checkpoint):
     violations = transport_violations(numbers['courant'], numbers['advection_diffusion_number'],numbers['viscous_number'])
     if implicit:
         triggered = []
-    elif scheme == 'cnab-midpoint':
+    elif scheme in ('cnab-midpoint','cnab-semiimplicit'):
         triggered = ['courant'] if numbers['courant'] > COURANT_LIMIT else []
     elif scheme == 'explicit-rk3':
         triggered = rk3_violations(numbers['courant'],numbers['viscous_number'])
@@ -59,7 +59,7 @@ def diagnose(checkpoint):
                 legacy_cell_re_gt_one=numbers['cell_reynolds'] > 1.,
                 saved_failure=meta.get('progress', {}).get('failure'),
                 inspection='selected saved fields; no full checksum validation or advancement',
-                interpretation=('CN viscosity/explicit AB2 convection and midpoint elasticity; only convection CFL screened; elastic restrictions remain'
+                interpretation=('CN viscosity/nonlinear midpoint elasticity; explicit AB2 convection screened; no unconditional FSI stability claim' if scheme=='cnab-semiimplicit' else 'CN viscosity/explicit AB2 convection and midpoint elasticity; only convection CFL screened; elastic restrictions remain'
                     if scheme=='cnab-midpoint' else 'implicit transport diagnostics; explicit CFL/D/A vetoes do not apply; cell_Re monitors spatial resolution'
                     if implicit else 'SSPRK3 stage CFL/D screen; A and cell_Re monitor only; explicit elastic stability still required'
                     if scheme=='explicit-rk3' else 'current transport screen; cell_Re monitors spatial resolution, not time stability; saved failure may use an older policy'))

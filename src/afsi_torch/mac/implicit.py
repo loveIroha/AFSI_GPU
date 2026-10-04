@@ -28,7 +28,7 @@ class MACCouplingOptions:
     cnab: CNABOptions = field(default_factory=CNABOptions)
 
     def __post_init__(self):
-        if self.scheme not in ('explicit-lagged', 'explicit-rk3', 'implicit-newton', 'cnab-midpoint'):
+        if self.scheme not in ('explicit-lagged', 'explicit-rk3', 'implicit-newton', 'cnab-midpoint', 'cnab-semiimplicit'):
             raise ValueError('unsupported MAC coupling scheme')
         if not isinstance(self.cnab,CNABOptions):
             raise ValueError('cnab must be CNABOptions')

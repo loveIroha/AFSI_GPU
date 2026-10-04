@@ -144,6 +144,11 @@ class MACCNABFlow(MACFlow):
             if iteration == self.cnab_options.max_stokes_iterations:
                 break
             residual = -self.rho/self.dt*divergence(u,self.grid.spacing)
+            # H enforces exactly zero boundary-normal velocity. The discrete
+            # D sum telescopes to zero; remove only its floating-point mean.
+            # Near convergence, cancellation of large velocities can exceed
+            # the generic Poisson compatibility screen's absolute threshold.
+            residual -= residual.mean()
             # Approximate Schur inverse A0^-1 + alpha I. Unlike commuting
             # factorization, every correction is followed by an actual H solve.
             delta,info = self.pressure_solver.solve(residual)
@@ -154,6 +159,18 @@ class MACCNABFlow(MACFlow):
         error.diagnostics = dict(stage='CN Stokes',momentum_residual=momentum,momentum_tolerance=momentum_tol,
                                  divergence_norm=div,divergence_tolerance=div_tol,schur_iterations=iteration)
         raise error
+
+    @torch.no_grad()
+    def linear_response(self,b):
+        """Homogeneous CN Stokes action, normalized for nested Krylov solves."""
+        b = zero_normal(b)
+        scale = torch.sqrt(sum(v.square().sum() for v in b)).item()
+        if not isfinite(scale):
+            raise ValueError('nonfinite CN linear-response RHS')
+        if scale==0:
+            return tuple(torch.zeros_like(v) for v in b)
+        response = self.stokes(tuple(v/scale for v in b))
+        return tuple(scale*v for v in response.velocity)
 
     def check_transport(self,velocity,density):
         finite,C,Re,A = self._step_checks(velocity,density).tolist()

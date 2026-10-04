@@ -39,8 +39,15 @@ def cnab_policy():
 
 
 def coupling_policy(scheme):
-    return (cnab_policy() if scheme == 'cnab-midpoint' else implicit_policy() if scheme == 'implicit-newton'
+    return (semiimplicit_policy() if scheme == 'cnab-semiimplicit' else cnab_policy() if scheme == 'cnab-midpoint' else implicit_policy() if scheme == 'implicit-newton'
             else rk3_policy() if scheme == 'explicit-rk3' else transport_policy())
+
+
+def semiimplicit_policy():
+    return dict(name='cn-ab2-implicit-midpoint-elasticity-v1', courant_limit=COURANT_LIMIT,
+                viscous_number_monitor_only=True, advection_diffusion_monitor_only=True,
+                cell_reynolds_monitor_only=True,
+                scope='CN viscosity/nonlinear midpoint FE force; predicted IB geometry; explicit AB2 convection screened at input and accepted candidate; no unconditional FSI claim')
 
 
 def transport_policy():

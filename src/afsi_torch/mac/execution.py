@@ -41,8 +41,9 @@ def build_driver(model, settings, device):
     grid = lv_grid(settings)
     from .rk3 import MACRK3Flow
     from .cnab import MACCNABFlow, MidpointMACIBStepper
-    flow_class = MACCNABFlow if coupling.scheme == 'cnab-midpoint' else MACRK3Flow if coupling.scheme == 'explicit-rk3' else MACFlow
-    flow_options = dict(cnab_options=coupling.cnab) if coupling.scheme == 'cnab-midpoint' else {}
+    cnab = coupling.scheme in ('cnab-midpoint','cnab-semiimplicit')
+    flow_class = MACCNABFlow if cnab else MACRK3Flow if coupling.scheme == 'explicit-rk3' else MACFlow
+    flow_options = dict(cnab_options=coupling.cnab) if cnab else {}
     flow = flow_class(grid, dt=settings['dt'], rho=settings['rho'], mu=settings['mu'],
                    device=device, pressure_backend=settings.get('pressure_backend','torch'),
                    execution_backend=backend, options=MGOptions(**settings.get('pressure_solver',{})),
@@ -73,10 +74,14 @@ def build_driver(model, settings, device):
         transfer = FETransfer(grid,geometry,warm_start=settings.get('warm_start',False),
                               options=SolverOptions(**settings['mass_solver']) if 'mass_solver' in settings else None)
         solid = model
-    if coupling.scheme == 'implicit-newton':
+    if coupling.scheme in ('implicit-newton','cnab-semiimplicit'):
         from ..real_lv import RealLVSolid
         if not isinstance(model, RealLVSolid):
-            raise ValueError('implicit-newton currently requires the P1 H-O real-LV model')
+            raise ValueError('implicit elasticity currently requires the P1 H-O real-LV model')
+        if coupling.scheme == 'cnab-semiimplicit':
+            from .semiimplicit import SemiImplicitMACIBStepper
+            return SemiImplicitMACIBStepper(flow,transfer,model,coupling,solid if backend=='fused' else None,
+                                           optimized=coupling_backend=='optimized')
         return ImplicitMACIBStepper(flow,transfer,model,coupling,solid if backend=='fused' else None)
     stepper = MidpointMACIBStepper if coupling.scheme == 'cnab-midpoint' else MACIBStepper
     return stepper(flow,transfer,solid.force,solid.validate,

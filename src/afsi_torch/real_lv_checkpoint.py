@@ -41,13 +41,13 @@ def refine_checkpoint_dt(model, state, settings, config, dt, end_time=None):
     output = replace(config.output, **{name: getattr(config.output, name)*factor for name in
                      ('log_every', 'output_every', 'checkpoint_every')})
     config = replace(config, time=time, output=output)
-    force_time = None if step == 0 else state.time if config.coupling.scheme in ('implicit-newton','cnab-midpoint') else (step-1)*dt
+    force_time = None if step == 0 else state.time if config.coupling.scheme in ('implicit-newton','cnab-midpoint','cnab-semiimplicit') else (step-1)*dt
     force = state.force if step == 0 else model.force(state.x, force_time)
     branch = replace(state, step=step, force_time=force_time, force=force,previous_advection=None)
     details = dict(old_dt_s=old_dt, new_dt_s=dt, refinement_factor=factor,
                    source_step=state.step, start_step=step, start_time_s=state.time,
                    force_time_s=force_time,force_resampled=step > 0,
-                   lagged_force_resampled=step > 0 and config.coupling.scheme not in ('implicit-newton','cnab-midpoint'),
+                   lagged_force_resampled=step > 0 and config.coupling.scheme not in ('implicit-newton','cnab-midpoint','cnab-semiimplicit'),
                    multistep_history_reset=True,
                    output_intervals_preserved_in_seconds=True)
     return branch, dict(settings, dt=dt), config, details
@@ -101,7 +101,7 @@ def load_real_lv(path, device='cpu'):
                      tensor('force'), metadata['force_time'],
                      tuple(tensor(f'previous_advection_{c}') for c in range(3)) if metadata.get('has_previous_advection',False) else None)
     dt = config.time.dt
-    expected_time = state.time if config.coupling.scheme in ('implicit-newton','cnab-midpoint') else (state.step-1)*dt
+    expected_time = state.time if config.coupling.scheme in ('implicit-newton','cnab-midpoint','cnab-semiimplicit') else (state.step-1)*dt
     if (type(state.step) is not int or state.step < 0 or abs(state.time-state.step*dt) > 1e-12
             or (state.step == 0 and state.force_time is not None)
             or (state.step > 0 and (state.force_time is None or abs(state.force_time-expected_time) > 1e-12))):
@@ -109,7 +109,7 @@ def load_real_lv(path, device='cpu'):
     if metadata['settings'].get('coupling', {}).get('scheme', 'explicit-lagged') != config.coupling.scheme:
         raise ValueError('checkpoint solver and configuration coupling schemes differ')
     if state.previous_advection is not None:
-        if config.coupling.scheme != 'cnab-midpoint' or state.step == 0:
+        if config.coupling.scheme not in ('cnab-midpoint','cnab-semiimplicit') or state.step == 0:
             raise ValueError('unexpected AB2 history')
         from .config import lv_grid
         lv_grid(metadata['settings']).check_velocity(state.previous_advection)

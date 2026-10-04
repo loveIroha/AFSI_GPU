@@ -23,7 +23,7 @@ CONFIG = RealLVConfig(
     beta=5e6, basal_center_cm=(7.5,7.5),
     loads=RealLVLoads(period=.8, pressure_kpa=1.067, pressure_increment_kpa=13.46, tension_kpa=84.26),
     solid_degree=5, interaction_degree=2,
-    coupling=MACCouplingOptions(scheme='cnab-midpoint'),
+    coupling=MACCouplingOptions(scheme='cnab-semiimplicit'),
     output=OutputConfig(log_every=100, checkpoint_every=1000, output_every=200, write_vtk=True),
 )
 
@@ -38,7 +38,7 @@ def main(argv=None):
     parser.add_argument('--resume', help='resume a real-LV checkpoint in its original directory')
     parser.add_argument('--resume-dt', type=float,
                         help='subdivide saved dt by an integer; requires --resume and a new --output directory')
-    parser.add_argument('--coupling', choices=('explicit-lagged', 'explicit-rk3', 'implicit-newton', 'cnab-midpoint'),
+    parser.add_argument('--coupling', choices=('explicit-lagged', 'explicit-rk3', 'implicit-newton', 'cnab-midpoint', 'cnab-semiimplicit'),
                         help='coupling time scheme; switching a resumed case requires a new output directory')
     parser.add_argument('--end-time', type=float)
     parser.add_argument('--cycles', type=int)
