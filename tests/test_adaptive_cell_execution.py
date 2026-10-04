@@ -160,3 +160,29 @@ def test_cell_execution_checkpoint_and_resume_preserve_saved_backend(real_case,t
     assert opts['interaction_quadrature']['transfer_backend']=='cell'
     report = run(resume=folder/'checkpoint.npz',device='cpu',end_time=3e-4)
     assert report['completed'] and report['interaction_quadrature']['transfer_backend']=='cell'
+
+
+def test_direct_benchmark_cli_profiles_without_repository_on_python_path(real_case,tmp_path):
+    """The user's script entry point must also work outside a pytest import path."""
+    import json
+    from pathlib import Path
+    import subprocess
+    import sys
+    pytest.importorskip('basix')
+    from afsi_torch.simulation.real_lv_mac import run
+    folder = tmp_path/'source'
+    run(case_config=adaptive_config(real_case),device='cpu',output=folder)
+    checkpoint = folder/'checkpoint.npz'
+    original = checkpoint.read_bytes()
+    output = tmp_path/'profile.json'
+    script = Path(__file__).resolve().parents[1]/'validation'/'benchmark_real_lv_schemes.py'
+    result = subprocess.run([sys.executable,'-I',str(script),
+        '--checkpoint',str(checkpoint),'--schemes','cnab-semiimplicit',
+        '--nonlinear-solvers','anderson-newton','--execution-variants','compact',
+        '--device','cpu','--warmup','0','--steps','1','--profile','--output',str(output)],
+        cwd=tmp_path,capture_output=True,text=True,timeout=120)
+    assert result.returncode==0,result.stdout+'\n'+result.stderr
+    case = json.loads(output.read_text())['cases']['cnab-semiimplicit/anderson-newton/compact']
+    assert case['completed'] and 'profile_failure' not in case
+    assert case['phases']['mass_solves']['calls']>0
+    assert checkpoint.read_bytes()==original

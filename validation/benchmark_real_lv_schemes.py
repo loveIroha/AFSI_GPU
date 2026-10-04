@@ -7,7 +7,11 @@ from time import perf_counter
 import sys
 import gc
 import torch
-sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'src'))
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+# Direct execution adds validation/, not the repository root, to sys.path.
+# Make both local package code and the optional profiling helper importable.
+sys.path.insert(0,str(PROJECT_ROOT))
+sys.path.insert(0,str(PROJECT_ROOT/'src'))
 from afsi_torch.real_lv_checkpoint import load_real_lv
 from afsi_torch.mac.execution import build_driver
 from afsi_torch.cycle_checkpoint import atomic_json
