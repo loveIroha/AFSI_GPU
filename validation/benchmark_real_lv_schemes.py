@@ -26,6 +26,11 @@ def record_phases(driver,recorder):
         (driver.flow,'stokes','stokes'),(driver.flow.pressure_solver,'solve','pressure_solves'),
         (driver,'_force_geometry','solid_force'),(driver,'validate','solid_validation'),
         (driver.flow,'check_transport','transport_checks')]
+    if hasattr(driver.transfer,'_direct_prepare'):
+        targets += [(driver.transfer,'_rule','ib_rule_selection'),
+            (driver.transfer,'_points','ib_point_coordinates'),
+            (driver.transfer,'from_points','ib_table_generation'),
+            (driver.transfer,'_direct_prepare','ib_direct_prepare')]
     originals = [(obj,name,getattr(obj,name)) for obj,name,_ in targets]
     try:
         for (obj,name,label),(_,_,fn) in zip(targets,originals):
@@ -52,7 +57,7 @@ def benchmark(checkpoint,*,device='cuda',schemes=('explicit-rk3','implicit-newto
     model,initial,settings,_,config = load_real_lv(checkpoint,device)
     if execution_variants is not None:
         if (not execution_variants or len(set(execution_variants))!=len(execution_variants)
-                or any(v not in ('baseline','reuse','compact','fused','cell','shared','pressure-warm','shared-warm') for v in execution_variants)
+                or any(v not in ('baseline','reuse','compact','fused','cell','shared','pressure-warm','shared-warm','prepare-warm') for v in execution_variants)
                 or tuple(schemes)!=('cnab-semiimplicit',) or config.interaction_quadrature.mode!='adaptive'):
             raise ValueError('execution_variants requires adaptive cnab-semiimplicit and distinct supported variants')
     if profile and tuple(schemes)!=('cnab-semiimplicit',):
@@ -78,11 +83,12 @@ def benchmark(checkpoint,*,device='cuda',schemes=('explicit-rk3','implicit-newto
         quadrature = config.interaction_quadrature
         if variant is not None:
             coupling = replace(coupling,reuse_final_evaluation=variant!='baseline',
-                stokes_warm_start=variant in ('pressure-warm','shared-warm'))
+                stokes_warm_start=variant in ('pressure-warm','shared-warm','prepare-warm'))
             quadrature = replace(quadrature,
                 rule_family='conical' if variant in ('baseline','reuse') else 'xiao-gimbutas',
                 transfer_backend=variant if variant in ('fused','cell') else 'reference',
-                stencil_backend='shared' if variant in ('shared','shared-warm') else 'component')
+                stencil_backend='shared' if variant in ('shared','shared-warm','prepare-warm') else 'component',
+                prepare_backend='triton' if variant=='prepare-warm' else 'torch')
         driver = build_driver(model,dict(settings,coupling=asdict(coupling),interaction_quadrature=asdict(quadrature)),device)
         if initial_state=='reference':
             state = driver.initialize(model.mesh.X)
@@ -195,7 +201,8 @@ def benchmark(checkpoint,*,device='cuda',schemes=('explicit-rk3','implicit-newto
         report['execution_comparisons'] = {}
         for label in final_states:
             prefix = label.rsplit('/',1)[0]
-            base = prefix+('/compact' if label.endswith(('/fused','/cell','/shared','/pressure-warm','/shared-warm')) else '/baseline')
+            base = prefix+('/shared-warm' if label.endswith('/prepare-warm') else
+                '/compact' if label.endswith(('/fused','/cell','/shared','/pressure-warm','/shared-warm')) else '/baseline')
             if label==base or base not in final_states:
                 continue
             reference,candidate = final_states[base],final_states[label]
@@ -230,7 +237,7 @@ def main():
     parser.add_argument('--steps',type=int,default=10)
     parser.add_argument('--profile',action='store_true',help='separate subsequent replay with phase timings; excluded from speedup')
     parser.add_argument('--nonlinear-solvers',nargs='+',choices=('newton','anderson-newton'))
-    parser.add_argument('--execution-variants',nargs='+',choices=('baseline','reuse','compact','fused','cell','shared','pressure-warm','shared-warm'),
+    parser.add_argument('--execution-variants',nargs='+',choices=('baseline','reuse','compact','fused','cell','shared','pressure-warm','shared-warm','prepare-warm'),
                         help='adaptive CNAB: compact controls shared stencils and same-step pressure warm starts; input checkpoint is read only')
     parser.add_argument('--output',required=True)
     args = parser.parse_args()

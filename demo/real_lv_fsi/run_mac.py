@@ -62,6 +62,8 @@ def main(argv=None):
                         help='adaptive reference transfer: per-component or shared face/center tables')
     parser.add_argument('--stokes-warm-start',action=argparse.BooleanOptionalAction,default=None,
                         help='reuse successful nonlinear pressures within each midpoint solve')
+    parser.add_argument('--ib-prepare-backend',choices=('torch','triton'),
+                        help='shared adaptive templates: reference tensors or direct P1/Peskin CUDA preparation')
     parser.add_argument('--ib-point-density',type=float,help='adaptive Gaussian density parameter, >=2')
     parser.add_argument('--reference', action='store_true', help='torch/PCG reference execution for small CPU tests')
     parser.add_argument('--no-vtk', action='store_true')
@@ -81,7 +83,7 @@ def main(argv=None):
                      args.fluid_origin, args.rho, args.mu, args.kappa, args.beta,
                      args.log_every, args.output_every, args.checkpoint_every, args.write_config)
         overrides += (args.interaction_quadrature,args.ib_point_density,args.ib_rule_family,args.ib_transfer_backend,
-                      args.ib_stencil_backend,args.stokes_warm_start)
+                      args.ib_stencil_backend,args.stokes_warm_start,args.ib_prepare_backend)
         if any(v is not None for v in overrides) or args.reference or args.no_vtk:
             parser.error('resume restores settings; only device, output, end time/cycles, --resume-dt and --coupling may change')
         return run(device=args.device, output=args.output, resume=args.resume,
@@ -92,7 +94,7 @@ def main(argv=None):
         interaction_quadrature=replace(config.interaction_quadrature,
             **{k:v for k,v in dict(mode=args.interaction_quadrature,point_density=args.ib_point_density,
                                  rule_family=args.ib_rule_family,transfer_backend=args.ib_transfer_backend,
-                                 stencil_backend=args.ib_stencil_backend).items() if v is not None}),
+                                 stencil_backend=args.ib_stencil_backend,prepare_backend=args.ib_prepare_backend).items() if v is not None}),
         coupling=replace(config.coupling,scheme=config.coupling.scheme if args.coupling is None else args.coupling,
             semiimplicit_solver=config.coupling.semiimplicit_solver if args.nonlinear_solver is None else args.nonlinear_solver,
             stokes_warm_start=config.coupling.stokes_warm_start if args.stokes_warm_start is None else args.stokes_warm_start),

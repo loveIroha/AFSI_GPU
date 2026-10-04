@@ -24,6 +24,7 @@ class InteractionQuadratureOptions:
     rule_family: str = 'conical'
     transfer_backend: str = 'reference'
     stencil_backend: str = 'component'
+    prepare_backend: str = 'torch'
 
     def __post_init__(self):
         if self.mode not in ('fixed','adaptive'):
@@ -36,6 +37,10 @@ class InteractionQuadratureOptions:
             raise ValueError('stencil_backend must be component or shared')
         if self.stencil_backend=='shared' and (self.mode!='adaptive' or self.transfer_backend!='reference'):
             raise ValueError('shared stencil requires adaptive quadrature with reference transfer execution')
+        if self.prepare_backend not in ('torch','triton'):
+            raise ValueError('prepare_backend must be torch or triton')
+        if self.prepare_backend=='triton' and self.stencil_backend!='shared':
+            raise ValueError('triton preparation requires shared adaptive reference stencils')
         if isinstance(self.point_density,bool) or not isfinite(self.point_density) or self.point_density < 2:
             raise ValueError('interaction point_density must be finite and >=2')
         if type(self.max_order) is not int or not 2 <= self.max_order <= 22:
@@ -218,16 +223,24 @@ class AdaptiveP1Transfer(CompactFETransfer):
         # Every affine P1 quadrature point lies in this convex vertex hull.
         return x[self.geometry.cells].reshape(-1,3)
 
+    def _direct_prepare(self,x,rule):
+        from ._triton_prepare import prepare
+        return prepare(self,x,rule)
+
     @torch.no_grad()
     def prepare(self,x):
         self._nodal(x)
         rule = self._rule(x)
-        points = self._points(x,rule)
-        self.check_support(points)
-        kernel = self.from_points(points)
+        if self.quadrature_options.prepare_backend=='triton' and x.is_cuda:
+            base,phi = self._direct_prepare(x,rule)
+        else:
+            points = self._points(x,rule)
+            self.check_support(points)
+            kernel = self.from_points(points)
+            base,phi = kernel.base,kernel.phi
         self._last_prepared_rule = rule
         cls = SharedAdaptiveStencil if self.quadrature_options.stencil_backend=='shared' else AdaptiveStencil
-        stencil = cls(kernel.base,kernel.phi,rule)
+        stencil = cls(base,phi,rule)
         self._last_stencil_bytes = stencil.storage_bytes
         return stencil
 
@@ -284,6 +297,8 @@ class AdaptiveP1Transfer(CompactFETransfer):
         return dict(mode='adaptive',point_density=self.quadrature_options.point_density,
                     transfer_backend=self.quadrature_options.transfer_backend,
                     stencil_backend=self.quadrature_options.stencil_backend,
+                    prepare_backend=self.quadrature_options.prepare_backend,
+                    prepare_execution='triton' if self.quadrature_options.prepare_backend=='triton' and self.geometry.weights.is_cuda else 'torch',
                     stencil_storage_bytes=self._last_stencil_bytes,
                     rule_family=self.quadrature_options.rule_family,
                     points_per_order={n:len(table[1]) for n,table in self._rules.items()},

@@ -219,7 +219,8 @@ def run(*, case_config=None, device='cuda', output=None, resume=None, end_time=N
               f'point density={config.interaction_quadrature.point_density:g}; '
               f'rule family={config.interaction_quadrature.rule_family}; '
               f'transfer={config.interaction_quadrature.transfer_backend}; '
-              f'stencil={config.interaction_quadrature.stencil_backend}',flush=True)
+              f'stencil={config.interaction_quadrature.stencil_backend}; '
+              f'prepare={config.interaction_quadrature.prepare_backend}',flush=True)
         if semiimplicit:
             print(f'Nonlinear solver: {config.coupling.semiimplicit_solver}; '
                   f'Stokes pressure warm start={config.coupling.stokes_warm_start}',flush=True)
