@@ -23,7 +23,7 @@ CONFIG = RealLVConfig(
     beta=5e6, basal_center_cm=(7.5,7.5),
     loads=RealLVLoads(period=.8, pressure_kpa=1.067, pressure_increment_kpa=13.46, tension_kpa=84.26),
     solid_degree=5, interaction_degree=2,
-    coupling=MACCouplingOptions(scheme='cnab-semiimplicit'),
+    coupling=MACCouplingOptions(scheme='cnab-semiimplicit',semiimplicit_solver='anderson-newton'),
     output=OutputConfig(log_every=100, checkpoint_every=1000, output_every=200, write_vtk=True),
 )
 
@@ -41,6 +41,8 @@ def main(argv=None):
     parser.add_argument('--coupling', choices=('explicit-lagged', 'explicit-rk3', 'implicit-newton', 'cnab-midpoint', 'cnab-semiimplicit'),
                         help='coupling time scheme; switching a resumed case requires a new output directory')
     parser.add_argument('--end-time', type=float)
+    parser.add_argument('--nonlinear-solver',choices=('newton','anderson-newton'),
+                        help='midpoint residual solver; changing a resumed solver requires a new output directory')
     parser.add_argument('--cycles', type=int)
     parser.add_argument('--dt', type=float)
     parser.add_argument('--fluid-cells', type=int)
@@ -70,10 +72,12 @@ def main(argv=None):
         if any(v is not None for v in overrides) or args.reference or args.no_vtk:
             parser.error('resume restores settings; only device, output, end time/cycles, --resume-dt and --coupling may change')
         return run(device=args.device, output=args.output, resume=args.resume,
-                   end_time=end_time, resume_dt=args.resume_dt, coupling_scheme=args.coupling)
+                   end_time=end_time, resume_dt=args.resume_dt, coupling_scheme=args.coupling,
+                   nonlinear_solver=args.nonlinear_solver)
     config = load_config(args.config, CONFIG) if args.config else CONFIG
     config = replace(config,
-        coupling=config.coupling if args.coupling is None else replace(config.coupling, scheme=args.coupling),
+        coupling=replace(config.coupling,scheme=config.coupling.scheme if args.coupling is None else args.coupling,
+            semiimplicit_solver=config.coupling.semiimplicit_solver if args.nonlinear_solver is None else args.nonlinear_solver),
         source_dir=config.source_dir if args.mesh_dir is None else args.mesh_dir,
         time=TimeConfig(config.time.dt if args.dt is None else args.dt,
                         config.time.end_time if end_time is None else end_time),
@@ -89,6 +93,8 @@ def main(argv=None):
     if args.write_config:
         save_config(args.write_config, config)
         return
+    if args.nonlinear_solver is not None and config.coupling.scheme!='cnab-semiimplicit':
+        parser.error('--nonlinear-solver requires cnab-semiimplicit')
     report = run(case_config=config, device=args.device, output=args.output)
     print(f'completed: step={report["accepted_steps"]}, t={report["reached_time_s"]:.6f} s, '
           f'elapsed_seconds={report["elapsed_seconds"]:.3f}', flush=True)

@@ -50,6 +50,7 @@ class MACCNABFlow(MACFlow):
         kwargs['implicit_transport'] = True
         super().__init__(*args,**kwargs)
         self.cnab_options = CNABOptions() if cnab_options is None else cnab_options
+        self.stokes_calls = 0
         self.alpha = self.dt*self.mu/(2*self.rho)
         self._adv = convection_ppm if self.cnab_options.advection=='ppm' else convection
         self._helmholtz_diagonal = []
@@ -110,6 +111,7 @@ class MACCNABFlow(MACFlow):
     @torch.no_grad()
     def stokes(self,b,initial=None):
         """Solve H u + dt/rho G p=b, D u=0 with true residual acceptance."""
+        self.stokes_calls += 1
         b = zero_normal(b)
         opt = self.pressure_solver.options
         rhs_norm = torch.sqrt(sum(v.square().sum() for v in b)).item()

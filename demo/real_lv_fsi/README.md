@@ -4,6 +4,8 @@
 流体和积分点 IB 耦合。默认采用 `cnab-semiimplicit`：保留 CN 黏性、AB2 对流和
 预测中点 IB 几何，同时通过 CSR 固体切线求解非线性中点力反馈。外层未知量仅为
 固体节点位置修正，流体仍使用完整 MAC 网格；运动学、动量和散度均验收。
+默认使用 Anderson 加速求解同一隐式残差；困难步回退到 CSR Newton。可用
+`--nonlinear-solver newton` 对照。日志分别记录 AA、Newton、GMRES 和 Stokes 调用数。
 这是 CN–AB2/半步格式的隐式弹性扩展，不声称逐项复制 Gao、Griffith–Luo 或 IBAMR。
 [公式、验收条件与实现范围](../../docs/MAC_SEMIIMPLICIT.md)。
 
@@ -65,7 +67,7 @@ sheet 文件名不同可在 `CONFIG.sheet_files` 或 JSON 中修改。
 只运行本次改动的检查：
 
 ```bash
-CUDA_VISIBLE_DEVICES=0 python -m pytest -q tests/test_mac_semiimplicit.py tests/test_mac_cnab.py tests/test_mac_implicit.py
+CUDA_VISIBLE_DEVICES=0 python -m pytest -q tests/test_midpoint_solver.py tests/test_mac_semiimplicit.py tests/test_mac_cnab.py tests/test_mac_implicit.py
 ```
 
 先完成新路径的 0.005 s 启动和预热性能实验，再推进至 0.20 s，跨过此前 0.1685 s
@@ -108,6 +110,9 @@ CUDA_VISIBLE_DEVICES=0 python -u demo/real_lv_fsi/run_mac.py \
 ```
 
 普通续算使用原目录，恢复原配置、x/u/p、端点力与 AB2 上一时刻对流项。
+旧检查点会恢复旧的 Newton 求解器；切换为 `--nonlinear-solver anderson-newton`
+须给出新输出目录，保留原检查点和 AB2 历史。短程同方程耗时对比见
+[性能实验命令](../../docs/MAC_SEMIIMPLICIT.md#compare-nonlinear-solver-cost-on-the-same-existing-checkpoint)。
 检查点自包含，无需再访问原始网格文件。三周期表示总目标时刻 2.4 s。
 异常保存最后接受状态；失败试探不会写入 AB2 历史。
 切换方案必须使用新目录，并重置多步历史、执行启动步；这不消除已有历史误差。

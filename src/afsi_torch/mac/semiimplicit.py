@@ -104,6 +104,7 @@ class SemiImplicitMACIBStepper(MidpointMACIBStepper):
     @torch.no_grad()
     def step(self, state, *, diagnostics=True):
         dt = self.flow.dt
+        start_stokes_calls = self.flow.stokes_calls
         if type(state.step) is not int or state.step < 0 or not isfinite(state.time) or abs(state.time-state.step*dt)>1e-12:
             raise ValueError('inconsistent semi-implicit CNAB state clock')
         self.validate(state.x)
@@ -129,9 +130,16 @@ class SemiImplicitMACIBStepper(MidpointMACIBStepper):
             # Convection remains explicitly extrapolated and retains its CFL
             # screen; viscosity and structural force are coupled implicitly.
             self.flow.check_transport(state.velocity, self.flow.grid.zeros(device=state.x.device,dtype=state.x.dtype))
-            result = newton(problem.residual, torch.zeros_like(state.x), validate=problem.validate,
-                linearization_factory=problem.linearization, preconditioner_factory=problem.preconditioner,
-                options=self.options.newton)
+            if self.options.semiimplicit_solver=='anderson-newton':
+                from .midpoint_solver import accelerated_midpoint
+                result,solver_info = accelerated_midpoint(problem,torch.zeros_like(state.x),
+                    self.options.newton,self.options.anderson,newton_solve=newton)
+            else:
+                result = newton(problem.residual, torch.zeros_like(state.x), validate=problem.validate,
+                    linearization_factory=problem.linearization, preconditioner_factory=problem.preconditioner,
+                    options=self.options.newton)
+                solver_info = dict(solver='newton',anderson_iterations=0,newton_iterations=result.iterations,
+                                   newton_fallback=False,fallback_reason=None)
             problem.validate(result.x)
             r, flow, half_force, density, spread, interpolation, U = problem.evaluate(result.x)
             norm = torch.linalg.vector_norm(r).item()
@@ -171,8 +179,10 @@ class SemiImplicitMACIBStepper(MidpointMACIBStepper):
             startup_predictor_corrector=startup, startup_flow=startup_info,
             ib_geometry='frozen at predicted midpoint', force_sampling='solved midpoint',
             nonlinear=dict(iterations=result.iterations, residual_norm=norm, tolerance=result.tolerance,
+                **solver_info,
                 history=result.history, acceptance=acceptance, solid_tangent='assembled CSR nodal-force derivative',
                 unknown_dofs=state.x.numel(), residual_evaluations=problem.evaluations,
+                stokes_solves=self.flow.stokes_calls-start_stokes_calls,
                 tangent_assemblies=problem.assemblies, jacobian_actions=problem.actions,
                 preconditioner='diagonal mass/stiffness approximation; consistent mass retained in equations'))
         if diagnostics:

@@ -50,7 +50,7 @@ outer solve uses GMRES. No dense global tangent is formed; no autograd passes
 through mass, pressure or Stokes iterations. The fluid response and Krylov
 directions are normalized and rescaled to control absolute inner tolerances.
 
-A right diagonal preconditioner approximates local mobility using row-sum
+A right diagonal preconditioner in the CSR Newton path approximates local mobility using row-sum
 mass and the magnitude of the tangent diagonal. **This does not lump the mass
 in the discretization**: both `J_hat` and `S_hat`, every nonlinear residual,
 and every Jacobian action still solve the assembled consistent FE mass system.
@@ -58,17 +58,35 @@ The preconditioner is an approximation; its benefit must be measured.
 
 ## Acceptance, history and stability
 
-Newton/GMRES corrects the midpoint force feedback, with residual-norm
-backtracking and geometry/support checks. A tangent is assembled per Newton
-iteration. A small initial residual can accept without an unnecessary assembly.
-There is no fixed single correction advertised as a converged nonlinear solve.
+The demo defaults to `coupling.semiimplicit_solver="anderson-newton"` (CLI
+`--nonlinear-solver anderson-newton`). This solves the **same nonlinear midpoint
+residual** and retains the original acceptance tolerance. It first uses up to
+six Anderson iterations with a four-column history. Each evaluation needs one
+complete Stokes solve and two consistent FE mass solves, but no Jacobian action
+or solid tangent assembly. A normalized, regularized small secant least-squares
+system is solved on the tensor device; regularization changes the iterative
+correction, not the physical equations.
+
+The acceleration's intermediate probes may have bounded nonmonotone residuals
+to learn a mildly noncontractive map. Invalid geometry, solve failure, excessive
+residual growth or exhausted budget triggers CSR Newton from the best iterate.
+These probes are **not accepted simulation states**. The original residual
+target is preserved when falling back from a better initial guess; it is never
+recomputed as a looser relative target. Settings are under `coupling.anderson`.
+
+CSR Newton/GMRES uses residual-norm backtracking and assembles a tangent per
+Newton iteration. It remains selectable with `--nonlinear-solver newton`.
+Both paths can accept a sufficiently small initial residual without unnecessary
+iterations. A single update is not advertised as a converged nonlinear solve.
 
 The final residual is recomputed independently. The actual CN Stokes momentum
 and divergence must also pass their existing tolerances. The solved midpoint
 is retained; an extra unguarded Picard position update is not applied. The
 endpoint kinematic residual is twice the checked midpoint residual.
-The `nonlinear` report section records acceptance, unknown count, all Newton
-history, tangent assemblies and Jacobian actions.
+The `nonlinear` report section records acceptance, unknown count, Anderson and
+Newton history/iterations, fallback reasons, tangent assemblies, Jacobian
+actions and actual Stokes calls. Logs and CSV show separate AA/Newton/GMRES
+counts. The last fluid solve's MG count is not the total cost of a coupled step.
 
 Startup uses the existing old-force fluid predictor to sample midpoint
 convection. Normal steps preserve AB2 history. Same-dt/same-scheme restart
@@ -108,7 +126,7 @@ Run from the repository root in the `afsi-torch` environment:
 git pull --ff-only
 python -m pip install -e ".[test,geometry,mesh,fused]"
 CUDA_VISIBLE_DEVICES=0 python -m pytest -q \
-  tests/test_mac_semiimplicit.py tests/test_mac_cnab.py tests/test_mac_implicit.py
+  tests/test_midpoint_solver.py tests/test_mac_semiimplicit.py tests/test_mac_cnab.py tests/test_mac_implicit.py
 ```
 
 Tests compare the reduced CSR Jacobian against a finite difference of the
@@ -157,3 +175,46 @@ These horizons are supplied for continuation; they are not yet validated.
 
 Implementation: `mac/semiimplicit.py`, `ho_tangent.py`,
 `real_lv_diagnostics.py`, and the shared `mac/cnab.py`/transfer backends.
+
+## Compare nonlinear solver cost on the same existing checkpoint
+
+The earlier Newton implementation performs a full Stokes response and two
+mass solves **per GMRES direction**, as well as complete residual evaluations.
+Reducing the outer basis to solid nodes did not remove this nested work.
+The new acceleration aims to avoid that cost in easy steps. Stiff steps may
+still require Newton, so a fixed real-mesh GPU speedup is not guaranteed.
+First-use kernel compilation belongs to setup/warmup time, not steady time.
+
+Old checkpoints intentionally restore their saved solver, with missing solver
+settings decoded as `newton`. To compare without changing the saved state:
+
+```bash
+CUDA_VISIBLE_DEVICES=0 python -u validation/benchmark_real_lv_schemes.py \
+  --checkpoint results/real_lv_semiimplicit_02s/checkpoint.npz \
+  --schemes cnab-semiimplicit --nonlinear-solvers newton anderson-newton \
+  --device cuda --warmup 2 --steps 5 \
+  --output results/real_lv_solver_performance/report.json
+```
+
+Both cases solve the same midpoint equations from the same accepted state.
+The report separates setup time and warmed time and counts Stokes, pressure,
+mass, Anderson, GMRES, tangent assemblies and fallback steps. GPU comparisons
+should run without another simulation competing on the same GPU.
+
+To switch an existing checkpoint to the accelerated solver while preserving
+its AB2 time history, use a new branch directory:
+
+```bash
+CUDA_VISIBLE_DEVICES=0 python -u demo/real_lv_fsi/run_mac.py \
+  --device cuda --resume results/real_lv_semiimplicit_02s/checkpoint.npz \
+  --nonlinear-solver anderson-newton --end-time 0.2 \
+  --output results/real_lv_semiimplicit_accelerated_02s
+```
+
+Solver-only changes preserve multistep history because the equations/dt are
+unchanged. The source directory and checkpoint remain intact. Fresh demo
+runs default to acceleration, or it may be requested explicitly. Local tests
+cover the unchanged active H–O equations with fewer fluid/mass solves, growth
+and invalid-probe fallback, stiff modal energy bounds, independent final
+acceptance, restart and actual benchmark counts. A small-case success is not
+a full real-mesh performance or three-cycle validation.

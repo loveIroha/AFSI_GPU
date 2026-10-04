@@ -15,7 +15,7 @@ from ..transport import transport_numbers, coupling_policy
 
 @torch.no_grad()
 def run(*, case_config=None, device='cuda', output=None, resume=None, end_time=None, resume_dt=None,
-        coupling_scheme=None):
+        coupling_scheme=None, nonlinear_solver=None):
     if str(device).startswith('cuda') and not torch.cuda.is_available():
         raise RuntimeError('CUDA requested but unavailable')
     if resume and case_config is not None:
@@ -25,7 +25,7 @@ def run(*, case_config=None, device='cuda', output=None, resume=None, end_time=N
     started = perf_counter()
     folder = Path(output) if output else Path(resume).parent if resume else Path('results/demo_real_lv/mac')
     refinement = resume_dt is not None
-    branch = refinement or resume and coupling_scheme is not None
+    branch = refinement or resume and (coupling_scheme is not None or nonlinear_solver is not None)
     if branch:
         if output is None or folder.resolve() == Path(resume).resolve().parent:
             raise ValueError('dt/scheme change requires a new output directory; source is preserved')
@@ -52,18 +52,25 @@ def run(*, case_config=None, device='cuda', output=None, resume=None, end_time=N
             settings = dict(settings,coupling=asdict(config.coupling))
             details.update(old_scheme=old_scheme,new_scheme=config.coupling.scheme,force_time_s=force_time,
                            force_resampled=state.step > 0)
+        if nonlinear_solver is not None:
+            details.update(old_nonlinear_solver=config.coupling.semiimplicit_solver,new_nonlinear_solver=nonlinear_solver)
+            config = replace(config,coupling=replace(config.coupling,semiimplicit_solver=nonlinear_solver))
+            settings = dict(settings,coupling=asdict(config.coupling))
         if branch:
             progress = dict(elapsed_seconds=0., segments=[], summary={}, restart_from=dict(
                 checkpoint=str(Path(resume).resolve()), source_elapsed_seconds=progress['elapsed_seconds'],
                 source_failure=progress.get('failure'), **details))
     else:
-        config = replace(RealLVConfig(),coupling=replace(RealLVConfig().coupling,scheme='cnab-semiimplicit')) if case_config is None else case_config
+        config = replace(RealLVConfig(),coupling=replace(RealLVConfig().coupling,
+            scheme='cnab-semiimplicit',semiimplicit_solver='anderson-newton')) if case_config is None else case_config
         if not isinstance(config, RealLVConfig):
             raise TypeError('case_config must be RealLVConfig')
         if end_time is not None:
             config = replace(config, time=TimeConfig(config.time.dt, end_time))
         if coupling_scheme is not None:
             config = replace(config,coupling=replace(config.coupling,scheme=coupling_scheme))
+        if nonlinear_solver is not None:
+            config = replace(config,coupling=replace(config.coupling,semiimplicit_solver=nonlinear_solver))
         model = imported_model(config, device)
         settings = dict(dt=config.time.dt, fluid_shape=config.fluid.shape,
                         fluid_lengths=config.fluid.lengths, fluid_origin=config.fluid.origin,
@@ -75,6 +82,8 @@ def run(*, case_config=None, device='cuda', output=None, resume=None, end_time=N
     implicit = config.coupling.scheme == 'implicit-newton'
     cnab = config.coupling.scheme in ('cnab-midpoint','cnab-semiimplicit')
     semiimplicit = config.coupling.scheme == 'cnab-semiimplicit'
+    if nonlinear_solver is not None and not semiimplicit:
+        raise ValueError('nonlinear_solver override requires cnab-semiimplicit')
     policy = coupling_policy(config.coupling.scheme)
     steps = round(config.time.end_time/config.time.dt)
     driver = build_driver(model, settings, device)
@@ -121,7 +130,13 @@ def run(*, case_config=None, device='cuda', output=None, resume=None, end_time=N
                     stokes_iterations=info.get('flow',{}).get('pressure',{}).get('schur_iterations'),
                     momentum_residual=info.get('flow',{}).get('stokes',{}).get('momentum_residual'),
                     power_error=info.get('power_error'), power_error_sampled='power_error' in info,
-                    newton_iterations=info.get('nonlinear',{}).get('iterations'),
+                    newton_iterations=info.get('nonlinear',{}).get('newton_iterations',info.get('nonlinear',{}).get('iterations')),
+                    anderson_iterations=info.get('nonlinear',{}).get('anderson_iterations'),
+                    gmres_iterations=sum(h.get('linear',{}).get('iterations',0) for h in info.get('nonlinear',{}).get('history',[])),
+                    jacobian_actions=info.get('nonlinear',{}).get('jacobian_actions'),
+                    tangent_assemblies=info.get('nonlinear',{}).get('tangent_assemblies'),
+                    residual_evaluations=info.get('nonlinear',{}).get('residual_evaluations'),
+                    stokes_solves=info.get('nonlinear',{}).get('stokes_solves'),
                     nonlinear_residual=info.get('nonlinear',{}).get('residual_norm'),
                     nonlinear_tolerance=info.get('nonlinear',{}).get('tolerance'))
 
@@ -192,6 +207,8 @@ def run(*, case_config=None, device='cuda', output=None, resume=None, end_time=N
               f'execution={config.execution.execution_backend}, pressure={flow.pressure_solver.backend}, '
               f'mass={config.execution.mass_backend}, coupling={config.execution.coupling_backend}', flush=True)
         print(f'Time scheme: {config.coupling.scheme}', flush=True)
+        if semiimplicit:
+            print(f'Nonlinear solver: {config.coupling.semiimplicit_solver}',flush=True)
         for _ in range(state.step, steps):
             sample = (state.step+1) % config.output.log_every == 0 or state.step+1 == steps
             state, info = driver.step(state, diagnostics=sample)
@@ -202,6 +219,10 @@ def run(*, case_config=None, device='cuda', output=None, resume=None, end_time=N
                 last = history[-1]
                 nonlinear = info.get('nonlinear',{})
                 suffix = (f', Newton={nonlinear["iterations"]}, residual={nonlinear["residual_norm"]:.3g}' if nonlinear else '')
+                if semiimplicit and nonlinear:
+                    suffix = (f', AA={nonlinear["anderson_iterations"]}, Newton={nonlinear["newton_iterations"]}, '
+                        f'GMRES={last["gmres_iterations"]}, Stokes calls={nonlinear["stokes_solves"]}, '
+                        f'residual={nonlinear["residual_norm"]:.3g}')
                 if cnab and not semiimplicit:
                     suffix = f', Stokes={last["stokes_iterations"]}, momentum={last["momentum_residual"]:.3g}'
                 print(f'step {state.step}/{steps}, t={state.time:.6f}, V={last["cavity_volume_ml"]:.8g} mL, '
