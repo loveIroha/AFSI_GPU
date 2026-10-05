@@ -49,6 +49,7 @@ Lengths, time, density, viscosity, and stress use **cm–g–s units**. The 2D c
 | External XDMF/HDF5 meshes, DOLFIN boundary tags, and cellwise fibers | [Mesh input API](docs/MESH_INPUT.md) |
 | Real-LV H–O/P1 model, three cycles, input files, and background execution | [Real LV demo](demo/real_lv_fsi/README.md) |
 | CN–AB2 fluid, midpoint FE/IB, wall Stokes residuals, startup and restart | [CN–AB2 method](docs/MAC_CNAB.md) |
+| CN velocity buffers, fused Jacobi stencils and fixed-sweep CUDA Graphs | [CN–Stokes execution](docs/CN_STOKES_EXECUTION.md) |
 | Adaptive FE/IB quadrature, compact positive rules, and alignment limits | [Gao/FE alignment](docs/GAO_FE_ALIGNMENT.md) |
 | Fused adaptive P1 FE/IB transfers, cell-local spread reduction and profiling | [Adaptive IB execution](docs/ADAPTIVE_IB_EXECUTION.md) |
 | Shared MAC face/center tables and same-step Stokes pressure guesses | [Shared stencil/pressure experiment](docs/MAC_SHARED_PRESSURE.md) |
@@ -322,6 +323,7 @@ The implementation addresses GPU launch overhead, temporary tensors, repeated gl
 | Solid constitutive kernels | `torch.compile` / Inductor; fused scalar 3×3 Guccione algebra in the pointwise backend | Reduce small batched-matrix calls and intermediate tensors |
 | IB transfer | Compact separable four-point stencils and Triton gather/spread kernels | Reduce expanded index/weight storage and repeated tensor passes |
 | Pressure multigrid | Fused five-/seven-point stencils, residual/restriction and prolongation/correction kernels | Reduce kernel launches and intermediate fine-grid arrays |
+| CN velocity Helmholtz | Fused pressure/RHS initialization, fixed-buffer Jacobi stencils and captured sweep chains | Reduce repeated velocity-field allocation, ghost/Laplacian arrays and host submissions |
 | Iterative solver storage | Preallocated workspaces and fixed-address double buffers | Reuse allocations and support repeatable execution graphs |
 | CUDA Graph replay | Capture pressure V-cycle blocks and CSR/Jacobi-PCG iteration blocks between convergence checks | Reduce Python and CUDA submission overhead |
 | Warm starts and geometry reuse | Reuse prior mass-solve coefficients; cache accepted geometry and IB stencils with invalidation | Reduce iterations and duplicate evaluation |

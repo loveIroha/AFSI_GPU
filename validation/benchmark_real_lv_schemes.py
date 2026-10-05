@@ -24,6 +24,7 @@ def record_phases(driver,recorder):
         (driver.transfer,'interpolate','ib_interpolate_with_mass'),
         (driver.transfer,'solve_mass','mass_solves'),
         (driver.flow,'stokes','stokes'),(driver.flow.pressure_solver,'solve','pressure_solves'),
+        (driver.flow,'_solve_helmholtz','velocity_helmholtz'),
         (driver,'_force_geometry','solid_force'),(driver,'validate','solid_validation'),
         (driver.flow,'check_transport','transport_checks')]
     if hasattr(driver.transfer,'_direct_prepare'):
@@ -43,7 +44,8 @@ def record_phases(driver,recorder):
 
 @torch.no_grad()
 def benchmark(checkpoint,*,device='cuda',schemes=('explicit-rk3','implicit-newton'),warmup=2,steps=10,
-              nonlinear_solvers=None,initial_state='checkpoint',execution_variants=None,profile=False):
+              nonlinear_solvers=None,initial_state='checkpoint',execution_variants=None,profile=False,
+              helmholtz_backends=None):
     if type(warmup) is not int or warmup<0 or type(steps) is not int or steps<1:
         raise ValueError('warmup must be nonnegative and steps positive')
     if initial_state not in ('checkpoint','reference'):
@@ -55,6 +57,11 @@ def benchmark(checkpoint,*,device='cuda',schemes=('explicit-rk3','implicit-newto
             or any(s not in ('newton','anderson-newton') for s in nonlinear_solvers) or tuple(schemes)!=('cnab-semiimplicit',)):
         raise ValueError('nonlinear_solvers requires only cnab-semiimplicit and distinct supported solvers')
     model,initial,settings,_,config = load_real_lv(checkpoint,device)
+    if helmholtz_backends is not None and (not helmholtz_backends or
+            len(set(helmholtz_backends))!=len(helmholtz_backends) or
+            any(b not in ('torch','triton','graph') for b in helmholtz_backends) or
+            tuple(schemes)!=('cnab-semiimplicit',) or execution_variants is not None):
+        raise ValueError('helmholtz_backends requires distinct CN backends, only cnab-semiimplicit and no execution_variants')
     if execution_variants is not None:
         if (not execution_variants or len(set(execution_variants))!=len(execution_variants)
                 or any(v not in ('baseline','reuse','compact','fused','cell','shared','pressure-warm','shared-warm','prepare-warm','shared-fused-warm','shared-fused-checked') for v in execution_variants)
@@ -74,12 +81,17 @@ def benchmark(checkpoint,*,device='cuda',schemes=('explicit-rk3','implicit-newto
     cases = [(scheme,label,solver,None) for scheme,label,solver in cases] if execution_variants is None else [
         (scheme,f'{label}/{variant}',solver,variant) for scheme,label,solver in cases for variant in execution_variants]
     final_states = {}
-    for scheme,label,solver,variant in cases:
+    cases = [(scheme,label,solver,variant,None) for scheme,label,solver,variant in cases] if helmholtz_backends is None else [
+        (scheme,f'{label}/{backend}',solver,variant,backend)
+        for scheme,label,solver,variant in cases for backend in helmholtz_backends]
+    for scheme,label,solver,variant,helmholtz_backend in cases:
         print(f'{label}: preparing and warming up...',flush=True)
         started = perf_counter()
         coupling = replace(config.coupling,scheme=scheme)
         if solver is not None:
             coupling = replace(coupling,semiimplicit_solver=solver)
+        if helmholtz_backend is not None:
+            coupling = replace(coupling,cnab=replace(coupling.cnab,helmholtz_backend=helmholtz_backend))
         quadrature = config.interaction_quadrature
         if variant is not None:
             coupling = replace(coupling,reuse_final_evaluation=variant!='baseline',
@@ -125,6 +137,7 @@ def benchmark(checkpoint,*,device='cuda',schemes=('explicit-rk3','implicit-newto
                 state,_ = driver.step(state,diagnostics=False)
             synchronize()
             setup_seconds = perf_counter()-started
+            helmholtz_before = (getattr(driver.flow,'helmholtz_calls',0),getattr(driver.flow,'helmholtz_sweeps',0))
             for key in counters:
                 counters[key]=0
             measured_start = perf_counter()
@@ -161,7 +174,11 @@ def benchmark(checkpoint,*,device='cuda',schemes=('explicit-rk3','implicit-newto
                 anderson_iterations=anderson_iterations,newton_fallback_steps=fallback_steps,
                 outer_unknown_dofs=initial.x.numel() if scheme=='cnab-semiimplicit' else sum(v.numel() for v in initial.velocity) if scheme=='implicit-newton' else 0,
                 final_solid=model.diagnostics(state.x))
-            if execution_variants is not None:
+            if hasattr(driver.flow,'helmholtz_summary'):
+                case['helmholtz'] = driver.flow.helmholtz_summary()
+                case['counts']['helmholtz_solves'] = driver.flow.helmholtz_calls-helmholtz_before[0]
+                case['counts']['helmholtz_sweeps'] = driver.flow.helmholtz_sweeps-helmholtz_before[1]
+            if execution_variants is not None or helmholtz_backends is not None:
                 final_states[label] = dict(x=state.x.clone(),pressure=state.pressure.clone(),
                     force=state.force.clone(),velocity=tuple(u.clone() for u in state.velocity))
             print(f'{label}: {case["ms_per_step"]:.3f} ms/step; '
@@ -230,6 +247,25 @@ def benchmark(checkpoint,*,device='cuda',schemes=('explicit-rk3','implicit-newto
                 final_state_differences=differences,
                 reference_field_max_abs=scales,relative_l2=relative,
                 interpretation='Execution/warm-start variants retain reference quadrature and acceptance; compact vs baseline changes IB sampling')
+    if helmholtz_backends is not None:
+        report['helmholtz_comparisons'] = {}
+        for label,candidate in final_states.items():
+            base = label.rsplit('/',1)[0]+'/torch'
+            if base==label or base not in final_states:
+                continue
+            reference = final_states[base]
+            differences = {f'{name}_max_abs':(candidate[name]-reference[name]).abs().max().item()
+                           for name in ('x','pressure','force')}
+            differences['velocity_max_abs'] = max((a-b).abs().max().item() for a,b in
+                                                 zip(candidate['velocity'],reference['velocity']))
+            relative = {name:(torch.linalg.vector_norm(candidate[name]-reference[name])/
+                torch.linalg.vector_norm(reference[name]).clamp_min(1e-30)).item() for name in ('pressure','force')}
+            relative['displacement'] = (torch.linalg.vector_norm(candidate['x']-reference['x'])/
+                torch.linalg.vector_norm(reference['x']-model.mesh.X).clamp_min(1e-30)).item()
+            report['helmholtz_comparisons'][label] = dict(reference=base,
+                measured_speedup=report['cases'][base]['ms_per_step']/report['cases'][label]['ms_per_step'],
+                final_state_differences=differences,relative_l2=relative,
+                interpretation='Same fixed Jacobi count, no-slip stencil, quadrature, time scheme and true residual acceptance; floating-point order may differ')
     return report
 
 
@@ -243,6 +279,8 @@ def main():
     parser.add_argument('--warmup',type=int,default=2)
     parser.add_argument('--steps',type=int,default=10)
     parser.add_argument('--profile',action='store_true',help='separate subsequent replay with phase timings; excluded from speedup')
+    parser.add_argument('--helmholtz-backends',nargs='+',choices=('torch','triton','graph'),
+                        help='compare CN velocity execution from the same checkpoint without changing other settings')
     parser.add_argument('--nonlinear-solvers',nargs='+',choices=('newton','anderson-newton'))
     parser.add_argument('--execution-variants',nargs='+',choices=('baseline','reuse','compact','fused','cell','shared','pressure-warm','shared-warm','prepare-warm','shared-fused-warm','shared-fused-checked'),
                         help='adaptive CNAB: compact controls shared stencils and same-step pressure warm starts; input checkpoint is read only')
@@ -250,7 +288,8 @@ def main():
     args = parser.parse_args()
     report = benchmark(args.checkpoint,device=args.device,schemes=tuple(args.schemes),warmup=args.warmup,steps=args.steps,
                        nonlinear_solvers=args.nonlinear_solvers,initial_state=args.initial_state,
-                       execution_variants=args.execution_variants,profile=args.profile)
+                       execution_variants=args.execution_variants,profile=args.profile,
+                       helmholtz_backends=args.helmholtz_backends)
     path = Path(args.output)
     path.parent.mkdir(parents=True,exist_ok=True)
     atomic_json(path,report)

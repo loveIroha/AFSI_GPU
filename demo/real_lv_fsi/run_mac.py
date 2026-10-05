@@ -47,6 +47,8 @@ def main(argv=None):
                         help='midpoint residual solver; changing a resumed solver requires a new output directory')
     parser.add_argument('--cycles', type=int)
     parser.add_argument('--dt', type=float)
+    parser.add_argument('--helmholtz-backend',choices=('auto','torch','triton','graph'),
+                        help='CN velocity execution; auto uses graph on fused CUDA, torch otherwise')
     parser.add_argument('--fluid-cells', type=int)
     parser.add_argument('--fluid-lengths', nargs=3, type=float)
     parser.add_argument('--fluid-origin', nargs=3, type=float)
@@ -92,7 +94,8 @@ def main(argv=None):
                      args.log_every, args.output_every, args.checkpoint_every, args.write_config)
         overrides += (args.interaction_quadrature,args.ib_point_density,args.ib_rule_family,args.ib_transfer_backend,
                       args.ib_stencil_backend,args.stokes_warm_start,args.ib_prepare_backend,args.reuse_validation)
-        overrides += (args.reuse_ib_buffers,args.adaptive_substeps,args.substep_courant_target,args.max_substep_levels)
+        overrides += (args.reuse_ib_buffers,args.adaptive_substeps,args.substep_courant_target,args.max_substep_levels,
+                      args.helmholtz_backend)
         if any(v is not None for v in overrides) or args.reference or args.no_vtk:
             parser.error('resume restores settings; only device, output, end time/cycles, --resume-dt and --coupling may change')
         return run(device=args.device, output=args.output, resume=args.resume,
@@ -106,6 +109,8 @@ def main(argv=None):
                                  stencil_backend=args.ib_stencil_backend,prepare_backend=args.ib_prepare_backend,
                                  reuse_stencil_buffers=args.reuse_ib_buffers).items() if v is not None}),
         coupling=replace(config.coupling,scheme=config.coupling.scheme if args.coupling is None else args.coupling,
+            cnab=replace(config.coupling.cnab,helmholtz_backend=config.coupling.cnab.helmholtz_backend
+                         if args.helmholtz_backend is None else args.helmholtz_backend),
             semiimplicit_solver=config.coupling.semiimplicit_solver if args.nonlinear_solver is None else args.nonlinear_solver,
             stokes_warm_start=config.coupling.stokes_warm_start if args.stokes_warm_start is None else args.stokes_warm_start,
             reuse_validation=config.coupling.reuse_validation if args.reuse_validation is None else args.reuse_validation,

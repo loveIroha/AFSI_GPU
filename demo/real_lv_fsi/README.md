@@ -274,6 +274,12 @@ python validation/check_real_lv_cycles.py "$run_dir" --cycles 3
 
 接口扩展与材料/边界替换见 [固体架构](../../docs/SOLID_API.md)。
 
+CN 速度求解提供 `--helmholtz-backend auto|torch|triton|graph`。
+默认 `auto` 在 fused CUDA 下启用固定缓冲区、融合速度迭代和 CUDA Graph，
+CPU 使用 torch。旧检查点缺少该字段时也按 `auto` 解释，保留原有时间步和
+AB2 历史。算法、积分点和收敛验收不变；先使用当前阶段检查点进行短程
+对照，再测量完整模拟耗时，见 [CN–Stokes 执行优化](../../docs/CN_STOKES_EXECUTION.md)。
+
 共享模板可进一步融合 FE 点值/传播及插值/节点组装，省去完整点数组。
 在上述命令中改为 `--ib-transfer-backend fused`，并加上
 `--reuse-validation` 可启用检查结果复用。物理参数、积分规则及验收容差

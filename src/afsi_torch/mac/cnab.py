@@ -21,10 +21,13 @@ class CNABOptions:
     helmholtz_rtol: float = 1e-13
     max_helmholtz_iterations: int = 512
     max_stokes_iterations: int = 40
+    helmholtz_backend: str = 'auto'
 
     def __post_init__(self):
         if self.advection not in ('ppm','centered'):
             raise ValueError('CNAB advection must be ppm or centered')
+        if self.helmholtz_backend not in ('auto','torch','triton','graph'):
+            raise ValueError('CN Helmholtz backend must be auto, torch, triton or graph')
         if not isfinite(self.helmholtz_rtol) or not 0 < self.helmholtz_rtol < 1e-8:
             raise ValueError('CNAB Helmholtz relative tolerance must be in (0,1e-8)')
         for value in (self.max_helmholtz_iterations,self.max_stokes_iterations):
@@ -82,6 +85,21 @@ class MACCNABFlow(MACFlow):
             raise ValueError('CN Helmholtz iteration budget too small for this dt/viscosity/grid')
         self._lap = lambda u:tuple(velocity_laplacian(v,c,self.grid.spacing) for c,v in enumerate(u))
         self._metrics = self._stokes_metrics
+        self._pressure_right = lambda b,p:tuple(r-self.dt/self.rho*g for r,g in
+                                               zip(b,gradient(p,self.grid.spacing)))
+        requested = self.cnab_options.helmholtz_backend
+        device = self.pressure_solver.diagonals[0].device
+        self.helmholtz_backend = ('graph' if device.type=='cuda' and self.execution_backend=='fused'
+                                 else 'torch') if requested=='auto' else requested
+        self._helmholtz_workspace = None
+        if self.helmholtz_backend!='torch':
+            if device.type!='cuda':
+                raise ValueError('Triton/graph CN Helmholtz requires CUDA')
+            from .helmholtz import HelmholtzWorkspace
+            self._helmholtz_workspace = HelmholtzWorkspace(self.grid,self._helmholtz_diagonal,
+                                                         backend=self.helmholtz_backend)
+        self.helmholtz_calls = 0
+        self.helmholtz_sweeps = 0
         if self.execution_backend=='fused':
             from .execution import tensor_kernel
             device = self.pressure_solver.diagonals[0].device
@@ -90,6 +108,7 @@ class MACCNABFlow(MACFlow):
             self._helmholtz_sweep = tensor_kernel(self._helmholtz_sweep,device)
             self._metrics = tensor_kernel(self._metrics,device)
             self._right = tensor_kernel(self._right,device)
+            self._pressure_right = tensor_kernel(self._pressure_right,device)
 
     def advection(self,velocity):
         return self._adv(velocity,self.grid.spacing)
@@ -122,11 +141,27 @@ class MACCNABFlow(MACFlow):
         return zero_normal(tuple(v+(r-v+self.alpha*l)/d for v,r,l,d in
                            zip(u,b,Lu,self._helmholtz_diagonal)))
 
-    def helmholtz(self,b):
+    def _solve_helmholtz(self,b,pressure=None,*,owned=True):
+        self.helmholtz_calls += 1
+        self.helmholtz_sweeps += self.helmholtz_iterations
+        if self._helmholtz_workspace is not None:
+            return self._helmholtz_workspace.solve(b,alpha=self.alpha,count=self.helmholtz_iterations,
+                pressure=pressure,pressure_scale=self.dt/self.rho,owned=owned)
+        if pressure is not None:
+            b = self._pressure_right(b,pressure)
         u = tuple(r/d for r,d in zip(zero_normal(b),self._helmholtz_diagonal))
         for _ in range(self.helmholtz_iterations):
             u = self._helmholtz_sweep(u,b)
         return u
+
+    def helmholtz(self,b):
+        """Owned velocity result, valid after later solves and time-step changes."""
+        return self._solve_helmholtz(b)
+
+    def helmholtz_summary(self):
+        return dict(backend=self.helmholtz_backend,calls=self.helmholtz_calls,
+            sweeps=self.helmholtz_sweeps,workspace=None if self._helmholtz_workspace is None
+            else self._helmholtz_workspace.summary())
 
     def _right(self,old,advection,density):
         return zero_normal(tuple(u+self.alpha*l+self.dt*(-a+f/self.rho)
@@ -155,26 +190,28 @@ class MACCNABFlow(MACFlow):
         cycles = 0
         poisson_solves = 0
         # Scale the continuity tolerance exactly like the old Poisson RHS check.
-        z = self.helmholtz(b)
+        z = self._solve_helmholtz(b,owned=False)
         continuity_rhs = -self.rho/self.dt*divergence(z,self.grid.spacing)
         pressure_tol = max(opt.atol,opt.rtol*torch.linalg.vector_norm(continuity_rhs).item())
         div_tol = self.dt/self.rho*pressure_tol
         # Roundoff floor is bounded by the norm of the discrete D operator.
         floor = 100*torch.finfo(p.dtype).eps*max(rhs_norm,torch.finfo(p.dtype).tiny)*sum(1/h for h in self.grid.spacing)
         div_tol = max(div_tol,floor)
+        del z,continuity_rhs
         for iteration in range(self.cnab_options.max_stokes_iterations+1):
-            gp = gradient(p,self.grid.spacing)
-            u = self.helmholtz(tuple(r-self.dt/self.rho*g for r,g in zip(b,gp)))
+            u = self._solve_helmholtz(b,p,owned=False)
             momentum,div = self._metrics(u,p,b).tolist()
             if not isfinite(momentum+div):
                 raise RuntimeError('nonfinite CN Stokes residual')
             if momentum <= momentum_tol and div <= div_tol:
+                if self._helmholtz_workspace is not None:
+                    u = tuple(v.clone() for v in u)
                 return MACFlowResult(u,p,dict(pressure=dict(cycles=cycles,backend=self.pressure_solver.backend,
                     poisson_solves=poisson_solves,schur_iterations=iteration,residual_norm=self.rho/self.dt*div,
                     tolerance=self.rho/self.dt*div_tol,meaning='CN half-time pressure; true Schur residual'),
                     stokes=dict(momentum_residual=momentum,momentum_tolerance=momentum_tol,
                     divergence_norm=div,divergence_tolerance=div_tol,
-                    helmholtz_iterations=self.helmholtz_iterations)))
+                    helmholtz_iterations=self.helmholtz_iterations,helmholtz_backend=self.helmholtz_backend)))
             if iteration == self.cnab_options.max_stokes_iterations:
                 break
             residual = -self.rho/self.dt*divergence(u,self.grid.spacing)

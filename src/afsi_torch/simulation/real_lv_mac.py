@@ -193,6 +193,8 @@ def run(*, case_config=None, device='cuda', output=None, resume=None, end_time=N
                       transport_policy=policy,
                       coupled_unknown_dofs=state.x.numel() if semiimplicit else sum(v.numel() for v in state.velocity) if implicit else 0,
                       pressure_backend=flow.pressure_solver.backend, mg_levels=flow.pressure_solver.shapes,
+                      helmholtz_backend=getattr(flow,'helmholtz_backend',None),
+                      helmholtz=flow.helmholtz_summary() if hasattr(flow,'helmholtz_summary') else None,
                       coupling='quadrature FE/IB with consistent CSR mass and shared MAC solver',
                       boundary='endo follower pressure; basal radial projection in xy plus fixed z; free epi',
                       time_scheme=('CN viscosity/AB2 convection; solved nonlinear midpoint FE force; IB geometry frozen at predicted midpoint; solid-node CSR tangent correction' if semiimplicit else 'CN viscosity/AB2 convection; predicted-midpoint FE force/IB geometry; average-velocity structure update; predictor-corrector startup'
@@ -228,6 +230,8 @@ def run(*, case_config=None, device='cuda', output=None, resume=None, end_time=N
               f'execution={config.execution.execution_backend}, pressure={flow.pressure_solver.backend}, '
               f'mass={config.execution.mass_backend}, coupling={config.execution.coupling_backend}', flush=True)
         print(f'Time scheme: {config.coupling.scheme}', flush=True)
+        if hasattr(flow,'helmholtz_backend'):
+            print(f'CN velocity Helmholtz: {flow.helmholtz_backend}',flush=True)
         print(f'Constitutive law: supplied H-O UFL, active stretch factor={config.material.active_stretch_slope:g}',flush=True)
         print(f'Interaction quadrature: {config.interaction_quadrature.mode}; '
               f'point density={config.interaction_quadrature.point_density:g}; '
