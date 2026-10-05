@@ -18,7 +18,10 @@ def spread(transfer, coefficient, stencil, *, reduced):
         if reduced:
             raise ValueError('cell-reduced execution requires component stencils')
         if coefficient.is_cuda:
-            from ._triton_shared_fe import spread as shared_spread
+            if transfer.quadrature_options.shared_execution=='reduced':
+                from ._triton_shared_tiled import spread as shared_spread
+            else:
+                from ._triton_shared_fe import spread as shared_spread
             return shared_spread(transfer,coefficient,stencil)
         # Independent CPU oracle; production CUDA never expands shared tables.
         from .adaptive_transfer import AdaptiveStencil
@@ -68,7 +71,10 @@ def spread(transfer, coefficient, stencil, *, reduced):
 def assemble_velocity(transfer, velocity, stencil):
     if getattr(stencil,'layout',None)=='shared':
         if velocity[0].is_cuda:
-            from ._triton_shared_fe import assemble_velocity as shared_assemble
+            if transfer.quadrature_options.shared_execution!='reference':
+                from ._triton_shared_tiled import assemble_velocity as shared_assemble
+            else:
+                from ._triton_shared_fe import assemble_velocity as shared_assemble
             return shared_assemble(transfer,velocity,stencil)
         from .adaptive_transfer import AdaptiveStencil
         expanded=stencil.expanded()

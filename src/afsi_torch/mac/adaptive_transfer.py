@@ -26,8 +26,14 @@ class InteractionQuadratureOptions:
     stencil_backend: str = 'component'
     prepare_backend: str = 'torch'
     reuse_stencil_buffers: bool = False
+    shared_execution: str = 'reference'
 
     def __post_init__(self):
+        if self.shared_execution not in ('reference','vector','reduced'):
+            raise ValueError('shared_execution must be reference, vector or reduced')
+        if self.shared_execution!='reference' and (self.mode!='adaptive' or
+                self.stencil_backend!='shared' or self.transfer_backend!='fused'):
+            raise ValueError('vector/reduced shared execution requires adaptive/shared/fused transfer')
         if type(self.reuse_stencil_buffers) is not bool:
             raise ValueError('reuse_stencil_buffers must be a bool')
         if self.reuse_stencil_buffers and (self.stencil_backend!='shared' or self.prepare_backend!='triton'):
@@ -311,6 +317,12 @@ class AdaptiveP1Transfer(CompactFETransfer):
         rule = self._last_prepared_rule or self._last_rule
         return dict(mode='adaptive',point_density=self.quadrature_options.point_density,
                     transfer_backend=self.quadrature_options.transfer_backend,
+                    shared_execution=self.quadrature_options.shared_execution,
+                    shared_execution_device='cuda' if self.geometry.weights.is_cuda else 'cpu-oracle',
+                    shared_gather_nodal_atomic_updates=(12*sum(len(g.cells) for g in rule.groups)
+                        if rule is not None and self.geometry.weights.is_cuda and self.quadrature_options.shared_execution!='reference'
+                        else None),
+                    shared_spread_tile_points=4 if self.quadrature_options.shared_execution=='reduced' else None,
                     stencil_backend=self.quadrature_options.stencil_backend,
                     prepare_backend=self.quadrature_options.prepare_backend,
                     prepare_execution='triton' if self.quadrature_options.prepare_backend=='triton' and self.geometry.weights.is_cuda else 'torch',

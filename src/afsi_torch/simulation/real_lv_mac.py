@@ -14,9 +14,21 @@ from ..transport import transport_numbers, coupling_policy
 from ..mac.memory import allocator_sample
 
 
+def _execution_override(config,helmholtz_backend,shared_execution):
+    if helmholtz_backend is not None:
+        if config.coupling.scheme not in ('cnab-midpoint','cnab-semiimplicit'):
+            raise ValueError('helmholtz backend override requires CNAB coupling')
+        config = replace(config,coupling=replace(config.coupling,
+            cnab=replace(config.coupling.cnab,helmholtz_backend=helmholtz_backend)))
+    if shared_execution is not None:
+        config = replace(config,interaction_quadrature=replace(config.interaction_quadrature,
+                                                             shared_execution=shared_execution))
+    return config
+
+
 @torch.no_grad()
 def run(*, case_config=None, device='cuda', output=None, resume=None, end_time=None, resume_dt=None,
-        coupling_scheme=None, nonlinear_solver=None):
+        coupling_scheme=None, nonlinear_solver=None,helmholtz_backend=None,shared_execution=None):
     if str(device).startswith('cuda') and not torch.cuda.is_available():
         raise RuntimeError('CUDA requested but unavailable')
     if resume and case_config is not None:
@@ -26,10 +38,11 @@ def run(*, case_config=None, device='cuda', output=None, resume=None, end_time=N
     started = perf_counter()
     folder = Path(output) if output else Path(resume).parent if resume else Path('results/demo_real_lv/mac')
     refinement = resume_dt is not None
-    branch = refinement or resume and (coupling_scheme is not None or nonlinear_solver is not None)
+    branch = refinement or resume and (coupling_scheme is not None or nonlinear_solver is not None or
+                                      helmholtz_backend is not None or shared_execution is not None)
     if branch:
         if output is None or folder.resolve() == Path(resume).resolve().parent:
-            raise ValueError('dt/scheme change requires a new output directory; source is preserved')
+            raise ValueError('dt/scheme/solver/execution change requires a new output directory; source is preserved')
     if not resume or branch:
         if any((folder/name).exists() for name in ('report.json', 'checkpoint.npz', 'history.csv', 'vtk')):
             raise ValueError('output contains a run; use a new directory or resume')
@@ -58,6 +71,17 @@ def run(*, case_config=None, device='cuda', output=None, resume=None, end_time=N
             details.update(old_nonlinear_solver=config.coupling.semiimplicit_solver,new_nonlinear_solver=nonlinear_solver)
             config = replace(config,coupling=replace(config.coupling,semiimplicit_solver=nonlinear_solver))
             settings = dict(settings,coupling=asdict(config.coupling))
+        if helmholtz_backend is not None or shared_execution is not None:
+            old_execution = dict(helmholtz_backend=config.coupling.cnab.helmholtz_backend,
+                                 shared_execution=config.interaction_quadrature.shared_execution)
+            config = _execution_override(config,helmholtz_backend,shared_execution)
+            settings = dict(settings,coupling=asdict(config.coupling),
+                            interaction_quadrature=asdict(config.interaction_quadrature))
+            details.update(old_execution=old_execution,new_execution=dict(
+                helmholtz_backend=config.coupling.cnab.helmholtz_backend,
+                shared_execution=config.interaction_quadrature.shared_execution),
+                execution_only_override=not refinement and coupling_scheme is None and nonlinear_solver is None,
+                ab2_history_retained=state.previous_advection is not None)
         if branch:
             progress = dict(elapsed_seconds=0., segments=[], summary={}, restart_from=dict(
                 checkpoint=str(Path(resume).resolve()), source_elapsed_seconds=progress['elapsed_seconds'],
@@ -73,6 +97,7 @@ def run(*, case_config=None, device='cuda', output=None, resume=None, end_time=N
             config = replace(config,coupling=replace(config.coupling,scheme=coupling_scheme))
         if nonlinear_solver is not None:
             config = replace(config,coupling=replace(config.coupling,semiimplicit_solver=nonlinear_solver))
+        config = _execution_override(config,helmholtz_backend,shared_execution)
         model = imported_model(config, device)
         settings = dict(dt=config.time.dt, fluid_shape=config.fluid.shape,
                         fluid_lengths=config.fluid.lengths, fluid_origin=config.fluid.origin,
@@ -237,6 +262,7 @@ def run(*, case_config=None, device='cuda', output=None, resume=None, end_time=N
               f'point density={config.interaction_quadrature.point_density:g}; '
               f'rule family={config.interaction_quadrature.rule_family}; '
               f'transfer={config.interaction_quadrature.transfer_backend}; '
+              f'shared-execution={config.interaction_quadrature.shared_execution}; '
               f'stencil={config.interaction_quadrature.stencil_backend}; '
               f'prepare={config.interaction_quadrature.prepare_backend}',flush=True)
         if semiimplicit:

@@ -89,8 +89,9 @@ class MACCNABFlow(MACFlow):
                                                zip(b,gradient(p,self.grid.spacing)))
         requested = self.cnab_options.helmholtz_backend
         device = self.pressure_solver.diagonals[0].device
-        self.helmholtz_backend = ('graph' if device.type=='cuda' and self.execution_backend=='fused'
-                                 else 'torch') if requested=='auto' else requested
+        # Native same-checkpoint timings found the custom graph sweep slower.
+        # Keep it explicitly selectable; automatic execution uses compiled torch.
+        self.helmholtz_backend = 'torch' if requested=='auto' else requested
         self._helmholtz_workspace = None
         if self.helmholtz_backend!='torch':
             if device.type!='cuda':

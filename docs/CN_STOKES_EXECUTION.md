@@ -9,9 +9,12 @@ remain unchanged. This is an execution backend, not a change to CN--AB2,
 midpoint FE/IB, H-O, quadrature, or nonlinear tolerances.
 
 `coupling.cnab.helmholtz_backend` accepts `auto`, `torch`, `triton`, or `graph`.
-`auto` selects graph execution for fused CUDA and torch otherwise. Old
-checkpoints without this key decode to `auto`, so their physical settings and
-AB2 history can be continued with the optimized implementation. Fresh real-LV
+`auto` selects the existing compiled torch execution on CUDA and eager torch
+on CPU. A native RTX 4090 comparison at t=0.5 s measured 1389 ms/step for torch
+and 1437 ms/step for graph, with the same iteration counts and tiny numerical
+differences. The graph backend therefore remains an explicit experimental option.
+Old checkpoints without this key decode to `auto`, so their physical settings and
+AB2 history are retained while the measured faster torch execution is restored. Fresh real-LV
 cases can select `--helmholtz-backend graph`, or `torch` for comparison. A
 restart restores its settings; use the read-only benchmark to compare backends.
 

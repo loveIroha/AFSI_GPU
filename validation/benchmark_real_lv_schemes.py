@@ -45,7 +45,7 @@ def record_phases(driver,recorder):
 @torch.no_grad()
 def benchmark(checkpoint,*,device='cuda',schemes=('explicit-rk3','implicit-newton'),warmup=2,steps=10,
               nonlinear_solvers=None,initial_state='checkpoint',execution_variants=None,profile=False,
-              helmholtz_backends=None):
+              helmholtz_backends=None,ib_shared_executions=None):
     if type(warmup) is not int or warmup<0 or type(steps) is not int or steps<1:
         raise ValueError('warmup must be nonnegative and steps positive')
     if initial_state not in ('checkpoint','reference'):
@@ -57,6 +57,14 @@ def benchmark(checkpoint,*,device='cuda',schemes=('explicit-rk3','implicit-newto
             or any(s not in ('newton','anderson-newton') for s in nonlinear_solvers) or tuple(schemes)!=('cnab-semiimplicit',)):
         raise ValueError('nonlinear_solvers requires only cnab-semiimplicit and distinct supported solvers')
     model,initial,settings,_,config = load_real_lv(checkpoint,device)
+    if ib_shared_executions is not None and (not ib_shared_executions or
+            len(set(ib_shared_executions))!=len(ib_shared_executions) or
+            any(v not in ('reference','vector','reduced') for v in ib_shared_executions) or
+            tuple(schemes)!=('cnab-semiimplicit',) or execution_variants is not None or
+            helmholtz_backends is not None or config.interaction_quadrature.mode!='adaptive' or
+            config.interaction_quadrature.transfer_backend!='fused' or
+            config.interaction_quadrature.stencil_backend!='shared'):
+        raise ValueError('ib_shared_executions requires adaptive/shared/fused cnab-semiimplicit, distinct modes and no other execution comparison')
     if helmholtz_backends is not None and (not helmholtz_backends or
             len(set(helmholtz_backends))!=len(helmholtz_backends) or
             any(b not in ('torch','triton','graph') for b in helmholtz_backends) or
@@ -84,7 +92,10 @@ def benchmark(checkpoint,*,device='cuda',schemes=('explicit-rk3','implicit-newto
     cases = [(scheme,label,solver,variant,None) for scheme,label,solver,variant in cases] if helmholtz_backends is None else [
         (scheme,f'{label}/{backend}',solver,variant,backend)
         for scheme,label,solver,variant in cases for backend in helmholtz_backends]
-    for scheme,label,solver,variant,helmholtz_backend in cases:
+    cases = [(scheme,label,solver,variant,helmholtz,None) for scheme,label,solver,variant,helmholtz in cases] if ib_shared_executions is None else [
+        (scheme,f'{label}/{shared}',solver,variant,'torch',shared)
+        for scheme,label,solver,variant,helmholtz in cases for shared in ib_shared_executions]
+    for scheme,label,solver,variant,helmholtz_backend,shared_execution in cases:
         print(f'{label}: preparing and warming up...',flush=True)
         started = perf_counter()
         coupling = replace(config.coupling,scheme=scheme)
@@ -93,6 +104,8 @@ def benchmark(checkpoint,*,device='cuda',schemes=('explicit-rk3','implicit-newto
         if helmholtz_backend is not None:
             coupling = replace(coupling,cnab=replace(coupling.cnab,helmholtz_backend=helmholtz_backend))
         quadrature = config.interaction_quadrature
+        if shared_execution is not None:
+            quadrature = replace(quadrature,shared_execution=shared_execution)
         if variant is not None:
             coupling = replace(coupling,reuse_final_evaluation=variant!='baseline',
                 stokes_warm_start=variant in ('pressure-warm','shared-warm','prepare-warm','shared-fused-warm','shared-fused-checked'),
@@ -178,7 +191,7 @@ def benchmark(checkpoint,*,device='cuda',schemes=('explicit-rk3','implicit-newto
                 case['helmholtz'] = driver.flow.helmholtz_summary()
                 case['counts']['helmholtz_solves'] = driver.flow.helmholtz_calls-helmholtz_before[0]
                 case['counts']['helmholtz_sweeps'] = driver.flow.helmholtz_sweeps-helmholtz_before[1]
-            if execution_variants is not None or helmholtz_backends is not None:
+            if execution_variants is not None or helmholtz_backends is not None or ib_shared_executions is not None:
                 final_states[label] = dict(x=state.x.clone(),pressure=state.pressure.clone(),
                     force=state.force.clone(),velocity=tuple(u.clone() for u in state.velocity))
             print(f'{label}: {case["ms_per_step"]:.3f} ms/step; '
@@ -266,6 +279,25 @@ def benchmark(checkpoint,*,device='cuda',schemes=('explicit-rk3','implicit-newto
                 measured_speedup=report['cases'][base]['ms_per_step']/report['cases'][label]['ms_per_step'],
                 final_state_differences=differences,relative_l2=relative,
                 interpretation='Same fixed Jacobi count, no-slip stencil, quadrature, time scheme and true residual acceptance; floating-point order may differ')
+    if ib_shared_executions is not None:
+        report['ib_shared_comparisons'] = {}
+        for label,candidate in final_states.items():
+            base = label.rsplit('/',1)[0]+'/reference'
+            if label==base or base not in final_states:
+                continue
+            reference = final_states[base]
+            differences = {f'{name}_max_abs':(candidate[name]-reference[name]).abs().max().item()
+                           for name in ('x','pressure','force')}
+            differences['velocity_max_abs'] = max((a-b).abs().max().item() for a,b in
+                                                 zip(candidate['velocity'],reference['velocity']))
+            relative = {name:(torch.linalg.vector_norm(candidate[name]-reference[name])/
+                torch.linalg.vector_norm(reference[name]).clamp_min(1e-30)).item() for name in ('pressure','force')}
+            relative['displacement'] = (torch.linalg.vector_norm(candidate['x']-reference['x'])/
+                torch.linalg.vector_norm(reference['x']-model.mesh.X).clamp_min(1e-30)).item()
+            report['ib_shared_comparisons'][label] = dict(reference=base,
+                measured_speedup=report['cases'][base]['ms_per_step']/report['cases'][label]['ms_per_step'],
+                final_state_differences=differences,relative_l2=relative,
+                interpretation='All original points, weights, links, consistent mass and tolerances; compiled torch CN velocity in every case. Only local accumulation order changes.')
     return report
 
 
@@ -281,6 +313,8 @@ def main():
     parser.add_argument('--profile',action='store_true',help='separate subsequent replay with phase timings; excluded from speedup')
     parser.add_argument('--helmholtz-backends',nargs='+',choices=('torch','triton','graph'),
                         help='compare CN velocity execution from the same checkpoint without changing other settings')
+    parser.add_argument('--ib-shared-executions',nargs='+',choices=('reference','vector','reduced'),
+                        help='compare shared FE/IB kernel execution only, with torch CN velocity in every case')
     parser.add_argument('--nonlinear-solvers',nargs='+',choices=('newton','anderson-newton'))
     parser.add_argument('--execution-variants',nargs='+',choices=('baseline','reuse','compact','fused','cell','shared','pressure-warm','shared-warm','prepare-warm','shared-fused-warm','shared-fused-checked'),
                         help='adaptive CNAB: compact controls shared stencils and same-step pressure warm starts; input checkpoint is read only')
@@ -289,7 +323,8 @@ def main():
     report = benchmark(args.checkpoint,device=args.device,schemes=tuple(args.schemes),warmup=args.warmup,steps=args.steps,
                        nonlinear_solvers=args.nonlinear_solvers,initial_state=args.initial_state,
                        execution_variants=args.execution_variants,profile=args.profile,
-                       helmholtz_backends=args.helmholtz_backends)
+                       helmholtz_backends=args.helmholtz_backends,
+                       ib_shared_executions=args.ib_shared_executions)
     path = Path(args.output)
     path.parent.mkdir(parents=True,exist_ok=True)
     atomic_json(path,report)

@@ -48,7 +48,7 @@ def main(argv=None):
     parser.add_argument('--cycles', type=int)
     parser.add_argument('--dt', type=float)
     parser.add_argument('--helmholtz-backend',choices=('auto','torch','triton','graph'),
-                        help='CN velocity execution; auto uses graph on fused CUDA, torch otherwise')
+                        help='CN velocity execution; auto retains compiled torch after native performance comparison')
     parser.add_argument('--fluid-cells', type=int)
     parser.add_argument('--fluid-lengths', nargs=3, type=float)
     parser.add_argument('--fluid-origin', nargs=3, type=float)
@@ -62,6 +62,8 @@ def main(argv=None):
                         help='adaptive FE/IB execution; fused/cell are experimental GPU paths')
     parser.add_argument('--ib-stencil-backend',choices=('component','shared'),
                         help='adaptive reference transfer: per-component or shared face/center tables')
+    parser.add_argument('--ib-shared-execution',choices=('reference','vector','reduced'),
+                        help='shared/fused IB: existing kernels, cell-vector gather, or gather plus local spread reduction')
     parser.add_argument('--stokes-warm-start',action=argparse.BooleanOptionalAction,default=None,
                         help='reuse successful nonlinear pressures within each midpoint solve')
     parser.add_argument('--reuse-validation',action=argparse.BooleanOptionalAction,default=None,
@@ -94,20 +96,21 @@ def main(argv=None):
                      args.log_every, args.output_every, args.checkpoint_every, args.write_config)
         overrides += (args.interaction_quadrature,args.ib_point_density,args.ib_rule_family,args.ib_transfer_backend,
                       args.ib_stencil_backend,args.stokes_warm_start,args.ib_prepare_backend,args.reuse_validation)
-        overrides += (args.reuse_ib_buffers,args.adaptive_substeps,args.substep_courant_target,args.max_substep_levels,
-                      args.helmholtz_backend)
+        overrides += (args.reuse_ib_buffers,args.adaptive_substeps,args.substep_courant_target,args.max_substep_levels)
         if any(v is not None for v in overrides) or args.reference or args.no_vtk:
-            parser.error('resume restores settings; only device, output, end time/cycles, --resume-dt and --coupling may change')
+            parser.error('resume restores physical settings; execution, solver or dt changes require a new output directory')
         return run(device=args.device, output=args.output, resume=args.resume,
                    end_time=end_time, resume_dt=args.resume_dt, coupling_scheme=args.coupling,
-                   nonlinear_solver=args.nonlinear_solver)
+                   nonlinear_solver=args.nonlinear_solver,helmholtz_backend=args.helmholtz_backend,
+                   shared_execution=args.ib_shared_execution)
     config = load_config(args.config, CONFIG) if args.config else CONFIG
     config = replace(config,
         interaction_quadrature=replace(config.interaction_quadrature,
             **{k:v for k,v in dict(mode=args.interaction_quadrature,point_density=args.ib_point_density,
                                  rule_family=args.ib_rule_family,transfer_backend=args.ib_transfer_backend,
                                  stencil_backend=args.ib_stencil_backend,prepare_backend=args.ib_prepare_backend,
-                                 reuse_stencil_buffers=args.reuse_ib_buffers).items() if v is not None}),
+                                 reuse_stencil_buffers=args.reuse_ib_buffers,
+                                 shared_execution=args.ib_shared_execution).items() if v is not None}),
         coupling=replace(config.coupling,scheme=config.coupling.scheme if args.coupling is None else args.coupling,
             cnab=replace(config.coupling.cnab,helmholtz_backend=config.coupling.cnab.helmholtz_backend
                          if args.helmholtz_backend is None else args.helmholtz_backend),

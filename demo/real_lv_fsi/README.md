@@ -275,8 +275,9 @@ python validation/check_real_lv_cycles.py "$run_dir" --cycles 3
 接口扩展与材料/边界替换见 [固体架构](../../docs/SOLID_API.md)。
 
 CN 速度求解提供 `--helmholtz-backend auto|torch|triton|graph`。
-默认 `auto` 在 fused CUDA 下启用固定缓冲区、融合速度迭代和 CUDA Graph，
-CPU 使用 torch。旧检查点缺少该字段时也按 `auto` 解释，保留原有时间步和
+默认 `auto` 在 CUDA 下使用编译的 torch 速度求解，CPU 使用 torch。
+真机对照发现自写 graph 速度内核较慢，因此它仅作为显式可选实验后端。
+旧检查点缺少该字段时也按 `auto` 解释，保留原有时间步和
 AB2 历史。算法、积分点和收敛验收不变；先使用当前阶段检查点进行短程
 对照，再测量完整模拟耗时，见 [CN–Stokes 执行优化](../../docs/CN_STOKES_EXECUTION.md)。
 
@@ -285,3 +286,10 @@ AB2 历史。算法、积分点和收敛验收不变；先使用当前阶段检�
 `--reuse-validation` 可启用检查结果复用。物理参数、积分规则及验收容差
 保持原值。新路径需先做真机等价性和耗时对照，见
 [减少显存读写与重复检查](../../docs/SHARED_FE_FUSION.md)。
+
+在 adaptive/shared/fused IB 设置下，可用
+`--ib-shared-execution vector` 复用单元数据、合并三个分量的插值组装；
+`--ib-shared-execution reduced` 还会先合并每个四积分点块内向相同流体节点的
+传播贡献。默认 `reference` 保留原融合内核。全部积分点、64 邻点和一致质量
+矩阵均保留；这两项需先实测再选择，见
+[IB 单元和小块执行](../../docs/SHARED_IB_TILED.md)。
