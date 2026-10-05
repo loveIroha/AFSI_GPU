@@ -194,13 +194,21 @@ class AdaptiveP1Transfer(CompactFETransfer):
         self.edges = torch.tensor([[0,1],[0,2],[0,3],[1,2],[1,3],[2,3]],device=device)
         # det(reference edge matrix), never det(F) or current cell volume.
         self.reference_determinants = 6*self.geometry.weights.sum(-1)
-        self._dx = min(self.grid.spacing)
+        # Explicit device scalars keep dynamic compilation from lifting Python
+        # floats into CPU tensor arguments of a CUDA reduction (notably for
+        # one-cell groups). They also avoid specialization on grid/density.
+        self._dx = self.geometry.weights.new_tensor(min(self.grid.spacing))
+        self._density_value = self.quadrature_options.point_density
+        self._density = self.geometry.weights.new_tensor(self._density_value)
         self._validation_vertices=torch.unique(self.geometry.cells)
         self._all_vertices_used=len(self._validation_vertices)==self.geometry.node_count
 
     def _rule(self,x):
         opt = self.quadrature_options
-        orders = self._order_kernel(x,self.geometry.cells,self.edges,self._dx,opt.point_density)
+        if opt.point_density!=self._density_value:
+            self._density.fill_(opt.point_density)
+            self._density_value = opt.point_density
+        orders = self._order_kernel(x,self.geometry.cells,self.edges,self._dx,self._density)
         if self._last_rule is not None and torch.equal(orders,self._last_rule.orders):
             return self._last_rule
         maximum = int(orders.max().item())

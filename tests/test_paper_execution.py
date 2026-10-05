@@ -1,5 +1,6 @@
 """Same BE equations with cheaper checks, owned scratch and solver comparisons."""
 from dataclasses import replace
+from math import ceil, sqrt
 import pytest
 import torch
 from test_real_lv import real_case, DEVICES
@@ -38,6 +39,55 @@ def test_vertex_support_compiler_reuses_graph_across_sizes_instances_and_subclas
         points[0,0]=float('nan')
         assert not t._vertex_support_kernel(points)
     assert len(compiled_graphs)==1
+
+
+def test_adaptive_order_compiler_reuses_device_scalar_parameters_across_grids():
+    from afsi_torch.mac.adaptive_transfer import _orders
+    graphs=[]
+    def backend(graph,inputs):
+        graphs.append(graph)
+        # Device coefficients must stay tensor operations, without scalar reads.
+        assert not any(node.op=='call_method' and node.target=='item' for node in graph.graph.nodes)
+        return graph.forward
+    compiled=torch.compile(_orders,backend=backend,fullgraph=True,dynamic=True)
+    X=torch.tensor([[3.,3.,3.],[3.4,3.,3.],[3.,3.4,3.],[3.,3.,3.4]],dtype=torch.float64)
+    for i in range(12):
+        count=1+i%2
+        x=torch.cat([X+j for j in range(count)])
+        cells=torch.arange(4*count).reshape(count,4)
+        geometry=prepare_p1(x,cells,degree=2)
+        dx=.4+.031*i
+        density=2.+.13*i
+        grid=MACGrid((16,)*3,(16*dx,)*3)
+        t=AdaptiveP1Transfer(grid,geometry,
+            quadrature_options=InteractionQuadratureOptions(mode='adaptive',point_density=density),fused=False)
+        t._order_kernel=compiled
+        assert t._dx.device==x.device and t._density.device==x.device
+        expected=max(2,ceil(density*sqrt(2)*.4/dx))
+        assert t._rule(x).orders.tolist()==[expected]*count
+    # Size one is specialized by Dynamo; larger cell groups share one graph.
+    assert len(graphs)<=2
+
+
+@pytest.mark.parametrize('device', DEVICES)
+@pytest.mark.parametrize('dtype', [torch.float32,torch.float64])
+def test_adaptive_order_single_cell_coefficients_are_on_tensor_device(device,dtype):
+    X=torch.tensor([[3.,3.,3.],[3.4,3.,3.],[3.,3.4,3.],[3.,3.,3.4]],device=device,dtype=dtype)
+    geometry=prepare_p1(X,torch.arange(4,device=device).reshape(1,4),degree=2)
+    t=AdaptiveP1Transfer(MACGrid((16,)*3,(16.,)*3),geometry)
+    original=t._order_kernel
+    calls=[]
+    def checked(x,cells,edges,dx,density):
+        for value in (dx,density):
+            assert isinstance(value,torch.Tensor)
+            assert value.device==x.device and value.dtype==x.dtype and value.ndim==0
+        calls.append(None)
+        return original(x,cells,edges,dx,density)
+    t._order_kernel=checked
+    assert t._rule(X).orders.tolist()==[2]
+    t.quadrature_options=replace(t.quadrature_options,point_density=6.)
+    assert t._rule(X).orders.tolist()==[4]
+    assert len(calls)==2
 
 
 @pytest.mark.parametrize('device', DEVICES)
