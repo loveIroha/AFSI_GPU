@@ -88,6 +88,13 @@ the preceding GPU correctness and performance comparison, not a claim that
 the new implementation is already faster.
 No new path is automatically made the default on the basis of CPU tests.
 
+At t=1.0 s, the supplied RTX 4090 comparison measured 1338.8 ms/step for
+reference, 1361.3 for vector and 1458.1 for reduced, with matching solve counts
+and short-replay fields. Keep reference. Diagnose actual kernel behavior using
+the [GPU timeline and frozen-stencil tools](GPU_KERNEL_PROFILING.md) before
+trying more local reductions; operation-count savings did not produce a
+measured speedup in this replay.
+
 Tests cover dense/padded rules, nonzero group offsets, affine velocity, force,
 torque, adjoint work, old-stencil lifetime, unchanged mass entries, active
 coupled continuation, CSR tangent action, configuration, restart and read-only

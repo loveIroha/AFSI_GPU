@@ -355,6 +355,8 @@ CUDA_VISIBLE_DEVICES=0 python -u validation/benchmark_lv_mac_graph.py \
 
 Use an existing checkpoint path. These benchmarks compare state equivalence as well as speed. Warmup/compilation is separated from throughput, and optional phase profiling uses a separate replay. A short replay at the end of loading does not predict the entire transient runtime; nested phase timings should not be added together.
 
+For execution bottlenecks, the [GPU profiling guide](docs/GPU_KERNEL_PROFILING.md) provides short coupled traces and frozen-stencil FE/IB kernel comparisons. It separates uninstrumented timing from profiling overhead, preserves checkpoint history, and includes optional Nsight commands for register, cache and atomic-traffic evidence. Normal demo runs do not enable these diagnostics.
+
 ## Results and visualization
 
 Runs produce `configuration.json`, `report.json`, `history.csv`, and `checkpoint.npz`. The checkpoint preserves the restart state; CSV contains sampled scalar diagnostics.
