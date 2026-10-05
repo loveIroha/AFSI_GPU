@@ -197,6 +197,80 @@ def test_bicgstab_checks_true_residual():
 
 
 @pytest.mark.parametrize('device', DEVICES)
+def test_bicgstab_periodic_checks_reduce_actions_at_same_true_tolerance(device):
+    from afsi_torch.nonlinear import GMRESOptions
+    generator = torch.Generator().manual_seed(619)
+    A = torch.diag(torch.linspace(1., 9., 24, dtype=torch.float64))
+    A += .08*torch.randn((24, 24), generator=generator, dtype=A.dtype)
+    rhs = torch.randn(24, generator=generator, dtype=A.dtype).to(device)
+    A = A.to(device)
+    counts = []
+    for interval in (1, 5):
+        calls = []
+        def action(v):
+            calls.append(None)
+            return A@v
+        options = GMRESOptions(rtol=1e-10, atol=1e-12, check_every=interval)
+        x, info = bicgstab(action, rhs, options)
+        true = torch.linalg.vector_norm(rhs-A@x).item()
+        assert true <= info['tolerance']
+        assert info['residual_norm'] == pytest.approx(true)
+        assert info['jacobian_actions'] == len(calls)
+        torch.testing.assert_close(x, torch.linalg.solve(A, rhs), rtol=1e-8, atol=1e-9)
+        counts.append(info)
+    assert counts[1]['true_residual_checks'] < counts[0]['true_residual_checks']
+    assert counts[1]['jacobian_actions'] < counts[0]['jacobian_actions']
+
+
+def test_bicgstab_restarts_rejected_candidate_and_never_accepts_stale_residual():
+    from afsi_torch.nonlinear import GMRESOptions
+    rhs = torch.tensor([1., 2., 3.], dtype=torch.float64)
+    # Simulate one inaccurate inner response on the first convergence check.
+    # Recurrence says zero, but the true-residual action disagrees.
+    rejected = []
+    def action(v):
+        if not rejected and torch.equal(v, rhs):
+            rejected.append(True)
+            return v+1e-4
+        return v.clone()
+    x, info = bicgstab(action, rhs, GMRESOptions(rtol=1e-10, atol=1e-12))
+    assert rejected and info['residual_restarts'] >= 1
+    assert torch.linalg.vector_norm(rhs-action(x)).item() <= info['tolerance']
+    torch.testing.assert_close(x, rhs, rtol=1e-10, atol=1e-10)
+    with pytest.raises(RuntimeError, match='true residual'):
+        # Exhaust the budget exactly at the rejected candidate.
+        rejected.clear()
+        bicgstab(action, rhs, GMRESOptions(rtol=1e-10, atol=1e-12, max_iterations=1))
+
+
+def test_bicgstab_zero_rhs_and_nonfinite_inputs():
+    from afsi_torch.nonlinear import GMRESOptions
+    rhs = torch.zeros(3, dtype=torch.float64)
+    x, info = bicgstab(lambda v: v.clone(), rhs, GMRESOptions())
+    torch.testing.assert_close(x, rhs, rtol=0, atol=0)
+    assert info['iterations'] == 0
+    with pytest.raises(ValueError, match='nonfinite'):
+        bicgstab(lambda v: v, torch.full_like(rhs, float('nan')), GMRESOptions())
+
+
+@pytest.mark.parametrize('device', DEVICES)
+def test_be_helmholtz_rhs_norms_are_measured_once(device):
+    grid = MACGrid((8,)*3, (2., 3., 4.))
+    flow = BackwardEulerFlow(grid, dt=.01, mu=.04, device=device)
+    calls = []
+    measure = flow._metrics
+    def counted(u, b):
+        calls.append(None)
+        return measure(u, b)
+    flow._metrics = counted
+    rhs = tuple(torch.randn_like(v) for v in grid.zeros(device=device))
+    _, _, info = flow.solve_rhs(rhs)
+    assert info['helmholtz_sweeps'] > 0
+    assert len(calls) == 1
+    assert all(r <= t for r, t in zip(info['helmholtz_residuals'], info['helmholtz_tolerances']))
+
+
+@pytest.mark.parametrize('device', DEVICES)
 def test_default_adaptive_fused_paper_path_matches_reference_and_prepares_once(real_case, device):
     pytest.importorskip('basix')
     cfg = config_for(real_case)
@@ -238,3 +312,23 @@ def test_invalid_trial_or_old_checkpoint_does_not_replace_accepted_state(real_ca
     old_run(case_config=real_case, device='cpu', output=tmp_path/'old')
     with pytest.raises(ValueError, match='old CNAB'):
         load(tmp_path/'old/checkpoint.npz')
+
+
+def test_warmed_paper_benchmark_preserves_checkpoint_and_checks_tolerance(real_case, tmp_path):
+    from validation.benchmark_paper_lv import benchmark
+    config = config_for(real_case, 'jfnk')
+    model = imported_model(config)
+    driver = BEIBStepper(model, config, 'cpu')
+    state = driver.initialize(model.mesh.X)
+    path = tmp_path/'checkpoint.npz'
+    save(path, model, state, config, dict(elapsed_seconds=0.))
+    original = path.read_bytes()
+    report = benchmark(path, device='cpu', warmup=1, steps=1, intervals=(1, 5))
+    assert path.read_bytes() == original
+    assert len(report['variants']) == 2
+    for variant in report['variants']:
+        assert variant['max_accepted_residual_to_tolerance'] <= 1.
+        assert variant['per_step']['fluid_solves'] > 0
+        assert variant['per_step']['true_residual_checks'] > 0
+        assert variant['milliseconds_per_step'] > 0
+    assert report['variants'][1]['end_state_max_abs_vs_first']['x_cm'] < 1e-8

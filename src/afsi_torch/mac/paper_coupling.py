@@ -24,26 +24,54 @@ class PaperState(MACState):
 
 @torch.no_grad()
 def bicgstab(action, rhs, options):
-    """Unpreconditioned BiCGSTAB with a true-residual acceptance test."""
-    norm = lambda v: torch.linalg.vector_norm(v).item()
-    tolerance = max(options.atol, options.rtol*norm(rhs))
+    """BiCGSTAB with periodic true residuals and mandatory acceptance checks.
+
+    ``action`` is an expensive coupled response. Use recurrence residuals
+    between checks, and restart from the true residual if a convergence
+    candidate is rejected or recurrence drift becomes significant.
+    """
+    calls = checks = restarts = reads = 0
+    def norm(v):
+        nonlocal reads
+        reads += 1
+        return torch.linalg.vector_norm(v).item()
+    def apply(v):
+        nonlocal calls
+        calls += 1
+        return action(v)
+    def verify(x):
+        nonlocal checks
+        checks += 1
+        actual = rhs-apply(x)
+        size = norm(actual)
+        if not isfinite(size):
+            raise RuntimeError('nonfinite BiCGSTAB true residual')
+        return actual, size
+    def report(k, size):
+        return dict(iterations=k, residual_norm=size, tolerance=tolerance,
+            jacobian_actions=calls, true_residual_checks=checks,
+            residual_restarts=restarts, scalar_reads=reads)
+    rhs_norm = norm(rhs)
+    if not isfinite(rhs_norm):
+        raise ValueError('nonfinite BiCGSTAB right-hand side')
+    tolerance = max(options.atol, options.rtol*rhs_norm)
     x = torch.zeros_like(rhs)
-    r = rhs.clone(); shadow = r.clone()
+    r, r_norm = verify(x)
+    if r_norm <= tolerance:
+        return x, report(0, r_norm)
+    shadow = r.clone()
     p, v = torch.zeros_like(r), torch.zeros_like(r)
     rho_old, alpha, omega = 1., 1., 1.
     tiny = torch.finfo(r.dtype).tiny
-    for k in range(options.max_iterations+1):
-        actual = rhs-action(x)
-        if norm(actual) <= tolerance:
-            return x, dict(iterations=k, residual_norm=norm(actual), tolerance=tolerance)
-        if k == options.max_iterations:
-            break
+    for k in range(1, options.max_iterations+1):
+        reads += 1
         rho = (shadow*r).sum().item()
         if not isfinite(rho) or abs(rho) <= tiny or abs(omega) <= tiny:
             raise RuntimeError('BiCGSTAB scalar breakdown before true convergence')
         beta = (rho/rho_old)*(alpha/omega)
         p = r+beta*(p-omega*v)
-        v = action(p)
+        v = apply(p)
+        reads += 1
         denominator = (shadow*v).sum().item()
         if not isfinite(denominator) or abs(denominator) <= tiny:
             raise RuntimeError('BiCGSTAB alpha breakdown')
@@ -51,18 +79,45 @@ def bicgstab(action, rhs, options):
         s = r-alpha*v
         trial = x+alpha*p
         if norm(s) <= tolerance:
-            actual = rhs-action(trial)
-            if norm(actual) <= tolerance:
-                return trial, dict(iterations=k+1, residual_norm=norm(actual), tolerance=tolerance)
-        t = action(s)
-        tt = (t*t).sum().item()
+            actual, actual_norm = verify(trial)
+            if actual_norm <= tolerance:
+                return trial, report(k, actual_norm)
+            # A rejected candidate must not feed an almost-zero recursive
+            # residual into the next omega solve (notably for FD JVPs).
+            x, r = trial, actual
+            shadow = r.clone(); p.zero_(); v.zero_()
+            rho_old, alpha, omega = 1., 1., 1.
+            restarts += 1
+            continue
+        t = apply(s)
+        # One host transfer for both dot products, rather than two syncs.
+        reads += 1
+        tt, ts = torch.stack(((t*t).sum(), (t*s).sum())).tolist()
         if not isfinite(tt) or tt <= tiny:
             raise RuntimeError('BiCGSTAB omega breakdown')
-        omega = (t*s).sum().item()/tt
+        omega = ts/tt
+        if not isfinite(omega):
+            raise RuntimeError('BiCGSTAB nonfinite omega')
         x = trial+omega*s
         r = s-omega*t
         rho_old = rho
-    raise RuntimeError(f'BiCGSTAB failed true residual: {norm(rhs-action(x)):g} > {tolerance:g}')
+        r_norm = norm(r)
+        if not isfinite(r_norm):
+            raise RuntimeError('nonfinite BiCGSTAB recurrence residual')
+        if r_norm <= tolerance or k % options.check_every == 0 or k == options.max_iterations:
+            actual, actual_norm = verify(x)
+            if actual_norm <= tolerance:
+                return x, report(k, actual_norm)
+            # A norm of the difference protects against directional drift,
+            # including residuals whose norms happen to remain similar.
+            drift = norm(actual-r)
+            if r_norm <= tolerance or drift > .1*max(actual_norm, tolerance):
+                r = actual; shadow = r.clone(); p.zero_(); v.zero_()
+                rho_old, alpha, omega = 1., 1., 1.
+                restarts += 1
+    # The last iteration already verified its current x, including the
+    # rejected s-candidate branch. Do not repeat that expensive action.
+    raise RuntimeError(f'BiCGSTAB failed true residual: {actual_norm:g} > {tolerance:g}')
 
 
 @torch.no_grad()
@@ -76,11 +131,12 @@ def jfnk(problem, initial, options):
     norm = lambda v: torch.linalg.vector_norm(v).item()
     y = initial.clone()
     r = problem.residual(y)
-    tolerance = max(options.atol, options.rtol*norm(r))
-    history = [dict(iteration=0, residual_norm=norm(r))]
-    result = lambda ok: NewtonResult(y.clone(), ok, norm(r), tolerance, len(history)-1, list(history))
+    r_norm = norm(r)
+    tolerance = max(options.atol, options.rtol*r_norm)
+    history = [dict(iteration=0, residual_norm=r_norm)]
+    result = lambda ok: NewtonResult(y.clone(), ok, r_norm, tolerance, len(history)-1, list(history))
     for k in range(options.max_iterations):
-        if norm(r) <= tolerance:
+        if r_norm <= tolerance:
             return result(True)
         base_y, base_r = y.clone(), r.clone()
         scale = torch.finfo(y.dtype).eps**.5*(1+norm(y))
@@ -95,7 +151,7 @@ def jfnk(problem, initial, options):
             direction, info = bicgstab(action, -r, linear)
         except (ValueError, RuntimeError, FloatingPointError) as exc:
             raise NonlinearFailure(f'paper JFNK linear solve failed: {exc}', result(False)) from exc
-        old_norm = norm(r)
+        old_norm = r_norm
         for backtrack in range(options.max_backtracks+1):
             alpha = 2.**(-backtrack)
             trial = y+alpha*direction
@@ -103,13 +159,15 @@ def jfnk(problem, initial, options):
                 candidate = problem.residual(trial)
             except (ValueError, FloatingPointError):
                 continue
-            if norm(candidate) <= (1-options.armijo*alpha)*old_norm:
+            candidate_norm = norm(candidate)
+            if candidate_norm <= (1-options.armijo*alpha)*old_norm:
                 y, r = trial, candidate
-                history.append(dict(iteration=k+1, residual_norm=norm(r), linear=info, alpha=alpha))
+                r_norm = candidate_norm
+                history.append(dict(iteration=k+1, residual_norm=r_norm, linear=info, alpha=alpha))
                 break
         else:
             raise NonlinearFailure('paper JFNK line search failed', result(False))
-    if norm(r) > tolerance:
+    if r_norm > tolerance:
         raise NonlinearFailure('paper JFNK nonlinear iteration budget exhausted', result(False))
     return result(True)
 
@@ -231,6 +289,10 @@ class BEIBStepper:
             **dict(acceleration, solver=solver)),
             flow=flow, force_mass=asdict(spread), velocity_mass=asdict(interpolation), courant=courant,
             max_grid_displacement=(result.x.abs()/x.new_tensor(self.grid.spacing)).max().item())
+        linear_history = [entry['linear'] for entry in result.history if 'linear' in entry]
+        if solver == 'jfnk':
+            info['nonlinear'].update({key: sum(entry.get(key, 0) for entry in linear_history)
+                for key in ('jacobian_actions', 'true_residual_checks', 'residual_restarts', 'scalar_reads')})
         if diagnostics:
             # Pressure boundary faces have half weights. IB support is wholly
             # interior, so the usual transfer h^3 power remains equivalent.

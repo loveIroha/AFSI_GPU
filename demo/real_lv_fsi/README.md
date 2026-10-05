@@ -46,6 +46,12 @@ GPU 路径复用编译固体力、分块几何检查、共享融合 IB 模板与
 质量矩阵和 Graph PCG。新的零 Dirichlet 压力使用独立几何多重网格，提供
 编译平滑与 CUDA Graph；不能复用旧零均值 Neumann 压力工作区。
 
+JFNK 缓存每个非线性残差的范数。BiCGSTAB 使用递推残差，在候选收敛、
+每 `nonlinear.linear.check_every` 次迭代（默认 5）及迭代预算耗尽时检查真实残差。
+只有真实残差满足原容差才接受解；候选被拒绝或递推残差明显漂移时，从真实
+残差重新启动。点积结果合并读回 CPU；BE 黏性求解的右端范数每次求解只计算
+一次。这些改动调整代数求解的执行和核验频率，保留 BE–BE 方程及收敛容差。
+
 必须区分数值格式实现和论文结果复现。论文提供的真实 LV 网格计数与用户的
 26,889 节点、135,430 单元一致，但计数不能证明几何和方向场完全一致。
 没有作者原始曲线数据时，应将体积曲线、最终充盈量、变形和 J 与图 25/27
@@ -124,3 +130,21 @@ CUDA_VISIBLE_DEVICES=0 python -u demo/real_lv_fsi/run_mac.py \
 保存 `history.csv`、`report.json`、`configuration.json`、带校验和的
 `checkpoint.npz`。ParaView 打开 `vtk/solid.pvd` 与 `vtk/fluid.pvd`。
 压力元数据说明为物理压力、盒壁零值，不再写成零均值规范。
+
+## 预热后性能检查
+
+从上述短模拟的检查点开始，对比每次线性迭代核验与每 5 次核验。
+该脚本在内存中推进，不修改输入检查点，不输出 VTK；初始化和预热时间单独记录。
+它保留最终真实残差核验，并记录流体求解、Jacobian 作用、真实残差检查次数和
+两种频率下的最终场差异。这里比较的是核验频率，不是所有旧版本优化的总加速。
+
+```bash
+CUDA_VISIBLE_DEVICES=0 python -u validation/benchmark_paper_lv.py \
+  --checkpoint results/real_lv_ma2024_early/checkpoint.npz \
+  --device cuda --warmup 5 --steps 20 \
+  --linear-check-intervals 1 5 \
+  --output results/paper_lv_performance/report.json
+```
+
+降低完整算例的输出频率可加入 `--log-every 500 --output-every 1000`。
+这不会降低求解器收敛检查频率；两类检查分别设置。

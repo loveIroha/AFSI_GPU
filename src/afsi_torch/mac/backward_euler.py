@@ -45,10 +45,12 @@ class BackwardEulerFlow:
                                for c in range(3))
         self._smooth = self._smooth_block
         self._metrics = self._measure
+        self._residual_norms = self._measure_residuals
         self._project = self._projection
         if backend == 'fused':
             self._smooth = tensor_kernel(self._smooth, device)
             self._metrics = tensor_kernel(self._metrics, device)
+            self._residual_norms = tensor_kernel(self._residual_norms, device)
             self._project = tensor_kernel(self._project, device)
         self.calls = 0
 
@@ -69,6 +71,11 @@ class BackwardEulerFlow:
             norms += [torch.linalg.vector_norm(r), torch.linalg.vector_norm(b)]
         return torch.stack(norms)
 
+    def _measure_residuals(self, velocity, rhs):
+        return torch.stack([torch.linalg.vector_norm(
+            b-u+self.dt*self.mu/self.rho*velocity_laplacian(u, c, self.grid.spacing))
+            for c, (u, b) in enumerate(zip(velocity, rhs))])
+
     def _projection(self, velocity, pressure):
         return tuple(u-self.dt/self.rho*g for u, g in zip(velocity, gradient(pressure, self.grid.spacing)))
 
@@ -77,23 +84,29 @@ class BackwardEulerFlow:
         self.grid.check_velocity(rhs)
         u = tuple(b.clone() for b in rhs)
         count = 0
+        # RHS is constant throughout this solve. Read its norms once and
+        # batch all three component convergence checks into each transfer.
+        numbers = self._metrics(u, rhs).tolist()
+        if not all(isfinite(v) for v in numbers):
+            raise FloatingPointError('nonfinite BE Helmholtz solve')
+        targets = [max(self.options.helmholtz_atol, self.options.helmholtz_rtol*n) for n in numbers[1::2]]
+        residuals = numbers[::2]
         while True:
-            numbers = self._metrics(u, rhs).tolist()
-            if not all(isfinite(v) for v in numbers):
+            if not all(isfinite(v) for v in residuals):
                 raise FloatingPointError('nonfinite BE Helmholtz solve')
-            targets = [max(self.options.helmholtz_atol, self.options.helmholtz_rtol*n) for n in numbers[1::2]]
-            if all(r <= t for r, t in zip(numbers[::2], targets)):
+            if all(r <= t for r, t in zip(residuals, targets)):
                 break
             if count >= self.options.max_sweeps:
                 raise RuntimeError('BE Neumann velocity Helmholtz failed to converge')
             u = self._smooth(u, rhs)
             count += self.options.check_every
+            residuals = self._residual_norms(u, rhs).tolist()
         # A=-DG; physical pressure, not the dt-scaled projection potential.
         pressure, info = self.pressure_solver.solve(-self.rho/self.dt*divergence(u, self.grid.spacing), pressure_initial)
         velocity = self._project(u, pressure)
         self.calls += 1
         return velocity, pressure, dict(pressure=info, helmholtz_sweeps=count,
-            helmholtz_residuals=numbers[::2], helmholtz_tolerances=targets)
+            helmholtz_residuals=residuals, helmholtz_tolerances=targets)
 
     def response(self, density):
         # Zero advection/time lift, used only in an assembled Jacobian action.
