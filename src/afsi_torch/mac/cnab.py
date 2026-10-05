@@ -110,6 +110,28 @@ class MACCNABFlow(MACFlow):
             self._metrics = tensor_kernel(self._metrics,device)
             self._right = tensor_kernel(self._right,device)
             self._pressure_right = tensor_kernel(self._pressure_right,device)
+        self._reference_pressure_start=self.pressure_solver._start_metrics
+        self.set_stokes_backend('workspace' if self.execution_backend=='fused' else 'reference')
+
+    def set_stokes_backend(self,backend):
+        """Execution-only residual/check selection, independent of the solver."""
+        if backend not in ('reference','workspace'):
+            raise ValueError('Stokes execution backend must be reference or workspace')
+        self.stokes_backend=backend
+        self._stokes_workspace=None
+        self._pressure_start_workspace=None
+        self.pressure_solver._start_metrics=self._reference_pressure_start
+        if backend=='workspace':
+            from .stokes_workspace import StokesWorkspace,PressureStartMetrics
+            self._stokes_workspace=StokesWorkspace(self)
+            if self.pressure_solver.workspace is not None and self.pressure_solver.workspace.optimized:
+                self._pressure_start_workspace=PressureStartMetrics(self.pressure_solver)
+                self.pressure_solver._start_metrics=self._pressure_start_workspace.measure
+
+    def stokes_summary(self):
+        return dict(backend=self.stokes_backend,pressure_start='blocked' if self._pressure_start_workspace else 'reference',
+                    workspace=None if self._stokes_workspace is None
+                    else self._stokes_workspace.summary())
 
     def advection(self,velocity):
         return self._adv(velocity,self.grid.spacing)
@@ -182,12 +204,21 @@ class MACCNABFlow(MACFlow):
         self.stokes_calls += 1
         b = zero_normal(b)
         opt = self.pressure_solver.options
-        rhs_norm = torch.sqrt(sum(v.square().sum() for v in b)).item()
-        momentum_tol = max(opt.atol,opt.rtol*rhs_norm)
         p = self.pressure_solver.diagonals[0].new_zeros(self.grid.shape) if initial is None else initial.clone()
-        if p.shape != self.grid.shape or not torch.isfinite(p).all():
+        sample=self.pressure_solver.diagonals[0]
+        if p.shape != self.grid.shape or p.device!=sample.device or p.dtype!=sample.dtype:
             raise ValueError('invalid initial CN Stokes pressure')
-        p -= p.mean()
+        if self._stokes_workspace is None:
+            rhs_norm = torch.sqrt(sum(v.square().sum() for v in b)).item()
+            if not torch.isfinite(p).all():
+                raise ValueError('invalid initial CN Stokes pressure')
+            p -= p.mean()
+        else:
+            rhs_norm,mean,finite=self._stokes_workspace.start(b,p).tolist()
+            if not finite:
+                raise ValueError('invalid initial CN Stokes pressure')
+            p -= mean
+        momentum_tol = max(opt.atol,opt.rtol*rhs_norm)
         cycles = 0
         poisson_solves = 0
         # Scale the continuity tolerance exactly like the old Poisson RHS check.
@@ -201,7 +232,12 @@ class MACCNABFlow(MACFlow):
         del z,continuity_rhs
         for iteration in range(self.cnab_options.max_stokes_iterations+1):
             u = self._solve_helmholtz(b,p,owned=False)
-            momentum,div = self._metrics(u,p,b).tolist()
+            if self._stokes_workspace is None:
+                momentum,div = self._metrics(u,p,b).tolist()
+                residual=None
+            else:
+                metrics,residual=self._stokes_workspace.measure(u,p,b)
+                momentum,div=metrics.tolist()
             if not isfinite(momentum+div):
                 raise RuntimeError('nonfinite CN Stokes residual')
             if momentum <= momentum_tol and div <= div_tol:
@@ -215,7 +251,8 @@ class MACCNABFlow(MACFlow):
                     helmholtz_iterations=self.helmholtz_iterations,helmholtz_backend=self.helmholtz_backend)))
             if iteration == self.cnab_options.max_stokes_iterations:
                 break
-            residual = -self.rho/self.dt*divergence(u,self.grid.spacing)
+            if residual is None:
+                residual = -self.rho/self.dt*divergence(u,self.grid.spacing)
             # H enforces exactly zero boundary-normal velocity. The discrete
             # D sum telescopes to zero; remove only its floating-point mean.
             # Near convergence, cancellation of large velocities can exceed

@@ -154,7 +154,7 @@ def test_prepare_cli_checkpoint_benchmark_and_old_metadata(real_case,tmp_path):
     assert legacy_config.interaction_quadrature.prepare_backend=='torch'
     assert 'prepare_backend' not in legacy_settings['interaction_quadrature']
     path=tmp_path/'config.json'
-    main(['--ib-stencil-backend','shared','--ib-prepare-backend','triton','--stokes-warm-start','--write-config',str(path)])
+    main(['--ib-stencil-backend','shared','--ib-prepare-backend','triton','--write-config',str(path)])
     config=json.loads(path.read_text())
     assert config['interaction_quadrature']['prepare_backend']=='triton'
     assert _decode(InteractionQuadratureOptions,dict(mode='adaptive',stencil_backend='shared')).prepare_backend=='torch'

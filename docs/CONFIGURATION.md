@@ -8,10 +8,12 @@
 ```text
 src/afsi_torch/
   config.py              # 公共配置类型、JSON 读写及参数验证
+  paper_lv.py            # Ma2024 真实 LV 物理配置、式81/82本构与固体适配器
   simulation/
     lv_mac.py            # 理想左室 MAC 耦合推进、检查点和结果记录
     lv_fem.py            # 左室 Q2/Q1 FEM 耦合推进及旧周期入口
     valve_mac.py         # 二维瓣膜 MAC 耦合推进
+    paper_lv_mac.py      # 真实 LV BE–BE 被动充盈、检查点及 VTK 输出
     cli.py               # 三个 demo 共享的命令行处理
   mac/                   # 三维 MAC、压力多重网格、IB 及执行优化
   mac2d/                 # 二维通道 MAC、压力多重网格及 IB
@@ -26,6 +28,8 @@ demo/
   ideal_valve_fsi/
     run_mac.py
     configs/mac_gpu.json
+  real_lv_fsi/
+    run_mac.py           # Ma2024 被动充盈；PaperLVConfig，默认1.5 s
 examples/                # 保留旧命令和 import 的兼容入口
 validation/              # 独立对照、性能测量及导出工具
 tests/                   # 正确性与兼容性检查
@@ -36,6 +40,10 @@ demo 负责选择参数，可复用的运行代码已移入安装包。新算例
 导入配置和 runner，直接调用，无需从 examples 导入，也无需修改求解器。
 当前提供的生成模型是理想左室和双瓣叶；其他拓扑的固体需要相应的网格、
 材料/载荷模型和初始化代码，配置文件本身不会自动构造任意几何。
+
+真实 LV 的当前入口使用 `PaperLVConfig`，定义 BE–BE／半拉格朗日开放盒流体。
+它与旧 `RealLVConfig`／CN–AB2 库接口及检查点属于不同方案；详情及完整命令见
+[论文真实左心室复现](../demo/real_lv_fsi/README.md)。
 
 ## 在 demo 主程序中设置
 

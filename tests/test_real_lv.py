@@ -412,13 +412,17 @@ def test_transport_rejection_checkpoint_continues_at_half_dt(real_case, tmp_path
     assert path.read_bytes() == before
 
 
-def test_resume_dt_cli_forwards_only_explicit_refinement(monkeypatch, tmp_path):
+def test_paper_cli_rejects_legacy_cycles_and_physics_override(monkeypatch, tmp_path):
     from demo.real_lv_fsi import run_mac
     calls = []
-    monkeypatch.setattr(run_mac, 'run', lambda **kwargs: calls.append(kwargs))
-    run_mac.main(['--resume', 'saved/checkpoint.npz', '--resume-dt', '5e-5',
-                  '--output', str(tmp_path/'new'), '--cycles', '3'])
-    assert calls[0]['resume_dt'] == 5e-5 and calls[0]['end_time'] == pytest.approx(2.4)
+    def fake_run(**kwargs):
+        calls.append(kwargs)
+        return dict(accepted_steps=15000,reached_time_s=1.5,elapsed_seconds=1.)
+    monkeypatch.setattr(run_mac, 'run', fake_run)
+    run_mac.main(['--resume', 'saved/checkpoint.npz','--end-time','1.5'])
+    assert calls[0]['end_time'] == pytest.approx(1.5) and 'resume_dt' not in calls[0]
+    with pytest.raises(SystemExit):
+        run_mac.main(['--cycles','3'])
     with pytest.raises(SystemExit):
         run_mac.main(['--resume-dt', '5e-5'])
     with pytest.raises(SystemExit):

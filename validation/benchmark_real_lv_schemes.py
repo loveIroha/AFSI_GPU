@@ -46,7 +46,8 @@ def record_phases(driver,recorder):
 @torch.no_grad()
 def benchmark(checkpoint,*,device='cuda',schemes=('explicit-rk3','implicit-newton'),warmup=2,steps=10,
               nonlinear_solvers=None,initial_state='checkpoint',execution_variants=None,profile=False,
-              helmholtz_backends=None,ib_shared_executions=None,validation_backends=None):
+              helmholtz_backends=None,ib_shared_executions=None,validation_backends=None,
+              stokes_backends=None):
     if type(warmup) is not int or warmup<0 or type(steps) is not int or steps<1:
         raise ValueError('warmup must be nonnegative and steps positive')
     if initial_state not in ('checkpoint','reference'):
@@ -58,6 +59,13 @@ def benchmark(checkpoint,*,device='cuda',schemes=('explicit-rk3','implicit-newto
             or any(s not in ('newton','anderson-newton') for s in nonlinear_solvers) or tuple(schemes)!=('cnab-semiimplicit',)):
         raise ValueError('nonlinear_solvers requires only cnab-semiimplicit and distinct supported solvers')
     model,initial,settings,_,config = load_real_lv(checkpoint,device)
+    if stokes_backends is not None and (not stokes_backends or
+            len(set(stokes_backends))!=len(stokes_backends) or
+            any(v not in ('reference','workspace') for v in stokes_backends) or
+            tuple(schemes)!=('cnab-semiimplicit',) or config.execution.execution_backend!='fused' or
+            execution_variants is not None or helmholtz_backends is not None or
+            ib_shared_executions is not None or validation_backends is not None):
+        raise ValueError('stokes_backends requires fused cnab-semiimplicit and no other execution comparison')
     if validation_backends is not None and (not validation_backends or
             len(set(validation_backends))!=len(validation_backends) or
             any(v not in ('reference','blocked') for v in validation_backends) or
@@ -106,7 +114,10 @@ def benchmark(checkpoint,*,device='cuda',schemes=('explicit-rk3','implicit-newto
     cases = [(s,label,solver,v,h,ib,None) for s,label,solver,v,h,ib in cases] if validation_backends is None else [
         (s,f'{label}/{validation}',solver,v,'torch','reference',validation)
         for s,label,solver,v,h,ib in cases for validation in validation_backends]
-    for scheme,label,solver,variant,helmholtz_backend,shared_execution,validation_backend in cases:
+    cases=[(*case,None) for case in cases] if stokes_backends is None else [
+        (s,f'{label}/{backend}',solver,v,'torch','reference',validation,backend)
+        for s,label,solver,v,h,ib,validation in cases for backend in stokes_backends]
+    for scheme,label,solver,variant,helmholtz_backend,shared_execution,validation_backend,stokes_backend in cases:
         print(f'{label}: preparing and warming up...',flush=True)
         started = perf_counter()
         coupling = replace(config.coupling,scheme=scheme)
@@ -127,6 +138,8 @@ def benchmark(checkpoint,*,device='cuda',schemes=('explicit-rk3','implicit-newto
                 stencil_backend='shared' if variant in ('shared','shared-warm','prepare-warm','shared-fused-warm','shared-fused-checked') else 'component',
                 prepare_backend='triton' if variant in ('prepare-warm','shared-fused-warm','shared-fused-checked') else 'torch')
         driver = build_driver(model,dict(settings,coupling=asdict(coupling),interaction_quadrature=asdict(quadrature)),device)
+        if stokes_backend is not None:
+            driver.flow.set_stokes_backend(stokes_backend)
         if validation_backend is not None:
             driver.transfer.set_validation_backend(validation_backend)
             driver.solid_execution.set_validation_backend(validation_backend)
@@ -209,7 +222,8 @@ def benchmark(checkpoint,*,device='cuda',schemes=('explicit-rk3','implicit-newto
                 case['helmholtz'] = driver.flow.helmholtz_summary()
                 case['counts']['helmholtz_solves'] = driver.flow.helmholtz_calls-helmholtz_before[0]
                 case['counts']['helmholtz_sweeps'] = driver.flow.helmholtz_sweeps-helmholtz_before[1]
-            if execution_variants is not None or helmholtz_backends is not None or ib_shared_executions is not None or validation_backends is not None:
+            case['stokes_execution']=driver.flow.stokes_summary() if hasattr(driver.flow,'stokes_summary') else None
+            if execution_variants is not None or helmholtz_backends is not None or ib_shared_executions is not None or validation_backends is not None or stokes_backends is not None:
                 final_states[label] = dict(x=state.x.clone(),pressure=state.pressure.clone(),
                     force=state.force.clone(),velocity=tuple(u.clone() for u in state.velocity))
             print(f'{label}: {case["ms_per_step"]:.3f} ms/step; '
@@ -297,8 +311,9 @@ def benchmark(checkpoint,*,device='cuda',schemes=('explicit-rk3','implicit-newto
                 measured_speedup=report['cases'][base]['ms_per_step']/report['cases'][label]['ms_per_step'],
                 final_state_differences=differences,relative_l2=relative,
                 interpretation='Same fixed Jacobi count, no-slip stencil, quadrature, time scheme and true residual acceptance; floating-point order may differ')
-    if ib_shared_executions is not None or validation_backends is not None:
-        comparison_key='validation_comparisons' if validation_backends is not None else 'ib_shared_comparisons'
+    if ib_shared_executions is not None or validation_backends is not None or stokes_backends is not None:
+        comparison_key=('stokes_comparisons' if stokes_backends is not None else
+                        'validation_comparisons' if validation_backends is not None else 'ib_shared_comparisons')
         report[comparison_key] = {}
         for label,candidate in final_states.items():
             base = label.rsplit('/',1)[0]+'/reference'
@@ -316,7 +331,10 @@ def benchmark(checkpoint,*,device='cuda',schemes=('explicit-rk3','implicit-newto
             report[comparison_key][label] = dict(reference=base,
                 measured_speedup=report['cases'][base]['ms_per_step']/report['cases'][label]['ms_per_step'],
                 final_state_differences=differences,relative_l2=relative,
-                interpretation=('Same support bounds, finite/det(F)/surface/volume checks and time/solver tolerances; '
+                interpretation=('Same wall stencils, fixed Helmholtz polynomial, pressure V cycles and true momentum/divergence acceptance; '
+                    'blocked norms and one reused divergence per Schur iterate; reference shared IB, blocked validation and torch CN velocity in both cases.'
+                    if stokes_backends is not None else
+                    'Same support bounds, finite/det(F)/surface/volume checks and time/solver tolerances; '
                     'unique P1 vertices and blocked boolean reduction, pointwise affine geometry; '
                     'reference IB kernels and torch CN velocity in both cases.' if validation_backends is not None else
                     'All original points, weights, links, consistent mass and tolerances; compiled torch CN velocity in every case. Only local accumulation order changes.'))
@@ -339,6 +357,8 @@ def main():
                         help='compare shared FE/IB kernel execution only, with torch CN velocity in every case')
     parser.add_argument('--validation-backends',nargs='+',choices=('reference','blocked'),
                         help='compare original versus blocked support and pointwise P1 geometry checks; unchanged acceptance')
+    parser.add_argument('--stokes-backends',nargs='+',choices=('reference','workspace'),
+                        help='compare Stokes residual execution only, with blocked validation and torch CN velocity')
     parser.add_argument('--nonlinear-solvers',nargs='+',choices=('newton','anderson-newton'))
     parser.add_argument('--execution-variants',nargs='+',choices=('baseline','reuse','compact','fused','cell','shared','pressure-warm','shared-warm','prepare-warm','shared-fused-warm','shared-fused-checked'),
                         help='adaptive CNAB: compact controls shared stencils and same-step pressure warm starts; input checkpoint is read only')
@@ -348,7 +368,8 @@ def main():
                        nonlinear_solvers=args.nonlinear_solvers,initial_state=args.initial_state,
                        execution_variants=args.execution_variants,profile=args.profile,
                        helmholtz_backends=args.helmholtz_backends,
-                       ib_shared_executions=args.ib_shared_executions,validation_backends=args.validation_backends)
+                       ib_shared_executions=args.ib_shared_executions,validation_backends=args.validation_backends,
+                       stokes_backends=args.stokes_backends)
     path = Path(args.output)
     path.parent.mkdir(parents=True,exist_ok=True)
     atomic_json(path,report)

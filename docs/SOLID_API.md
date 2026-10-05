@@ -85,7 +85,7 @@ CUDA_VISIBLE_DEVICES=0 python -u examples/custom_solid_mac.py \
 不能仅替换回调。现有 P2 理想 LV/2D 瓣膜保持原实现；接口并不表示它们
 已经自动支持新的 P1 切线或三维隐式弹性方案。
 
-真实 LV 保留原 H–O 力、CSR 切线、follower 压力、径向底部约束和执行内核。
+旧 `RealLVConfig` 库接口保留原 H–O 力、CSR 切线、follower 压力、径向底部约束和执行内核。
 CN 黏性、AB2/PPM 对流、预测中点冻结 IB 几何、非线性中点固体力、
 Anderson/CSR Newton、质量矩阵、积分规则、容差及检查点内容均不改变。
 这次架构调整只将模型选择改成工厂接口。
@@ -104,6 +104,7 @@ CUDA_VISIBLE_DEVICES=0 python -m pytest -q \
 ```
 
 接口测试覆盖另一材料/边界的 CSR–JVP–有限差分一致性、两种隐式耦合器、
-优化/普通执行轨迹与原 H–O 组装器一致性。完整真实 LV 三周期需用实际
-患者输入执行，[三周期运行与检查](../demo/real_lv_fsi/README.md#完整三周期测试)
-提供命令；短段兼容测试不能代替完整周期稳定性验证。
+优化/普通执行轨迹与原 H–O 组装器一致性。当前真实 LV demo 已改为
+[Ma2024 被动充盈复现](../demo/real_lv_fsi/README.md)：独立 PaperLVSolid 适配器
+重用 P1 弱力组装、边界积分、CSR 切线与执行工厂，采用新的 BE–BE 耦合。
+短段接口兼容测试不能替代实际网格上的完整充盈与论文曲线对照。

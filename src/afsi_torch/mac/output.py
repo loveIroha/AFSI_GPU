@@ -33,7 +33,8 @@ def _binary_array(parent, name, values, components=1):
 
 
 class MACWriter:
-    def __init__(self, directory, model, grid, *, resume_time=None):
+    def __init__(self, directory, model, grid, *, resume_time=None,
+                 pressure_description='original MAC cell pressure; zero-mean gauge'):
         try:
             import meshio
         except ImportError as exc:
@@ -73,7 +74,7 @@ class MACWriter:
             sheet_reference='reference DG0 cell sheet' if self.p1 else 'not exported',
             J_min='minimum det(F) over quadrature points within each cell',
             J_max='maximum det(F) over quadrature points within each cell',
-            pressure_dyn_per_cm2='original MAC cell pressure; zero-mean gauge',
+            pressure_dyn_per_cm2=pressure_description,
             velocity_cm_per_s='visualization only: arithmetic average of opposite MAC faces',
             divergence_per_s='divergence of original staggered velocities',
             fluid_storage='VTK ImageData cell fields; x varies fastest; FP64 zlib binary',

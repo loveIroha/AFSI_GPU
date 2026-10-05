@@ -211,10 +211,10 @@ def test_shared_warm_checkpoint_and_four_way_profile_benchmark(real_case,tmp_pat
 def test_demo_cli_records_options_and_rejects_unused_pressure_flag(tmp_path):
     from demo.real_lv_fsi.run_mac import main
     path = tmp_path/'config.json'
-    main(['--ib-stencil-backend','shared','--stokes-warm-start','--write-config',str(path)])
+    main(['--ib-stencil-backend','shared','--write-config',str(path)])
     config = json.loads(path.read_text())
     assert config['interaction_quadrature']['stencil_backend']=='shared'
-    assert config['coupling']['stokes_warm_start']
+    assert config['nonlinear_solver']=='jfnk'  # BE-BE; no midpoint Stokes option
     with pytest.raises(SystemExit) as error:
         main(['--coupling','cnab-midpoint','--stokes-warm-start','--write-config',str(path)])
     assert error.value.code==2

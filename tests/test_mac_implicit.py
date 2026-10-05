@@ -175,9 +175,9 @@ def test_implicit_config_cli_and_legacy_force_clock(real_case,tmp_path,monkeypat
     from afsi_torch.config import save_config,load_config
     calls = []
     monkeypatch.setattr(run_mac,'run',lambda **kwargs:calls.append(kwargs))
-    run_mac.main(['--resume','old/checkpoint.npz','--coupling','implicit-newton',
-                  '--output',str(tmp_path/'new'),'--cycles','3'])
-    assert calls[0]['coupling_scheme'] == 'implicit-newton' and calls[0]['resume_dt'] is None
+    with pytest.raises(SystemExit):
+        run_mac.main(['--resume','old/checkpoint.npz','--coupling','implicit-newton'])
+    assert not calls  # legacy scheme is no longer exposed by the paper demo
     config = replace(real_case,coupling=MACCouplingOptions(scheme='implicit-newton'))
     path = tmp_path/'implicit.json'
     save_config(path,config)
@@ -186,8 +186,7 @@ def test_implicit_config_cli_and_legacy_force_clock(real_case,tmp_path,monkeypat
     legacy['coupling']['newton'].pop('linear_tolerance_fraction')
     path.write_text(json.dumps(legacy))
     assert load_config(path,config).coupling.newton.linear_tolerance_fraction == .2
-    run_mac.main(['--config',str(path),'--coupling','explicit-lagged',
-                  '--write-config',str(tmp_path/'explicit.json')])
+    save_config(tmp_path/'explicit.json',replace(config,coupling=MACCouplingOptions(scheme='explicit-lagged')))
     assert load_config(tmp_path/'explicit.json',config).coupling.scheme == 'explicit-lagged'
 
 

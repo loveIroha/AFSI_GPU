@@ -152,8 +152,10 @@ def test_execution_only_restart_retains_state_and_ab2_history(real_case,tmp_path
     _,a,_,_,_ = load_real_lv(source)
     with pytest.raises(ValueError,match='new output directory'):
         run(resume=source,device='cpu',shared_execution='vector')
-    main(['--resume',str(source),'--device','cpu','--ib-shared-execution','vector',
-          '--helmholtz-backend','torch','--end-time',str(a.time),'--output',str(tmp_path/'branch')])
+    # The public demo is now passive BE-BE. Legacy execution-only branching
+    # remains an explicitly tested library API, not a paper-demo CLI option.
+    run(resume=source,device='cpu',shared_execution='vector',helmholtz_backend='torch',
+        end_time=a.time,output=tmp_path/'branch')
     _,b,settings,progress,config = load_real_lv(tmp_path/'branch'/'checkpoint.npz')
     assert source.read_bytes()==before and b.time==a.time and b.step==a.step
     for field in ('x','force','pressure'):

@@ -158,13 +158,13 @@ def test_adaptive_config_and_checkpoint_restart_keep_user_material(real_case,tmp
     assert 'stress_form' not in metadata['config']
 
 
-def test_demo_material_defaults_unchanged_and_quadrature_cli(tmp_path):
+def test_demo_paper_material_and_quadrature_cli(tmp_path):
     from demo.real_lv_fsi import run_mac
     path = tmp_path/'config.json'
     run_mac.main(['--write-config',str(path)])
     config = json.loads(path.read_text())
     assert config['material']==asdict(run_mac.CONFIG.material)
-    assert config['material']['active_stretch_slope']==4.9
+    assert config['material']['b']==10.81 and config['loads']['target_mmhg']==8.
     assert config['interaction_quadrature']['mode']=='adaptive'
     run_mac.main(['--interaction-quadrature','fixed','--write-config',str(path)])
     assert json.loads(path.read_text())['interaction_quadrature']['mode']=='fixed'
