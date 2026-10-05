@@ -11,6 +11,7 @@ from ..cycle_checkpoint import atomic_json
 from ..mac.execution import build_driver
 from ..mac.grid import divergence
 from ..transport import transport_numbers, coupling_policy
+from ..mac.memory import allocator_sample
 
 
 @torch.no_grad()
@@ -48,7 +49,8 @@ def run(*, case_config=None, device='cuda', output=None, resume=None, end_time=N
             config = replace(config,coupling=replace(config.coupling,scheme=coupling_scheme))
             force_time = None if state.step == 0 else state.time if coupling_scheme in ('implicit-newton','cnab-midpoint','cnab-semiimplicit') else (state.step-1)*config.time.dt
             state = replace(state, force_time=force_time, force=state.force if force_time is None else model.force(state.x,force_time),
-                            previous_advection=state.previous_advection if old_scheme==coupling_scheme and not refinement else None)
+                            previous_advection=state.previous_advection if old_scheme==coupling_scheme and not refinement else None,
+                            previous_dt=state.previous_dt if old_scheme==coupling_scheme and not refinement else None)
             settings = dict(settings,coupling=asdict(config.coupling))
             details.update(old_scheme=old_scheme,new_scheme=config.coupling.scheme,force_time_s=force_time,
                            force_resampled=state.step > 0)
@@ -118,11 +120,20 @@ def run(*, case_config=None, device='cuda', output=None, resume=None, end_time=N
     def row():
         pressure, tension = model.loads.at(state.time)
         speeds = torch.stack([u.abs().max() for u in state.velocity]).tolist()
-        numbers = transport_numbers(speeds, grid.spacing, flow.dt, flow.mu/flow.rho)
+        accepted_dt=info.get('flow',{}).get('time_step_s',flow.dt)
+        numbers = transport_numbers(speeds, grid.spacing, accepted_dt, flow.mu/flow.rho)
+        substeps=info.get('substeps',{})
         return dict(step=state.step, time_s=state.time,
                     force_time_s=-1. if state.force_time is None else state.force_time,
                     pressure_load_dyn_per_cm2=pressure, active_tension_dyn_per_cm2=tension,
                     **model.diagnostics(state.x),
+                    **allocator_sample(state.x.device),
+                    macro_dt_s=config.time.dt, accepted_substep_dt_s=accepted_dt,
+                    coupled_substeps=substeps.get('count',1),
+                    substep_rejections=substeps.get('rejected_attempts',0),
+                    max_substep_courant=substeps.get('max_courant',numbers['courant']),
+                    max_substep_residual_ratio=substeps.get('max_residual_ratio'),
+                    pressure_time_s=state.pressure_time,
                     max_fluid_component_cm_per_s=max(speeds),
                     courant=numbers['courant'], cell_reynolds=numbers['cell_reynolds'],
                     advection_diffusion_number=numbers['advection_diffusion_number'],
@@ -188,13 +199,14 @@ def run(*, case_config=None, device='cuda', output=None, resume=None, end_time=N
                                    if cnab else 'backward Euler transport and new-time FE force; reduced coupled Newton; IB geometry frozen at old position'
                                    if implicit else 'SSPRK3 fluid with step-frozen force; first-order explicit partitioned FE/IB; preceding-time force sampling'
                                    if config.coupling.scheme == 'explicit-rk3' else 'explicit partitioned MAC; updated solid force sampled at preceding state time'),
-                      pressure_time_meaning='half-time Stokes multiplier' if cnab else 'RK-weighted step average' if config.coupling.scheme == 'explicit-rk3' else 'projection multiplier',
+                      pressure_time_meaning='last accepted coupled substep midpoint; see pressure_time_s' if semiimplicit and config.coupling.adaptive_substeps else 'half-time Stokes multiplier' if cnab else 'RK-weighted step average' if config.coupling.scheme == 'explicit-rk3' else 'projection multiplier',
                       advection=config.coupling.cnab.advection if cnab else 'centered',
                       pressure_gauge='closed box, homogeneous Neumann, zero mean',
                       cavity_measurement='endocardium plus virtual mean-rim triangle fan; no cap traction',
                       volume_penalty='kappa*(ln J)^2; finite penalty, not a mixed incompressible constraint',
                       last=history[-1], last_solver_info=info,
                       visualization=writer.summary() if writer else dict(enabled=False),
+                      gpu_memory=allocator_sample(state.x.device),
                       full_horizon_validated=False, mesh_convergence_established=False, **progress)
         save_real_lv(folder/'checkpoint.npz', model, state, settings, progress, config)
         if semiimplicit and status=='running' and state.step % config.output.checkpoint_every == 0:
@@ -227,6 +239,9 @@ def run(*, case_config=None, device='cuda', output=None, resume=None, end_time=N
             print(f'Nonlinear solver: {config.coupling.semiimplicit_solver}; '
                   f'Stokes pressure warm start={config.coupling.stokes_warm_start}; '
                   f'validation reuse={config.coupling.reuse_validation}',flush=True)
+            print(f'Coupled substeps: {config.coupling.adaptive_substeps}; '
+                  f'minimum dt={config.time.dt/2**config.coupling.max_substep_levels:g} s; '
+                  f'IB workspace reuse={config.interaction_quadrature.reuse_stencil_buffers}',flush=True)
         for _ in range(state.step, steps):
             sample = (state.step+1) % config.output.log_every == 0 or state.step+1 == steps
             state, info = driver.step(state, diagnostics=sample)
@@ -243,6 +258,11 @@ def run(*, case_config=None, device='cuda', output=None, resume=None, end_time=N
                         f'residual={nonlinear["residual_norm"]:.3g}')
                 if cnab and not semiimplicit:
                     suffix = f', Stokes={last["stokes_iterations"]}, momentum={last["momentum_residual"]:.3g}'
+                if semiimplicit and config.coupling.adaptive_substeps:
+                    suffix += f', substeps={last["coupled_substeps"]}, sub-dt={last["accepted_substep_dt_s"]:g}'
+                if 'gpu_allocated_bytes' in last:
+                    suffix += (f', GPU allocated/reserved={last["gpu_allocated_bytes"]/2**30:.2f}/'
+                               f'{last["gpu_reserved_bytes"]/2**30:.2f} GiB, alloc-retries={last["gpu_allocation_retries"]}')
                 print(f'step {state.step}/{steps}, t={state.time:.6f}, V={last["cavity_volume_ml"]:.8g} mL, '
                       f'minJ={last["minimum_detF"]:.6g}, div={last["divergence_l2"]:.3g}, '
                       f'MG cycles={last["pressure_cycles"]}, CFL={last["courant"]:.3g}, '

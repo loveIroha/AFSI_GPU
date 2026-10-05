@@ -43,7 +43,7 @@ def refine_checkpoint_dt(model, state, settings, config, dt, end_time=None):
     config = replace(config, time=time, output=output)
     force_time = None if step == 0 else state.time if config.coupling.scheme in ('implicit-newton','cnab-midpoint','cnab-semiimplicit') else (step-1)*dt
     force = state.force if step == 0 else model.force(state.x, force_time)
-    branch = replace(state, step=step, force_time=force_time, force=force,previous_advection=None)
+    branch = replace(state, step=step, force_time=force_time, force=force,previous_advection=None,previous_dt=None)
     details = dict(old_dt_s=old_dt, new_dt_s=dt, refinement_factor=factor,
                    source_step=state.step, start_step=step, start_time_s=state.time,
                    force_time_s=force_time,force_resampled=step > 0,
@@ -67,6 +67,7 @@ def save_real_lv(path, model, state, settings, progress, config):
                     config=asdict(config), mesh_metadata=mesh.metadata, vertex_count=mesh.vertex_count,
                     step=state.step, time=state.time, force_time=state.force_time,
                     has_previous_advection=state.previous_advection is not None,
+                    previous_dt=state.previous_dt, pressure_time=state.pressure_time,
                     settings=settings, progress=progress)
     metadata['sha256'] = digest(metadata, data)
     path = Path(path)
@@ -99,8 +100,15 @@ def load_real_lv(path, device='cpu'):
     state = MACState(metadata['step'], metadata['time'], tensor('x'),
                      tuple(tensor(f'velocity_{c}') for c in range(3)), tensor('pressure'),
                      tensor('force'), metadata['force_time'],
-                     tuple(tensor(f'previous_advection_{c}') for c in range(3)) if metadata.get('has_previous_advection',False) else None)
+                     tuple(tensor(f'previous_advection_{c}') for c in range(3)) if metadata.get('has_previous_advection',False) else None,
+                     metadata.get('previous_dt'),metadata.get('pressure_time'))
     dt = config.time.dt
+    if state.previous_dt is not None:
+        if (not isfinite(state.previous_dt) or state.previous_dt<=0 or state.previous_dt>dt*(1+1e-12)
+                or state.previous_advection is None):
+            raise ValueError('invalid checkpoint AB2 history interval')
+    if state.pressure_time is not None and (not isfinite(state.pressure_time) or not 0<=state.pressure_time<=state.time):
+        raise ValueError('invalid checkpoint pressure time')
     expected_time = state.time if config.coupling.scheme in ('implicit-newton','cnab-midpoint','cnab-semiimplicit') else (state.step-1)*dt
     if (type(state.step) is not int or state.step < 0 or abs(state.time-state.step*dt) > 1e-12
             or (state.step == 0 and state.force_time is not None)

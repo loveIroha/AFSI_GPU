@@ -15,6 +15,8 @@ class MACState:
     force: torch.Tensor
     force_time: float | None
     previous_advection: tuple | None = None
+    previous_dt: float | None = None
+    pressure_time: float | None = None
 
 
 class MACIBStepper:

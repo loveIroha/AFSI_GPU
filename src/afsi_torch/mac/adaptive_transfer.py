@@ -25,8 +25,13 @@ class InteractionQuadratureOptions:
     transfer_backend: str = 'reference'
     stencil_backend: str = 'component'
     prepare_backend: str = 'torch'
+    reuse_stencil_buffers: bool = False
 
     def __post_init__(self):
+        if type(self.reuse_stencil_buffers) is not bool:
+            raise ValueError('reuse_stencil_buffers must be a bool')
+        if self.reuse_stencil_buffers and (self.stencil_backend!='shared' or self.prepare_backend!='triton'):
+            raise ValueError('stencil buffer reuse requires shared/triton preparation')
         if self.mode not in ('fixed','adaptive'):
             raise ValueError('interaction quadrature mode must be fixed or adaptive')
         if self.rule_family not in ('conical','xiao-gimbutas'):
@@ -160,6 +165,8 @@ class AdaptiveP1Transfer(CompactFETransfer):
         self._last_prepared_rule = None
         self.quadrature_builds = 0
         self._last_stencil_bytes = None
+        from .stencil_workspace import StencilWorkspace
+        self.stencil_workspace = StencilWorkspace(self.quadrature_options.max_points)
         device = self.geometry.weights.device
         # Groups change size as elements deform. Static-shape compilation here
         # would repeatedly compile and eventually hit Dynamo's cache limit.
@@ -223,24 +230,32 @@ class AdaptiveP1Transfer(CompactFETransfer):
         # Every affine P1 quadrature point lies in this convex vertex hull.
         return x[self.geometry.cells].reshape(-1,3)
 
-    def _direct_prepare(self,x,rule):
+    def _direct_prepare(self,x,rule,*,buffers=None):
         from ._triton_prepare import prepare
-        return prepare(self,x,rule)
+        return prepare(self,x,rule,buffers=buffers)
 
     @torch.no_grad()
     def prepare(self,x):
         self._nodal(x)
         rule = self._rule(x)
+        slot = None
+        if self.quadrature_options.reuse_stencil_buffers:
+            base,phi,slot = self.stencil_workspace.acquire(x,rule.point_count)
         if self.quadrature_options.prepare_backend=='triton' and x.is_cuda:
-            base,phi = self._direct_prepare(x,rule)
+            base,phi = self._direct_prepare(x,rule,buffers=None if slot is None else (base,phi))
         else:
             points = self._points(x,rule)
             self.check_support(points)
             kernel = self.from_points(points)
-            base,phi = kernel.base,kernel.phi
+            if slot is None:
+                base,phi = kernel.base,kernel.phi
+            else:
+                base.copy_(kernel.base); phi.copy_(kernel.phi)
         self._last_prepared_rule = rule
         cls = SharedAdaptiveStencil if self.quadrature_options.stencil_backend=='shared' else AdaptiveStencil
         stencil = cls(base,phi,rule)
+        if slot is not None:
+            self.stencil_workspace.retain(slot,stencil)
         self._last_stencil_bytes = stencil.storage_bytes
         return stencil
 
@@ -302,6 +317,7 @@ class AdaptiveP1Transfer(CompactFETransfer):
                     point_intermediates_materialized=(False if self.geometry.weights.is_cuda and self.quadrature_options.transfer_backend=='fused' and self.quadrature_options.stencil_backend=='shared'
                         else True if not self.geometry.weights.is_cuda or self.quadrature_options.transfer_backend=='reference' else None),
                     stencil_storage_bytes=self._last_stencil_bytes,
+                    stencil_workspace=self.stencil_workspace.summary(),
                     rule_family=self.quadrature_options.rule_family,
                     points_per_order={n:len(table[1]) for n,table in self._rules.items()},
                     high_order_fallback='positive conical above order 8' if self.quadrature_options.rule_family=='xiao-gimbutas' else None,

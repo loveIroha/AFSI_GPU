@@ -32,8 +32,19 @@ class MACCouplingOptions:
     reuse_final_evaluation: bool = True
     stokes_warm_start: bool = False
     reuse_validation: bool = False
+    adaptive_substeps: bool = False
+    substep_courant_target: float = .20
+    max_substep_levels: int = 4
 
     def __post_init__(self):
+        if type(self.adaptive_substeps) is not bool:
+            raise ValueError('adaptive_substeps must be a bool')
+        if self.adaptive_substeps and self.scheme!='cnab-semiimplicit':
+            raise ValueError('adaptive coupled substeps require cnab-semiimplicit')
+        if not isfinite(self.substep_courant_target) or not 0 < self.substep_courant_target < .25:
+            raise ValueError('substep Courant target must be in (0,0.25)')
+        if type(self.max_substep_levels) is not int or not 1 <= self.max_substep_levels <= 4:
+            raise ValueError('max_substep_levels must be in [1,4]')
         if type(self.reuse_validation) is not bool:
             raise ValueError('reuse_validation must be a bool')
         if type(self.reuse_final_evaluation) is not bool:

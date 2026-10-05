@@ -36,6 +36,15 @@ def blend(a,b,wa=.5,wb=.5):
     return tuple(wa*x+wb*y for x,y in zip(a,b))
 
 
+def extrapolated_advection(current, previous, dt, previous_dt=None):
+    """AB2 interval average for unequal steps; constant steps retain 1.5/-0.5."""
+    previous_dt = dt if previous_dt is None else previous_dt
+    if not isfinite(previous_dt) or previous_dt <= 0:
+        raise ValueError('positive previous AB2 time step required')
+    ratio = dt/(2*previous_dt)
+    return blend(current, previous, 1+ratio, -ratio)
+
+
 class CNABTransportGuardError(MACTransportGuardError):
     def __init__(self,numbers):
         self.diagnostics = dict(cnab_policy(),**numbers,triggered=['courant'])
@@ -84,6 +93,29 @@ class MACCNABFlow(MACFlow):
 
     def advection(self,velocity):
         return self._adv(velocity,self.grid.spacing)
+
+    def set_time_step(self,dt):
+        """Update bounded scalar/diagonal CN data; retain the pressure graph/workspace."""
+        if not isfinite(dt) or dt<=0:
+            raise ValueError('positive finite CN time step required')
+        if dt==self.dt:
+            return
+        alpha=dt*self.mu/(2*self.rho)
+        s=2*alpha*sum(1/h**2 for h in self.grid.spacing)
+        q=s/(1+s)
+        count=max(1,ceil(log(self.cnab_options.helmholtz_rtol/(1+s))/log(q))) if q else 1
+        if count>self.cnab_options.max_helmholtz_iterations:
+            raise ValueError('CN Helmholtz iteration budget too small')
+        self.dt,self.alpha,self.helmholtz_iterations=float(dt),alpha,count
+        self.viscous_number=dt*self.mu/self.rho*sum(1/h**2 for h in self.grid.spacing)
+        for c,diagonal in enumerate(self._helmholtz_diagonal):
+            diagonal.fill_(1+s)
+            for axis,h in enumerate(self.grid.spacing):
+                if axis!=c:
+                    diagonal[slab(axis,0,1)] += alpha/h**2
+                    diagonal[slab(axis,-1,None)] += alpha/h**2
+            diagonal[slab(c,0,1)]=1.
+            diagonal[slab(c,-1,None)]=1.
 
     def _helmholtz_sweep(self,u,b):
         Lu = self._lap(u)

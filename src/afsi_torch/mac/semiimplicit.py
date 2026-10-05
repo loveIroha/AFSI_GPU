@@ -7,9 +7,9 @@ same no-slip CN Stokes solver, not a commuting or single-projection substitute.
 """
 from contextlib import contextmanager
 from dataclasses import asdict, replace, dataclass
-from math import isfinite
+from math import isfinite, ceil, log2
 import torch
-from .cnab import MidpointMACIBStepper, blend
+from .cnab import MidpointMACIBStepper, blend, extrapolated_advection, CNABTransportGuardError
 from .coupling import MACState
 from .grid import zero_normal, divergence
 from ..nonlinear import newton, normalized_linear_action, NonlinearFailure
@@ -215,11 +215,90 @@ class SemiImplicitMACIBStepper(MidpointMACIBStepper):
 
     @torch.no_grad()
     def step(self, state, *, diagnostics=True):
+        if not self.options.adaptive_substeps:
+            return self._step(state,diagnostics=diagnostics)
+        return self._interval(state,diagnostics=diagnostics)
+
+    def _select_level(self,state,dt):
+        speeds=torch.stack([u.abs().max() for u in state.velocity]).tolist()
+        C=dt*sum(v/h for v,h in zip(speeds,self.flow.grid.spacing))
+        if not isfinite(C):
+            raise ValueError('finite velocity required for adaptive substeps')
+        level=max(0,ceil(log2(C/self.options.substep_courant_target))) if C else 0
+        # Limit coarsening to a factor two for variable-step AB2.
+        if state.previous_dt is not None:
+            level=max(level,round(log2(dt/state.previous_dt))-1)
+        return min(self.options.max_substep_levels,max(0,level))
+
+    @torch.no_grad()
+    def _interval(self,state,*,diagnostics):
+        dt=self.flow.dt
+        if type(state.step) is not int or state.step<0 or abs(state.time-state.step*dt)>1e-12:
+            raise ValueError('inconsistent adaptive macro clock')
+        level=self._select_level(state,dt)
+        rejected=0
+        total_stokes=0
+        while True:
+            count=2**level
+            h=dt/count
+            start_calls=self.flow.stokes_calls
+            try:
+                self.flow.set_time_step(h)
+                current=replace(state,step=state.step*count,
+                    previous_dt=(dt if state.previous_advection is not None and state.previous_dt is None
+                                 else state.previous_dt))
+                records=[]
+                for i in range(count):
+                    current,info=self._step(current,diagnostics=diagnostics and i==count-1)
+                    records.append(info)
+            except CNABTransportGuardError as exc:
+                total_stokes+=self.flow.stokes_calls-start_calls
+                if level>=self.options.max_substep_levels:
+                    exc.diagnostics.update(macro_time_s=state.time,macro_dt_s=dt,
+                        rejected_macro_attempts=rejected+1,max_substep_levels=level,
+                        minimum_substep_dt_s=h,
+                        note='Entire macro interval rejected; checkpoint retains its input state')
+                    raise
+                # All trial states and AB2 histories are discarded. Production
+                # guesses from rejected trials must not survive the retry.
+                self.transfer.reset_warm_start()
+                rejected+=1
+                level+=1
+                continue
+            finally:
+                self.flow.set_time_step(dt)
+            total_stokes+=self.flow.stokes_calls-start_calls
+            final=dict(records[-1])
+            nonlinear=dict(final['nonlinear'])
+            counters=('anderson_iterations','newton_iterations','iterations',
+                      'residual_evaluations','tangent_assemblies','jacobian_actions',
+                      'validation_evaluations','validation_reuses',
+                      'stokes_pressure_warm_starts','stokes_pressure_warm_fallbacks')
+            for key in counters:
+                nonlinear[key]=sum(r['nonlinear'].get(key,0) for r in records)
+            nonlinear['history']=[entry for r in records for entry in r['nonlinear']['history']]
+            nonlinear['stokes_solves']=total_stokes
+            nonlinear['acceptance']=dict(nonlinear['acceptance'],
+                substep_index=current.step,step=state.step+1)
+            final['nonlinear']=nonlinear
+            final['max_grid_displacement']=max(r['max_grid_displacement'] for r in records)
+            final['substeps']=dict(count=count,dt_s=h,macro_dt_s=dt,rejected_attempts=rejected,
+                max_courant=max(r['flow']['courant'] for r in records),
+                pressure_cycles=sum(r['flow']['pressure']['cycles'] for r in records),
+                max_residual_ratio=max(r['nonlinear']['residual_norm']/r['nonlinear']['tolerance'] for r in records))
+            return replace(current,step=state.step+1,time=(state.step+1)*dt),final
+
+    @torch.no_grad()
+    def _step(self, state, *, diagnostics=True):
         dt = self.flow.dt
         start_stokes_calls = self.flow.stokes_calls
         if type(state.step) is not int or state.step < 0 or not isfinite(state.time) or abs(state.time-state.step*dt)>1e-12:
             raise ValueError('inconsistent semi-implicit CNAB state clock')
         self.validate(state.x)
+        # The inherited initializer caches a stencil for explicit stepping.
+        # This driver prepares its own geometry, so that initial GB-sized table
+        # must not remain rooted throughout the simulation.
+        self._cached_state=self._cached_version=self._stencil=None
         stencil_n = self.transfer.prepare(state.x)
         U_n, predictor_mass = self.transfer.interpolate(state.velocity, stencil_n)
         predicted = state.x+.5*dt*U_n
@@ -234,7 +313,10 @@ class SemiImplicitMACIBStepper(MidpointMACIBStepper):
             startup_info = provisional.diagnostics
         else:
             self.flow.grid.check_velocity(state.previous_advection)
-            half_adv = blend(current_adv, state.previous_advection, 1.5, -.5)
+            half_adv = extrapolated_advection(current_adv,state.previous_advection,dt,state.previous_dt)
+        # Predictor interpolation/startup are complete. Do not keep an unused
+        # current-position table alive during the entire nonlinear solve.
+        del stencil_n
         stencil = self.transfer.prepare(predicted)
         problem = MidpointProblem(self, state, predicted, stencil, half_adv)
         transport_sample = 'accepted input'
@@ -283,9 +365,10 @@ class SemiImplicitMACIBStepper(MidpointMACIBStepper):
                     diagnostic_error=str(diagnosis_error))
             raise
         new = MACState(state.step+1, (state.step+1)*dt, x_new, flow.velocity, flow.pressure,
-                       force_new, (state.step+1)*dt, tuple(a.detach().clone() for a in current_adv))
+                       force_new, (state.step+1)*dt, tuple(a.detach().clone() for a in current_adv),
+                       dt,state.time+.5*dt)
         fraction = ((x_new-state.x).abs()/x_new.new_tensor(self.flow.grid.spacing)).max().item()
-        info = dict(flow=dict(flow.diagnostics, **numbers), force_mass=asdict(spread),
+        info = dict(flow=dict(flow.diagnostics, **numbers, time_step_s=dt), force_mass=asdict(spread),
             velocity_mass=asdict(interpolation), predictor_mass=asdict(predictor_mass),
             max_grid_displacement=fraction, used_force_time_s=problem.half_time,
             next_force_time_s=new.time, time_integrator='CN-AB2/implicit-midpoint-elasticity',

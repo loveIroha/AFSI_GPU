@@ -49,12 +49,20 @@ def _prepare_group(X,CELLS,N,ORIGIN,SPACING,LIMITS,BASE,PHI,INVALID,
         tl.store(PHI+4*index+3,(1.+2.*f-radical)*.125,mask=active)
 
 
-def prepare(transfer,x,rule):
+def prepare(transfer,x,rule,*,buffers=None):
     """Return owned tables; later prepares may not overwrite frozen IB geometry."""
     x=x.contiguous()
     total=rule.point_count
-    base=torch.empty((2,total,3),device=x.device,dtype=torch.int64)
-    phi=x.new_empty((2,total,3,4))
+    if buffers is None:
+        base=torch.empty((2,total,3),device=x.device,dtype=torch.int64)
+        phi=x.new_empty((2,total,3,4))
+    else:
+        base,phi=buffers
+        if (base.shape!=(2,total,3) or phi.shape!=(2,total,3,4) or
+                base.dtype!=torch.int64 or phi.dtype!=x.dtype or
+                base.device!=x.device or phi.device!=x.device or
+                not base.is_contiguous() or not phi.is_contiguous()):
+            raise ValueError('invalid owned stencil buffers')
     invalid=torch.zeros((),device=x.device,dtype=torch.int32)
     offset=0
     with torch.cuda.device(x.device):

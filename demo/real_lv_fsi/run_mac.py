@@ -64,6 +64,12 @@ def main(argv=None):
                         help='reuse successful nonlinear pressures within each midpoint solve')
     parser.add_argument('--reuse-validation',action=argparse.BooleanOptionalAction,default=None,
                         help='reuse version-checked midpoint/endpoint geometry and final identical iterate checks')
+    parser.add_argument('--reuse-ib-buffers',action=argparse.BooleanOptionalAction,default=None,
+                        help='bounded shared/triton stencil workspace; live stencil ownership is preserved')
+    parser.add_argument('--adaptive-substeps',action=argparse.BooleanOptionalAction,default=None,
+                        help='retry a macro interval with complete CNAB/FE coupled substeps on CFL rejection')
+    parser.add_argument('--substep-courant-target',type=float)
+    parser.add_argument('--max-substep-levels',type=int,help='1..4; each level halves the internal coupled time step')
     parser.add_argument('--ib-prepare-backend',choices=('torch','triton'),
                         help='shared adaptive templates: reference tensors or direct P1/Peskin CUDA preparation')
     parser.add_argument('--ib-point-density',type=float,help='adaptive Gaussian density parameter, >=2')
@@ -86,6 +92,7 @@ def main(argv=None):
                      args.log_every, args.output_every, args.checkpoint_every, args.write_config)
         overrides += (args.interaction_quadrature,args.ib_point_density,args.ib_rule_family,args.ib_transfer_backend,
                       args.ib_stencil_backend,args.stokes_warm_start,args.ib_prepare_backend,args.reuse_validation)
+        overrides += (args.reuse_ib_buffers,args.adaptive_substeps,args.substep_courant_target,args.max_substep_levels)
         if any(v is not None for v in overrides) or args.reference or args.no_vtk:
             parser.error('resume restores settings; only device, output, end time/cycles, --resume-dt and --coupling may change')
         return run(device=args.device, output=args.output, resume=args.resume,
@@ -96,11 +103,14 @@ def main(argv=None):
         interaction_quadrature=replace(config.interaction_quadrature,
             **{k:v for k,v in dict(mode=args.interaction_quadrature,point_density=args.ib_point_density,
                                  rule_family=args.ib_rule_family,transfer_backend=args.ib_transfer_backend,
-                                 stencil_backend=args.ib_stencil_backend,prepare_backend=args.ib_prepare_backend).items() if v is not None}),
+                                 stencil_backend=args.ib_stencil_backend,prepare_backend=args.ib_prepare_backend,
+                                 reuse_stencil_buffers=args.reuse_ib_buffers).items() if v is not None}),
         coupling=replace(config.coupling,scheme=config.coupling.scheme if args.coupling is None else args.coupling,
             semiimplicit_solver=config.coupling.semiimplicit_solver if args.nonlinear_solver is None else args.nonlinear_solver,
             stokes_warm_start=config.coupling.stokes_warm_start if args.stokes_warm_start is None else args.stokes_warm_start,
-            reuse_validation=config.coupling.reuse_validation if args.reuse_validation is None else args.reuse_validation),
+            reuse_validation=config.coupling.reuse_validation if args.reuse_validation is None else args.reuse_validation,
+            **{k:v for k,v in dict(adaptive_substeps=args.adaptive_substeps,
+                substep_courant_target=args.substep_courant_target,max_substep_levels=args.max_substep_levels).items() if v is not None}),
         source_dir=config.source_dir if args.mesh_dir is None else args.mesh_dir,
         time=TimeConfig(config.time.dt if args.dt is None else args.dt,
                         config.time.end_time if end_time is None else end_time),

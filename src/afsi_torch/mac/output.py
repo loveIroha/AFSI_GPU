@@ -106,6 +106,8 @@ class MACWriter:
         _binary_array(fields, 'TimeValue', [state.time])
         # -1 denotes the initial zero force before its first load evaluation.
         _binary_array(fields, 'force_time_s', [-1. if state.force_time is None else state.force_time])
+        if state.pressure_time is not None:
+            _binary_array(fields, 'pressure_time_s', [state.pressure_time])
         piece = ET.SubElement(image, 'Piece', Extent=extent)
         ET.SubElement(piece, 'PointData')
         data = ET.SubElement(piece, 'CellData', Scalars='pressure_dyn_per_cm2', Vectors='velocity_cm_per_s')

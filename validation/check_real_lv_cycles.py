@@ -46,6 +46,14 @@ def check(folder, *, cycles=3):
             if not isfinite(value) or value<0 or (key in ('minimum_detF','maximum_detF','cavity_volume_ml','wall_volume_cm3') and value==0):
                 errors.append(f'invalid {key} at sampled step {step}')
         if step>0:
+            if row.get('max_substep_residual_ratio'):
+                ratio=float(row['max_substep_residual_ratio'])
+                if not isfinite(ratio) or ratio<0 or ratio>1:
+                    errors.append(f'coupled substep tolerance failed at sampled step {step}')
+            if row.get('max_substep_courant'):
+                c=float(row['max_substep_courant'])
+                if not isfinite(c) or c<0 or c>.25:
+                    errors.append(f'coupled substep CFL failed at sampled step {step}')
             if not row.get('nonlinear_residual') or not row.get('nonlinear_tolerance'):
                 errors.append(f'missing nonlinear acceptance at sampled step {step}')
             else:
