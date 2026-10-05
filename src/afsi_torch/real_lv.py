@@ -119,8 +119,16 @@ class RealLVSolid:
 
     def geometry_state(self, x):
         F = self.element_gradient(x)
-        J = determinant3(F)
         endo_area, base_area = bd.area_vectors(x, self.endo), bd.area_vectors(x, self.base)
+        return self._geometry_state(x,F,endo_area,base_area)
+
+    def execution_geometry_state(self,x):
+        from .solids.p1_geometry import affine_gradient,affine_area_vectors
+        return self._geometry_state(x,affine_gradient(x,self.mesh.cells,self.gradients),
+            affine_area_vectors(x,self.endo),affine_area_vectors(x,self.base))
+
+    def _geometry_state(self,x,F,endo_area,base_area):
+        J = determinant3(F)
         volume = p1.cavity_volume(x, self.endo_faces, self.rim)
         def surface_ok(area, surface):
             scale = torch.linalg.vector_norm(surface.reference_area_vectors, dim=-1)[:, None]
@@ -196,6 +204,16 @@ class HOExecution(SolidExecution):
         from .mac.execution import tensor_kernel
         self.model = model
         self.loads = model.mesh.X.new_empty(2)
-        self._geometry_kernel = tensor_kernel(model.geometry_state, model.mesh.X.device)
+        self.set_validation_backend('blocked')
         self._force_kernel = tensor_kernel(model.force_from_geometry, model.mesh.X.device)
         self._cached_x = self._cached_version = self._cached_geometry = None
+
+    def set_validation_backend(self,backend):
+        from .mac.execution import tensor_kernel
+        if backend not in ('reference','blocked'):
+            raise ValueError('validation backend must be reference or blocked')
+        self.validation_backend=backend
+        function=self.model.geometry_state if backend=='reference' else self.model.execution_geometry_state
+        self._geometry_kernel=tensor_kernel(function,self.model.mesh.X.device)
+        # Switching must never reuse geometry made by the other implementation.
+        self._cached_x=self._cached_version=self._cached_geometry=None

@@ -50,7 +50,8 @@ class CompactFETransfer(FETransfer):
         self._evaluate_kernel=tensor_kernel(_evaluate,device)
         self._weighted_kernel=tensor_kernel(_weighted,device)
         self._assemble_kernel=tensor_kernel(_assemble,device)
-        self._support_kernel=tensor_kernel(self._support_flags,device)
+        self._reference_support_kernel=tensor_kernel(self._support_flags,device)
+        self.set_validation_backend('blocked')
         self._finite_kernel=tensor_kernel(lambda a,b,c:torch.isfinite(a).all() & torch.isfinite(b).all() & torch.isfinite(c).all(),device)
         self._nodal_finite_kernel=tensor_kernel(lambda value:torch.isfinite(value).all(),device)
         cast=self.geometry.weights.new_tensor
@@ -67,6 +68,20 @@ class CompactFETransfer(FETransfer):
     def _support_flags(self,points):
         scaled=(points-self.origin)/self.spacing
         return torch.isfinite(points).all() & (scaled>=2).all() & (scaled<self.limits).all()
+
+    def set_validation_backend(self,backend):
+        """Execution-only selection for controlled checks/benchmarks."""
+        if backend not in ('reference','blocked'):
+            raise ValueError('validation backend must be reference or blocked')
+        self.validation_backend=backend
+        self._support_kernel=(self._reference_support_kernel if backend=='reference'
+                              else self._parallel_support_flags)
+
+    def _parallel_support_flags(self,points):
+        if points.is_cuda and points.ndim==2 and points.shape[1]==3 and points.dtype in (torch.float32,torch.float64):
+            from ._triton_support import support_flags
+            return support_flags(points,self.origin,self.spacing,self.limits)
+        return self._support_flags(points)
 
     def check_support(self,points):
         if not self._support_kernel(points):

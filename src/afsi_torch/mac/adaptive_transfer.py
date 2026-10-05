@@ -186,15 +186,17 @@ class AdaptiveP1Transfer(CompactFETransfer):
         self._evaluate_kernel = compile_kernel(_evaluate)
         self._weighted_kernel = compile_kernel(_weighted)
         self._assemble_kernel = compile_kernel(_assemble)
-        self._support_kernel = compile_kernel(self._support_flags)
+        self._reference_support_kernel = compile_kernel(self._support_flags)
+        self.set_validation_backend('blocked' if fused else 'reference')
         if not fused:
-            self._support_kernel = self._support_flags
             self._finite_kernel = lambda a,b,c:torch.isfinite(a).all() & torch.isfinite(b).all() & torch.isfinite(c).all()
             self._nodal_finite_kernel = lambda a:torch.isfinite(a).all()
         self.edges = torch.tensor([[0,1],[0,2],[0,3],[1,2],[1,3],[2,3]],device=device)
         # det(reference edge matrix), never det(F) or current cell volume.
         self.reference_determinants = 6*self.geometry.weights.sum(-1)
         self._dx = min(self.grid.spacing)
+        self._validation_vertices=torch.unique(self.geometry.cells)
+        self._all_vertices_used=len(self._validation_vertices)==self.geometry.node_count
 
     def _rule(self,x):
         opt = self.quadrature_options
@@ -234,7 +236,11 @@ class AdaptiveP1Transfer(CompactFETransfer):
 
     def validation_points(self,x):
         # Every affine P1 quadrature point lies in this convex vertex hull.
-        return x[self.geometry.cells].reshape(-1,3)
+        if self.validation_backend=='reference':
+            return x[self.geometry.cells].reshape(-1,3)
+        # Test exactly the same set of vertices, without duplicate cell-corner
+        # reads. Do not add orphan vertices to the original support predicate.
+        return x if self._all_vertices_used else x[self._validation_vertices]
 
     def _direct_prepare(self,x,rule,*,buffers=None):
         from ._triton_prepare import prepare

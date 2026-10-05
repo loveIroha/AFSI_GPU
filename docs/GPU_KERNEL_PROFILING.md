@@ -12,6 +12,12 @@ The latest RTX 4090 comparison at t=1.0 s measured 1338.8 ms/step for reference,
 The small vector difference needs repeatability evidence; reduced propagation
 was substantially slower. Fewer atomics alone do not establish a speedup.
 
+If a trace shows a single GPU block scanning support coordinates or batched
+small GEMMs in geometry validation, use the [validation comparison](VALIDATION_EXECUTION.md).
+Fused drivers now use hierarchical support reduction and pointwise affine P1
+geometry while retaining the original rejection predicates. This comparison
+reports those two costs separately and retains reference IB execution.
+
 ## Short coupled timeline
 
 Run on an otherwise idle GPU, using an existing checkpoint. These commands

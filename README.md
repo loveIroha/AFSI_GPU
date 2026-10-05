@@ -56,6 +56,7 @@ Lengths, time, density, viscosity, and stress use **cm–g–s units**. The 2D c
 | Shared MAC face/center tables and same-step Stokes pressure guesses | [Shared stencil/pressure experiment](docs/MAC_SHARED_PRESSURE.md) |
 | Direct P1 coordinates/Peskin template preparation and phase profiling | [IB preparation experiment](docs/MAC_PREPARE.md) |
 | Shared-table FE/IB fusion, point-array traffic and checked geometry reuse | [FE/IB memory traffic](docs/SHARED_FE_FUSION.md) |
+| Parallel support reduction and pointwise P1 geometry checks | [Validation execution](docs/VALIDATION_EXECUTION.md) |
 | Bounded IB buffers, allocator monitoring and CFL-controlled coupled substeps | [Workspace and time control](docs/MAC_WORKSPACE_SUBSTEPS.md) |
 | Left-ventricle MAC/FEM demos, restart, and VTK output | [Ideal LV demo](demo/ideal_lv_fsi/README.md) |
 | Two-dimensional valve demo and boundary conditions | [Ideal valve demo](demo/ideal_valve_fsi/README.md) |

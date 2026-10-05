@@ -27,6 +27,7 @@ def record_phases(driver,recorder):
         (driver.flow,'_solve_helmholtz','velocity_helmholtz'),
         (driver,'_force_geometry','solid_force'),(driver,'validate','solid_validation'),
         (driver.flow,'check_transport','transport_checks')]
+    targets += [(driver.transfer,'check_support','ib_support_checks')]
     if hasattr(driver.transfer,'_direct_prepare'):
         targets += [(driver.transfer,'_rule','ib_rule_selection'),
             (driver.transfer,'_points','ib_point_coordinates'),
@@ -45,7 +46,7 @@ def record_phases(driver,recorder):
 @torch.no_grad()
 def benchmark(checkpoint,*,device='cuda',schemes=('explicit-rk3','implicit-newton'),warmup=2,steps=10,
               nonlinear_solvers=None,initial_state='checkpoint',execution_variants=None,profile=False,
-              helmholtz_backends=None,ib_shared_executions=None):
+              helmholtz_backends=None,ib_shared_executions=None,validation_backends=None):
     if type(warmup) is not int or warmup<0 or type(steps) is not int or steps<1:
         raise ValueError('warmup must be nonnegative and steps positive')
     if initial_state not in ('checkpoint','reference'):
@@ -57,6 +58,13 @@ def benchmark(checkpoint,*,device='cuda',schemes=('explicit-rk3','implicit-newto
             or any(s not in ('newton','anderson-newton') for s in nonlinear_solvers) or tuple(schemes)!=('cnab-semiimplicit',)):
         raise ValueError('nonlinear_solvers requires only cnab-semiimplicit and distinct supported solvers')
     model,initial,settings,_,config = load_real_lv(checkpoint,device)
+    if validation_backends is not None and (not validation_backends or
+            len(set(validation_backends))!=len(validation_backends) or
+            any(v not in ('reference','blocked') for v in validation_backends) or
+            tuple(schemes)!=('cnab-semiimplicit',) or config.execution.execution_backend!='fused' or
+            config.interaction_quadrature.mode!='adaptive' or execution_variants is not None or
+            helmholtz_backends is not None or ib_shared_executions is not None):
+        raise ValueError('validation_backends requires adaptive fused cnab-semiimplicit and no other execution comparison')
     if ib_shared_executions is not None and (not ib_shared_executions or
             len(set(ib_shared_executions))!=len(ib_shared_executions) or
             any(v not in ('reference','vector','reduced') for v in ib_shared_executions) or
@@ -95,7 +103,10 @@ def benchmark(checkpoint,*,device='cuda',schemes=('explicit-rk3','implicit-newto
     cases = [(scheme,label,solver,variant,helmholtz,None) for scheme,label,solver,variant,helmholtz in cases] if ib_shared_executions is None else [
         (scheme,f'{label}/{shared}',solver,variant,'torch',shared)
         for scheme,label,solver,variant,helmholtz in cases for shared in ib_shared_executions]
-    for scheme,label,solver,variant,helmholtz_backend,shared_execution in cases:
+    cases = [(s,label,solver,v,h,ib,None) for s,label,solver,v,h,ib in cases] if validation_backends is None else [
+        (s,f'{label}/{validation}',solver,v,'torch','reference',validation)
+        for s,label,solver,v,h,ib in cases for validation in validation_backends]
+    for scheme,label,solver,variant,helmholtz_backend,shared_execution,validation_backend in cases:
         print(f'{label}: preparing and warming up...',flush=True)
         started = perf_counter()
         coupling = replace(config.coupling,scheme=scheme)
@@ -116,6 +127,9 @@ def benchmark(checkpoint,*,device='cuda',schemes=('explicit-rk3','implicit-newto
                 stencil_backend='shared' if variant in ('shared','shared-warm','prepare-warm','shared-fused-warm','shared-fused-checked') else 'component',
                 prepare_backend='triton' if variant in ('prepare-warm','shared-fused-warm','shared-fused-checked') else 'torch')
         driver = build_driver(model,dict(settings,coupling=asdict(coupling),interaction_quadrature=asdict(quadrature)),device)
+        if validation_backend is not None:
+            driver.transfer.set_validation_backend(validation_backend)
+            driver.solid_execution.set_validation_backend(validation_backend)
         if initial_state=='reference':
             state = driver.initialize(model.mesh.X)
         else:
@@ -178,6 +192,10 @@ def benchmark(checkpoint,*,device='cuda',schemes=('explicit-rk3','implicit-newto
                 stokes_iterations=stokes_iterations,
                 tangent_assemblies=tangent_assemblies,jacobian_actions=jacobian_actions,
                 nonlinear_solver=coupling.semiimplicit_solver if scheme=='cnab-semiimplicit' else None,
+                validation_execution=dict(support=driver.transfer.validation_backend,
+                    geometry=getattr(driver.solid_execution,'validation_backend','reference'),
+                    checked_vertices=(driver.transfer.geometry.cells.numel() if driver.transfer.validation_backend=='reference'
+                        else len(driver.transfer._validation_vertices))) if hasattr(driver.transfer,'_validation_vertices') else None,
                 execution_variant=variant,final_evaluation_reuses=final_reuses,
                 reuse_final_evaluation=coupling.reuse_final_evaluation,
                 stokes_warm_start=coupling.stokes_warm_start,
@@ -191,7 +209,7 @@ def benchmark(checkpoint,*,device='cuda',schemes=('explicit-rk3','implicit-newto
                 case['helmholtz'] = driver.flow.helmholtz_summary()
                 case['counts']['helmholtz_solves'] = driver.flow.helmholtz_calls-helmholtz_before[0]
                 case['counts']['helmholtz_sweeps'] = driver.flow.helmholtz_sweeps-helmholtz_before[1]
-            if execution_variants is not None or helmholtz_backends is not None or ib_shared_executions is not None:
+            if execution_variants is not None or helmholtz_backends is not None or ib_shared_executions is not None or validation_backends is not None:
                 final_states[label] = dict(x=state.x.clone(),pressure=state.pressure.clone(),
                     force=state.force.clone(),velocity=tuple(u.clone() for u in state.velocity))
             print(f'{label}: {case["ms_per_step"]:.3f} ms/step; '
@@ -279,8 +297,9 @@ def benchmark(checkpoint,*,device='cuda',schemes=('explicit-rk3','implicit-newto
                 measured_speedup=report['cases'][base]['ms_per_step']/report['cases'][label]['ms_per_step'],
                 final_state_differences=differences,relative_l2=relative,
                 interpretation='Same fixed Jacobi count, no-slip stencil, quadrature, time scheme and true residual acceptance; floating-point order may differ')
-    if ib_shared_executions is not None:
-        report['ib_shared_comparisons'] = {}
+    if ib_shared_executions is not None or validation_backends is not None:
+        comparison_key='validation_comparisons' if validation_backends is not None else 'ib_shared_comparisons'
+        report[comparison_key] = {}
         for label,candidate in final_states.items():
             base = label.rsplit('/',1)[0]+'/reference'
             if label==base or base not in final_states:
@@ -294,10 +313,13 @@ def benchmark(checkpoint,*,device='cuda',schemes=('explicit-rk3','implicit-newto
                 torch.linalg.vector_norm(reference[name]).clamp_min(1e-30)).item() for name in ('pressure','force')}
             relative['displacement'] = (torch.linalg.vector_norm(candidate['x']-reference['x'])/
                 torch.linalg.vector_norm(reference['x']-model.mesh.X).clamp_min(1e-30)).item()
-            report['ib_shared_comparisons'][label] = dict(reference=base,
+            report[comparison_key][label] = dict(reference=base,
                 measured_speedup=report['cases'][base]['ms_per_step']/report['cases'][label]['ms_per_step'],
                 final_state_differences=differences,relative_l2=relative,
-                interpretation='All original points, weights, links, consistent mass and tolerances; compiled torch CN velocity in every case. Only local accumulation order changes.')
+                interpretation=('Same support bounds, finite/det(F)/surface/volume checks and time/solver tolerances; '
+                    'unique P1 vertices and blocked boolean reduction, pointwise affine geometry; '
+                    'reference IB kernels and torch CN velocity in both cases.' if validation_backends is not None else
+                    'All original points, weights, links, consistent mass and tolerances; compiled torch CN velocity in every case. Only local accumulation order changes.'))
     return report
 
 
@@ -315,6 +337,8 @@ def main():
                         help='compare CN velocity execution from the same checkpoint without changing other settings')
     parser.add_argument('--ib-shared-executions',nargs='+',choices=('reference','vector','reduced'),
                         help='compare shared FE/IB kernel execution only, with torch CN velocity in every case')
+    parser.add_argument('--validation-backends',nargs='+',choices=('reference','blocked'),
+                        help='compare original versus blocked support and pointwise P1 geometry checks; unchanged acceptance')
     parser.add_argument('--nonlinear-solvers',nargs='+',choices=('newton','anderson-newton'))
     parser.add_argument('--execution-variants',nargs='+',choices=('baseline','reuse','compact','fused','cell','shared','pressure-warm','shared-warm','prepare-warm','shared-fused-warm','shared-fused-checked'),
                         help='adaptive CNAB: compact controls shared stencils and same-step pressure warm starts; input checkpoint is read only')
@@ -324,7 +348,7 @@ def main():
                        nonlinear_solvers=args.nonlinear_solvers,initial_state=args.initial_state,
                        execution_variants=args.execution_variants,profile=args.profile,
                        helmholtz_backends=args.helmholtz_backends,
-                       ib_shared_executions=args.ib_shared_executions)
+                       ib_shared_executions=args.ib_shared_executions,validation_backends=args.validation_backends)
     path = Path(args.output)
     path.parent.mkdir(parents=True,exist_ok=True)
     atomic_json(path,report)

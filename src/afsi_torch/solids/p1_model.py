@@ -59,6 +59,13 @@ class P1Solid:
 
     def geometry_state(self,x):
         F=self.element_gradient(x)
+        return self._geometry_state(x,F)
+
+    def execution_geometry_state(self,x):
+        from .p1_geometry import affine_gradient
+        return self._geometry_state(x,affine_gradient(x,self.mesh.cells,self.gradients))
+
+    def _geometry_state(self,x,F):
         J=determinant3(F)
         flags=[torch.isfinite(J).all()&(J>0).all()]
         flags += [check(x).all() for check in self.validity_checks]
@@ -105,9 +112,18 @@ class P1Execution:
     def __init__(self,model):
         from ..mac.execution import tensor_kernel
         self.model=model
-        self._geometry_kernel=tensor_kernel(model.geometry_state,model.mesh.X.device)
+        self.set_validation_backend('blocked')
         self._force_kernel=tensor_kernel(model.force_from_geometry,model.mesh.X.device)
         self._time=model.mesh.X.new_zeros(())
+        self._cached_x=self._cached_version=self._cached_geometry=None
+
+    def set_validation_backend(self,backend):
+        from ..mac.execution import tensor_kernel
+        if backend not in ('reference','blocked'):
+            raise ValueError('validation backend must be reference or blocked')
+        self.validation_backend=backend
+        function=self.model.geometry_state if backend=='reference' else self.model.execution_geometry_state
+        self._geometry_kernel=tensor_kernel(function,self.model.mesh.X.device)
         self._cached_x=self._cached_version=self._cached_geometry=None
 
     def validate(self,x):
