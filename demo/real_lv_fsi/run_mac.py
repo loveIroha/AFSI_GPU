@@ -30,6 +30,8 @@ def main(argv=None):
     p.add_argument('--kappa', type=float)
     p.add_argument('--beta', type=float)
     p.add_argument('--nonlinear-solver', choices=('jfnk', 'newton', 'anderson-newton'))
+    p.add_argument('--support-backend', choices=('points', 'vertices'))
+    p.add_argument('--helmholtz-backend', choices=('reference', 'workspace', 'graph'))
     p.add_argument('--ib-point-density', type=float)
     p.add_argument('--ib-rule-family', choices=('conical', 'xiao-gimbutas'))
     p.add_argument('--ib-transfer-backend', choices=('reference', 'fused', 'cell'))
@@ -48,7 +50,8 @@ def main(argv=None):
     if args.resume:
         forbidden = (args.config, args.write_config, args.mesh_dir, args.dt, args.fluid_cells,
             args.fluid_lengths, args.fluid_origin, args.rho, args.mu, args.kappa, args.beta,
-            args.nonlinear_solver, args.ib_point_density, args.interaction_quadrature, args.pressure_backend,
+            args.nonlinear_solver, args.support_backend, args.helmholtz_backend,
+            args.ib_point_density, args.interaction_quadrature, args.pressure_backend,
             args.ib_rule_family, args.ib_transfer_backend, args.ib_stencil_backend, args.ib_prepare_backend,
             args.ib_shared_execution, args.reuse_ib_buffers,
             args.log_every, args.output_every, args.checkpoint_every)
@@ -81,7 +84,10 @@ def main(argv=None):
             material=replace(config.material, kappa=config.material.kappa if args.kappa is None else args.kappa),
             beta=config.beta if args.beta is None else args.beta,
             nonlinear_solver=config.nonlinear_solver if args.nonlinear_solver is None else args.nonlinear_solver,
-            flow=replace(config.flow, convection=False) if args.no_convection else config.flow,
+            support_backend=config.support_backend if args.support_backend is None else args.support_backend,
+            flow=replace(config.flow, **{k:v for k,v in dict(
+                convection=False if args.no_convection else None,
+                helmholtz_backend=args.helmholtz_backend).items() if v is not None}),
             execution=execution, interaction_quadrature=quadrature,
             output=replace(config.output, **{k:v for k,v in dict(
                 log_every=args.log_every, output_every=args.output_every, checkpoint_every=args.checkpoint_every,

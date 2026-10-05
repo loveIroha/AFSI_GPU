@@ -51,6 +51,7 @@ class CompactFETransfer(FETransfer):
         self._weighted_kernel=tensor_kernel(_weighted,device)
         self._assemble_kernel=tensor_kernel(_assemble,device)
         self._reference_support_kernel=tensor_kernel(self._support_flags,device)
+        self._vertex_support_kernel=tensor_kernel(self._vertex_support_flags,device)
         self.set_validation_backend('blocked')
         self._finite_kernel=tensor_kernel(lambda a,b,c:torch.isfinite(a).all() & torch.isfinite(b).all() & torch.isfinite(c).all(),device)
         self._nodal_finite_kernel=tensor_kernel(lambda value:torch.isfinite(value).all(),device)
@@ -69,6 +70,12 @@ class CompactFETransfer(FETransfer):
         scaled=(points-self.origin)/self.spacing
         return torch.isfinite(points).all() & (scaled>=2).all() & (scaled<self.limits).all()
 
+    def _vertex_support_flags(self,points):
+        scaled=(points-self.origin)/self.spacing
+        # A conservative cushion makes the hull shortcut insensitive to
+        # roundoff at the exact margin. The original predicate is fallback.
+        return torch.isfinite(points).all() & (scaled>=2.125).all() & (scaled<self.limits-.125).all()
+
     def set_validation_backend(self,backend):
         """Execution-only selection for controlled checks/benchmarks."""
         if backend not in ('reference','blocked'):
@@ -86,6 +93,16 @@ class CompactFETransfer(FETransfer):
     def check_support(self,points):
         if not self._support_kernel(points):
             raise ValueError('MAC IB support reaches a wall or is nonfinite; enlarge/refine the fluid box')
+
+    def check_configuration_support(self,x):
+        self._nodal(x)
+        # Only affine P1 basis functions are nonnegative. P2 uses the
+        # original point check, as does a P1 configuration near the margin.
+        if self.geometry.cells.shape[-1]==4:
+            vertices=x[self.geometry.cells].reshape(-1,3)
+            if self._vertex_support_kernel(vertices):
+                return
+        self.check_support(self.interaction_points(x))
 
     def _nodal(self,value):
         g=self.geometry

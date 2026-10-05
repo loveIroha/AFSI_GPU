@@ -21,6 +21,7 @@ class BEFlowOptions:
     helmholtz_atol: float = 1e-13
     max_sweeps: int = 500
     check_every: int = 4
+    helmholtz_backend: str = 'reference'
 
     def __post_init__(self):
         if type(self.convection) is not bool or any(not isfinite(t) or t < 0 for t in
@@ -28,6 +29,8 @@ class BEFlowOptions:
             raise ValueError('invalid BE flow options')
         if any(type(n) is not int or n < 1 for n in (self.max_sweeps, self.check_every)):
             raise ValueError('positive Helmholtz iteration controls required')
+        if self.helmholtz_backend not in ('reference', 'workspace', 'graph'):
+            raise ValueError('invalid BE Helmholtz backend')
 
 
 class BackwardEulerFlow:
@@ -53,6 +56,11 @@ class BackwardEulerFlow:
             self._residual_norms = tensor_kernel(self._residual_norms, device)
             self._project = tensor_kernel(self._project, device)
         self.calls = 0
+        self.workspace = None
+        if self.options.helmholtz_backend != 'reference':
+            from .be_workspace import BEHelmholtzWorkspace
+            self.workspace = BEHelmholtzWorkspace(self, fused=backend == 'fused',
+                graph=self.options.helmholtz_backend == 'graph')
 
     def advect(self, velocity):
         self.grid.check_velocity(velocity)
@@ -82,7 +90,11 @@ class BackwardEulerFlow:
     @torch.no_grad()
     def solve_rhs(self, rhs, pressure_initial=None):
         self.grid.check_velocity(rhs)
-        u = tuple(b.clone() for b in rhs)
+        # Reference smoothing and projection never modify rhs, so the
+        # initial guess may safely borrow it instead of cloning three grids.
+        u = rhs
+        if self.workspace is not None:
+            u, rhs = self.workspace.load(rhs)
         count = 0
         # RHS is constant throughout this solve. Read its norms once and
         # batch all three component convergence checks into each transfer.
@@ -98,7 +110,7 @@ class BackwardEulerFlow:
                 break
             if count >= self.options.max_sweeps:
                 raise RuntimeError('BE Neumann velocity Helmholtz failed to converge')
-            u = self._smooth(u, rhs)
+            u = self._smooth(u, rhs) if self.workspace is None else self.workspace.advance()
             count += self.options.check_every
             residuals = self._residual_norms(u, rhs).tolist()
         # A=-DG; physical pressure, not the dt-scaled projection potential.
@@ -106,7 +118,9 @@ class BackwardEulerFlow:
         velocity = self._project(u, pressure)
         self.calls += 1
         return velocity, pressure, dict(pressure=info, helmholtz_sweeps=count,
-            helmholtz_residuals=residuals, helmholtz_tolerances=targets)
+            helmholtz_residuals=residuals, helmholtz_tolerances=targets,
+            helmholtz_backend=('graph' if self.workspace is not None and self.workspace.graph is not None
+                else 'workspace' if self.workspace is not None else 'reference'))
 
     def response(self, density):
         # Zero advection/time lift, used only in an assembled Jacobian action.

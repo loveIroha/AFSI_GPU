@@ -242,6 +242,20 @@ class AdaptiveP1Transfer(CompactFETransfer):
         # reads. Do not add orphan vertices to the original support predicate.
         return x if self._all_vertices_used else x[self._validation_vertices]
 
+    def check_configuration_support(self,x):
+        """Fast sufficient P1 vertex screen; exact point predicate on fallback.
+
+        A point is a convex combination of its four vertices. An interior
+        vertex hull guarantees complete support. A rejected hull does NOT
+        reject the configuration: test the original quadrature points then.
+        Retain the original adaptive-order and point-count limit checks.
+        """
+        self._nodal(x)
+        rule = self._rule(x)
+        if self._vertex_support_kernel(self.validation_points(x)):
+            return
+        self.check_support(self._points(x,rule))
+
     def _direct_prepare(self,x,rule,*,buffers=None):
         from ._triton_prepare import prepare
         return prepare(self,x,rule,buffers=buffers)

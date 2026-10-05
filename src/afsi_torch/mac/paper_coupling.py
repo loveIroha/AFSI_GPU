@@ -180,18 +180,46 @@ class BEProblem:
         self.last_data = None
         self.pressure_initial = state.pressure
         self.evaluations = 0
+        self._trial_y = self._trial_version = self._trial_x = None
+        self._trial_state_version = self._validated_x_version = None
+        self._last_input = self._last_version = self._last_state_version = self._last_x = None
+        self._trial_output_version = self._last_x_version = None
+
+    @staticmethod
+    def _version(x):
+        return None if torch.is_inference(x) else x._version
+
+    def configuration(self, y):
+        version, state_version = self._version(y), self._version(self.state.x)
+        if (version is not None and state_version is not None and y is self._trial_y
+                and version == self._trial_version and state_version == self._trial_state_version
+                and self._version(self._trial_x) == self._trial_output_version):
+            return self._trial_x
+        self._trial_x = self.state.x+y
+        self._trial_y, self._trial_version, self._trial_state_version = y, version, state_version
+        self._trial_output_version = self._version(self._trial_x)
+        self._validated_x_version = None
+        return self._trial_x
 
     def validate(self, y):
-        self.driver.solid.validate(self.state.x+y)
+        x = self.configuration(y)
+        version = self._version(x)
+        if version is not None and version == self._validated_x_version:
+            return
+        self.driver.solid.validate(x)
+        self._validated_x_version = version
 
     def residual(self, y):
-        # Exact repeated iterate only. This includes the final Newton clone,
-        # avoids repeating a complete fluid solve, and never reuses a trial
-        # from another geometry/load time. Each problem is step-local.
-        if self.last_y is not None and torch.equal(y, self.last_y):
+        # Identity/version cache avoids a GPU-wide equality reduction on
+        # every distinct FD probe. Cloned accepted iterates are checked once
+        # in accepted(), not for every residual evaluation.
+        version, state_version = self._version(y), self._version(self.state.x)
+        if (version is not None and state_version is not None and y is self._last_input
+                and version == self._last_version and state_version == self._last_state_version
+                and self._version(self._last_x) == self._last_x_version):
             return self.last_residual.clone()
-        x = self.state.x+y
-        self.driver.solid.validate(x)
+        x = self.configuration(y)
+        self.validate(y)
         force = self.driver.solid.force(x, self.time)
         density, spread = self.driver.transfer.spread(force, self.stencil)
         velocity, pressure, flow = self.driver.flow.advance(self.departure, density, self.pressure_initial)
@@ -201,9 +229,20 @@ class BEProblem:
             raise FloatingPointError('nonfinite BE-BE coupling residual')
         self.pressure_initial = pressure
         self.last_y, self.last_residual = y.clone(), residual.clone()
+        self._last_input, self._last_version, self._last_state_version = y, version, state_version
+        self._last_x = x
+        self._last_x_version = self._version(x)
         self.last_data = force, velocity, pressure, flow, nodal, density, spread, interpolation
         self.evaluations += 1
         return residual
+
+    def accepted(self, y):
+        state_version = self._version(self.state.x)
+        if (self.last_y is not None and state_version is not None
+                and state_version == self._last_state_version
+                and self._version(self._last_x) == self._last_x_version and torch.equal(y, self.last_y)):
+            return self.last_residual.clone(), self._last_x
+        return self.residual(y), self._last_x
 
     def linearization(self, y):
         d = self.driver
@@ -245,9 +284,15 @@ class BEIBStepper:
 
     def initialize(self, x):
         self.solid.validate(x)
-        self.transfer.check_support(self.transfer.interaction_points(x))
+        self.check_support(x)
         return PaperState(0, 0., x.clone(), self.grid.zeros(device=x.device, dtype=x.dtype),
             x.new_zeros(self.grid.shape), self.solid.force(x, 0.), 0.)
+
+    def check_support(self, x):
+        if self.config.support_backend == 'vertices':
+            self.transfer.check_configuration_support(x)
+        else:
+            self.transfer.check_support(self.transfer.interaction_points(x))
 
     @torch.no_grad()
     def step(self, state, *, diagnostics=True):
@@ -271,12 +316,11 @@ class BEIBStepper:
             result, acceleration = accelerated_midpoint(problem, initial, self.config.nonlinear,
                 self.config.anderson, newton_solve=newton)
         # Reuse only the exact accepted iterate; validate support at endpoint.
-        residual = problem.residual(result.x)
+        residual, x = problem.accepted(result.x)
         if torch.linalg.vector_norm(residual).item() > result.tolerance:
             raise NonlinearFailure('BE-BE final residual exceeds target', result)
-        x = state.x+result.x
         self.solid.validate(x)
-        self.transfer.check_support(self.transfer.interaction_points(x))
+        self.check_support(x)
         force, velocity, pressure, flow, nodal, density, spread, interpolation = problem.last_data
         courant = self.flow.dt*sum(u.abs().max()/h for u, h in zip(velocity, self.grid.spacing)).item()
         if not isfinite(courant) or courant > self.config.max_courant:

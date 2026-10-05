@@ -148,3 +148,54 @@ CUDA_VISIBLE_DEVICES=0 python -u validation/benchmark_paper_lv.py \
 
 降低完整算例的输出频率可加入 `--log-every 500 --output-every 1000`。
 这不会降低求解器收敛检查频率；两类检查分别设置。
+
+## 按耗时优先级选择执行方式
+
+同一步内的试探位移、当前坐标和有效性检查按张量身份与版本复用，
+Anderson 的前置检查与残差计算因此使用同一份几何。不同 FD 探针不会做完整
+张量相等性比较；接受克隆的最终迭代点时才比较一次，保留最终残差核验。
+输入或借出的试探坐标被原地修改后会使缓存失效。
+
+`--support-backend vertices` 为默认支撑检查：P1 节点凸包足够远离盒壁时，
+不生成积分点坐标。靠近壁面时按原积分点规则回退；不会因为一个顶点不满足
+快速充分条件就拒绝原本合格的积分点。自适应阶数和点数预算仍检查。
+`--support-backend points` 保留原检查用于对照。
+
+`--helmholtz-backend workspace` 对 BE 黏性 Jacobi 使用固定双缓冲；
+`graph` 在 CUDA 上进一步捕获一个原有检查间隔的扫掠块。每个块后仍检查真实
+残差，投影输出和压力具有独立所有权。默认保留 `reference`，待目标 GPU
+测量后选择更快方式。参考实现也已去除初值的多余三分量复制。
+
+先比较耦合求解器与黏性执行，不改变材料、dt、流体网格、积分密度和收敛容差：
+
+```bash
+CUDA_VISIBLE_DEVICES=0 python -u validation/benchmark_paper_lv.py \
+  --checkpoint results/real_lv_ma2024_early/checkpoint.npz \
+  --device cuda --warmup 5 --steps 20 \
+  --solvers jfnk anderson-newton --linear-check-intervals 5 \
+  --support-backends vertices --helmholtz-backends reference graph \
+  --profile --profile-steps 3 \
+  --output results/paper_lv_priority_performance/report.json
+```
+
+常规测量与分项采样分开。分项使用末尾统一读取的 CUDA events，内部不增加
+逐算子的同步；嵌套的质量求解、传播/插值、压力和流体总计不可相加。
+events 区间可能包含 CPU 发射间隙，不等于独立的纯内核计算时间。
+报告给出相同结束时刻的位置、压力、速度差异与真实残差接受比。
+
+随后用上一对照中更合适的求解器和黏性后端，分别比较共享 IB 的
+`reference/vector/reduced`，例如下面命令使用 Anderson–Newton 和黏性 Graph：
+
+```bash
+CUDA_VISIBLE_DEVICES=0 python -u validation/benchmark_paper_lv.py \
+  --checkpoint results/real_lv_ma2024_early/checkpoint.npz \
+  --device cuda --warmup 5 --steps 20 \
+  --solvers anderson-newton --linear-check-intervals 5 \
+  --helmholtz-backends graph --ib-shared-executions reference vector reduced \
+  --profile --output results/paper_lv_ib_performance/report.json
+```
+
+三种 IB 执行保留所有积分点和 Peskin 邻居，区别为组织读写与局部归约方式，
+`reference` 仍为 GPU 内核。浮点累加次序可能不同；应结合最终场差异判断。
+Anderson–Newton 属于论文代数求解器替换，报告继续注明这项复现差异；
+短阶段加速与收敛不能保证整个 1.5 s 的行为。

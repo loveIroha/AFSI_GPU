@@ -104,6 +104,8 @@ def run(*, case_config=None, device='cuda', output=None, resume=None, end_time=N
               f'cells={len(model.mesh.cells)}, dt={config.time.dt:g}; steps {state.step}->{steps}', flush=True)
         print(f'Passive inflation: 0->{config.loads.target_mmhg:g} mmHg over {config.loads.ramp_seconds:g} s, then held; mu={config.fluid.mu:g}; '
               f'solver={config.nonlinear_solver}; open pressure boundary; radial base retained', flush=True)
+        print(f'Execution: support={config.support_backend}, Helmholtz={config.flow.helmholtz_backend}, '
+              f'IB shared={config.interaction_quadrature.shared_execution}', flush=True)
         for _ in range(state.step, steps):
             sample = (state.step+1) % config.output.log_every == 0 or state.step+1 == steps
             state, info = driver.step(state, diagnostics=sample)
