@@ -70,7 +70,12 @@ class StokesWorkspace:
 
     def update_coefficients(self):
         f=self.flow
-        key=(f.alpha,f.dt/f.rho,f.rho/f.dt,*f.grid.spacing,*(h*h for h in f.grid.spacing))
+        # Match eager CUDA tensor / Python-scalar arithmetic: form the
+        # reciprocal before casting it to the tensor dtype. Storing rounded
+        # FP32 h and dividing in Triton adds an avoidable rounding/approximate
+        # division difference, amplified when directional divergences cancel.
+        key=(f.alpha,f.dt/f.rho,f.rho/f.dt,*(1/h for h in f.grid.spacing),
+             *(1/(h*h) for h in f.grid.spacing))
         if key!=self._coefficient_key:
             self.coefficients.copy_(self.coefficients.new_tensor(key))
             self._coefficient_key=key

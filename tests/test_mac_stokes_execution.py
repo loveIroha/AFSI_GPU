@@ -53,6 +53,14 @@ def fields(grid,device,dtype=torch.float64):
     return values(),values(),torch.randn(grid.shape,device=device,dtype=dtype,generator=rng)
 
 
+def cuda_divergence_reference(u,spacing):
+    if u[0].is_cuda:
+        return divergence(u,spacing)
+    # The interpreter runs on CPU, whose scalar division rounds differently.
+    # Emulate eager CUDA's host-double reciprocal followed by dtype multiply.
+    return sum(torch.diff(v,dim=c)*(1/h) for c,(v,h) in enumerate(zip(u,spacing)))
+
+
 @pytest.mark.parametrize('device',KERNEL_DEVICES)
 @pytest.mark.parametrize('dtype',[torch.float32,torch.float64])
 def test_actual_cell_tiled_residuals_bounds_padding_and_coefficients(device,dtype):
@@ -70,7 +78,7 @@ def test_actual_cell_tiled_residuals_bounds_padding_and_coefficients(device,dtyp
         flow.set_time_step(dt);workspace.update_coefficients()
         residual_partial(u,p,b,workspace.residual,workspace.partial,grid.shape,workspace.coefficients)
         torch.testing.assert_close(_reduce_norms(workspace.partial),flow._stokes_metrics(u,p,b),**tolerance)
-        torch.testing.assert_close(workspace.residual,-flow.rho/dt*divergence(u,grid.spacing),**tolerance)
+        torch.testing.assert_close(workspace.residual,-flow.rho/dt*cuda_divergence_reference(u,grid.spacing),**tolerance)
     for invalid in (torch.nan,torch.inf,-torch.inf):
         bad=p.clone();bad[-1,-1,-1]=invalid
         start_partial(b,bad,workspace.start_partial,grid.shape)
@@ -78,6 +86,36 @@ def test_actual_cell_tiled_residuals_bounds_padding_and_coefficients(device,dtyp
     bad=b[0].clone();bad[1,1,1]=torch.nan
     residual_partial(u,p,(bad,*b[1:]),workspace.residual,workspace.partial,grid.shape,workspace.coefficients)
     assert not torch.isfinite(_reduce_norms(workspace.partial)[0])
+
+
+@pytest.mark.parametrize('device',KERNEL_DEVICES)
+@pytest.mark.parametrize('dtype',[torch.float32,torch.float64])
+def test_actual_divergence_cancellation_matches_cuda_scalar_arithmetic(device,dtype):
+    pytest.importorskip('triton')
+    from afsi_torch.mac._triton_stokes import residual_partial
+    grid=MACGrid((5,7,9),(1.3,2.7,3.1))
+    flow=MACCNABFlow(grid,dt=.00137,rho=1.7,mu=.81,device=device,dtype=dtype)
+    u=grid.zeros(device=device,dtype=dtype)
+    # At this cell, two O(3) directional derivatives nearly cancel.
+    index=(2,3,4)
+    for c,derivative in enumerate((3.,-3.,.001)):
+        face=list(index);face[c]+=1
+        u[c][tuple(face)]=derivative*grid.spacing[c]
+    p=torch.zeros(grid.shape,device=device,dtype=dtype)
+    b=grid.zeros(device=device,dtype=dtype)
+    workspace=StokesWorkspace(flow)
+    tol=dict(rtol=3e-6,atol=3e-5) if dtype==torch.float32 else dict(rtol=3e-13,atol=2e-11)
+    for dt in (.00137,.000685,.00137):
+        flow.set_time_step(dt);workspace.update_coefficients()
+        residual_partial(u,p,b,workspace.residual,workspace.partial,grid.shape,workspace.coefficients)
+        expected=-flow.rho/dt*cuda_divergence_reference(u,grid.spacing)
+        torch.testing.assert_close(workspace.residual,expected,**tol)
+        # Independent double-precision oracle on the represented face values:
+        # bound absolute forward error by the uncancelled directional terms.
+        terms=[torch.diff(v.double(),dim=c)/h for c,(v,h) in enumerate(zip(u,grid.spacing))]
+        oracle=-flow.rho/dt*sum(terms)
+        bound=8*torch.finfo(dtype).eps*(flow.rho/dt)*sum(t.abs() for t in terms)
+        assert torch.all((workspace.residual.double()-oracle).abs()<=bound)
 
 
 @pytest.mark.parametrize('device',DEVICES)
