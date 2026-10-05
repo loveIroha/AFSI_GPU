@@ -1,5 +1,6 @@
 """Same quadrature IB equations, compact separable stencils and fused execution."""
 from dataclasses import dataclass
+from functools import lru_cache
 import torch
 from .transfer import FETransfer
 from .execution import tensor_kernel
@@ -38,6 +39,22 @@ def _assemble(point_velocity,N,cells,W,template):
     return torch.zeros_like(template).index_add(0,cells.reshape(-1),local.reshape(-1,3))
 
 
+def _vertex_support_flags(points,origin,spacing,limits):
+    scaled=(points-origin)/spacing
+    # Conservative hull shortcut; the original point predicate is fallback.
+    return torch.isfinite(points).all() & (scaled>=2.125).all() & (scaled<limits-.125).all()
+
+
+@lru_cache(maxsize=2)
+def _vertex_support_tensor_kernel(device_type):
+    # Adaptive and fixed transfers share this pure tensor graph. Neither the
+    # transfer subclass nor the changing vertex count needs a specialization.
+    if device_type=='cuda':
+        return torch.compile(_vertex_support_flags,fullgraph=True,dynamic=True,
+                             options={'triton.cudagraphs':False})
+    return _vertex_support_flags
+
+
 class CompactFETransfer(FETransfer):
     def __init__(self,*args,mass_backend='pcg',**kwargs):
         if mass_backend not in ('pcg','graph'):
@@ -51,7 +68,7 @@ class CompactFETransfer(FETransfer):
         self._weighted_kernel=tensor_kernel(_weighted,device)
         self._assemble_kernel=tensor_kernel(_assemble,device)
         self._reference_support_kernel=tensor_kernel(self._support_flags,device)
-        self._vertex_support_kernel=tensor_kernel(self._vertex_support_flags,device)
+        self._vertex_support_tensor_kernel=_vertex_support_tensor_kernel(device.type)
         self.set_validation_backend('blocked')
         self._finite_kernel=tensor_kernel(lambda a,b,c:torch.isfinite(a).all() & torch.isfinite(b).all() & torch.isfinite(c).all(),device)
         self._nodal_finite_kernel=tensor_kernel(lambda value:torch.isfinite(value).all(),device)
@@ -70,11 +87,8 @@ class CompactFETransfer(FETransfer):
         scaled=(points-self.origin)/self.spacing
         return torch.isfinite(points).all() & (scaled>=2).all() & (scaled<self.limits).all()
 
-    def _vertex_support_flags(self,points):
-        scaled=(points-self.origin)/self.spacing
-        # A conservative cushion makes the hull shortcut insensitive to
-        # roundoff at the exact margin. The original predicate is fallback.
-        return torch.isfinite(points).all() & (scaled>=2.125).all() & (scaled<self.limits-.125).all()
+    def _vertex_support_kernel(self,points):
+        return self._vertex_support_tensor_kernel(points,self.origin,self.spacing,self.limits)
 
     def set_validation_backend(self,backend):
         """Execution-only selection for controlled checks/benchmarks."""

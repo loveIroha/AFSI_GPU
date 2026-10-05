@@ -15,6 +15,31 @@ from afsi_torch.p1 import prepare_p1
 from afsi_torch.paper_lv_checkpoint import save
 
 
+def test_vertex_support_compiler_reuses_graph_across_sizes_instances_and_subclasses(monkeypatch):
+    # Exercise Dynamo on CPU too: more than eight static sizes/subclass guards
+    # exhausted the former bound-method cache in the CUDA suite.
+    import afsi_torch.mac.compact_transfer as module
+    compiled_graphs=[]
+    def backend(graph,inputs):
+        compiled_graphs.append(graph)
+        return graph.forward
+    compiled=torch.compile(module._vertex_support_flags,backend=backend,fullgraph=True,dynamic=True)
+    monkeypatch.setattr(module,'_vertex_support_tensor_kernel',lambda device_type:compiled)
+    X=torch.tensor([[3.,3.,3.],[3.4,3.,3.],[3.,3.4,3.],[3.,3.,3.4]],dtype=torch.float64)
+    geometry=prepare_p1(X,torch.arange(4).reshape(1,4),degree=2)
+    for i in range(12):
+        grid=MACGrid((16+i,)*3,(16.+i,)*3,origin=(float(i),)*3)
+        t=(AdaptiveP1Transfer(grid,geometry,fused=bool(i%3)) if i%2
+           else CompactFETransfer(grid,geometry))
+        points=(t.origin+3*t.spacing).repeat(i+2,1)
+        assert t._vertex_support_kernel(points)
+        points[0,0]=t.origin[0]+2*t.spacing[0]
+        assert not t._vertex_support_kernel(points)
+        points[0,0]=float('nan')
+        assert not t._vertex_support_kernel(points)
+    assert len(compiled_graphs)==1
+
+
 @pytest.mark.parametrize('device', DEVICES)
 def test_interior_support_shortcut_does_not_materialize_points(device):
     X, t = transfer(device)
