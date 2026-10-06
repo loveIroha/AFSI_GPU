@@ -99,6 +99,11 @@ def finish_component(workspace,node_count,shape,max_entries):
     keys,values = sorted_entries(workspace)
     if len(keys)>max_entries:
         raise RuntimeError('assembled IB entry budget exceeded; no hash entries were truncated')
+    # Fail at the builder rather than letting corrupt data reach cuSPARSE
+    # or a later fluid residual. One scalar transfer per completed component.
+    valid = (keys>=0).all() & (keys<node_count*prod(shape)).all() & torch.isfinite(values).all()
+    if not valid.item():
+        raise FloatingPointError('invalid hash IB entries: nonfinite values or out-of-range keys')
     rows,columns = keys//prod(shape),keys%prod(shape)
     matrix = torch.sparse_coo_tensor(torch.stack((rows,columns)),values,
         (node_count,prod(shape)),device=values.device,dtype=values.dtype,

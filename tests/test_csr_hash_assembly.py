@@ -39,6 +39,51 @@ def test_hash_collisions_duplicates_zero_padding_and_overflow(device,dtype):
 
 @pytest.mark.parametrize('device',DEVICES)
 @pytest.mark.parametrize('dtype',[torch.float32,torch.float64])
+def test_hash_concurrent_large_keys_many_programs_and_repeated_resets(device,dtype):
+    # Real 128^3 grids encode node/lattice keys well beyond signed int32.
+    # Many programs revisit the same slots, with cancelling contributions.
+    count,repeats = (1024,128) if device=='cuda' else (128,8)
+    unique = torch.arange(count,device=device,dtype=torch.int64)*2147483649+4294967296
+    keys = unique.repeat(repeats)
+    signs = torch.where(torch.arange(repeats,device=device)%2==0,1.,-.5).to(dtype)
+    values = signs.repeat_interleave(len(unique))*.125
+    work = HashWorkspace()
+    for _ in range(3):
+        work.reset(4096,values)
+        insert(keys,values,work)
+        assert work.flag.item()==0
+        actual,result = sorted_entries(work)
+        torch.testing.assert_close(actual,unique,rtol=0,atol=0)
+        torch.testing.assert_close(result,torch.full_like(result,repeats/32),rtol=0,atol=0)
+
+
+@pytest.mark.parametrize('bad_value,bad_key',[(float('nan'),0),(float('inf'),0),(1.,2)])
+def test_hash_rejects_corrupt_entries_before_sparse_conversion(bad_value,bad_key):
+    from afsi_torch.mac.hash_transfer_assembly import finish_component
+    work = HashWorkspace(); work.reset(8,torch.zeros((),dtype=torch.float64))
+    cpu_accumulate(torch.tensor([bad_key]),torch.tensor([bad_value]),work)
+    with pytest.raises(FloatingPointError,match='invalid hash IB entries'):
+        finish_component(work,1,(1,1,2),8)
+
+
+def test_sparse_diagnostic_detects_wrong_structure_and_nonfinite_values():
+    from validation.diagnose_csr_hash import compare_matrices,json_safe
+    B = torch.tensor([[1.,0.,2.],[0.,3.,0.]],dtype=torch.float64).to_sparse_csr()
+    identical = compare_matrices(B.clone(),B)
+    assert identical['within_tolerance'] and identical['relative_l2']==0
+    corrupt = B.clone(); corrupt.values()[0] = float('nan')
+    result = compare_matrices(corrupt,B)
+    assert not result['finite'] and not result['within_tolerance']
+    other = torch.tensor([[1.,2.,0.],[0.,3.,0.]],dtype=torch.float64).to_sparse_csr()
+    result = compare_matrices(other,B)
+    assert not result['identical_structure'] and not result['within_tolerance']
+    import json
+    summary = json_safe(dict(norms=[float('nan'),float('inf')],finite=False))
+    assert json.loads(json.dumps(summary,allow_nan=False))==dict(norms=['nan','inf'],finite=False)
+
+
+@pytest.mark.parametrize('device',DEVICES)
+@pytest.mark.parametrize('dtype',[torch.float32,torch.float64])
 @pytest.mark.parametrize('layout',['component','shared'])
 def test_hash_csr_equivalent_transfer_snapshot_and_scratch_reuse(device,dtype,layout):
     X,reference,coalesce = pair(device,dtype,layout)

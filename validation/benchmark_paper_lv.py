@@ -7,6 +7,7 @@ from pathlib import Path
 from time import perf_counter
 import sys
 import gc
+import traceback
 import torch
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -97,6 +98,7 @@ def benchmark(checkpoint, *, device='cuda', warmup=5, steps=20, intervals=(1, 5)
             continue
         driver = None
         state = initial
+        phase = 'setup'
         try:
             setup = perf_counter()
             cfg = replace(config, nonlinear_solver=solver, nonlinear=replace(config.nonlinear,
@@ -123,6 +125,7 @@ def benchmark(checkpoint, *, device='cuda', warmup=5, steps=20, intervals=(1, 5)
                      f'/response={cfg.ib_response_backend}/csr={cfg.ib_csr_assembly_backend}')
             driver = BEIBStepper(model, cfg, device)
             state = initial
+            phase = 'warmup'
             for _ in range(warmup):
                 state, _ = driver.step(state, diagnostics=False)
             synchronize()
@@ -142,6 +145,7 @@ def benchmark(checkpoint, *, device='cuda', warmup=5, steps=20, intervals=(1, 5)
             if str(device).startswith('cuda'):
                 torch.cuda.reset_peak_memory_stats(device)
             start = perf_counter()
+            phase = 'measurement'
             for _ in range(steps):
                 state, info = driver.step(state, diagnostics=False)
                 nonlinear = info['nonlinear']
@@ -192,6 +196,7 @@ def benchmark(checkpoint, *, device='cuda', warmup=5, steps=20, intervals=(1, 5)
                   f'GMRES={result["per_step"]["gmres_iterations"]:.2f}, '
                   f'mass solves={result["per_step"]["mass_solves"]:.2f}', flush=True)
             if profile:
+                phase = 'profile'
                 from validation.benchmark_mac import PhaseRecorder
                 recorder = PhaseRecorder(initial.x.device)
                 probe = warm_state
@@ -215,8 +220,10 @@ def benchmark(checkpoint, *, device='cuda', warmup=5, steps=20, intervals=(1, 5)
                 linear_policy=linear_policy,ib_response_backend=ib_backend,
                 ib_csr_assembly_backend=csr_builder,
                 shared_execution=shared, support_backend=support, helmholtz_backend=helmholtz,
-                last_accepted_time_s=state.time, failure_type=type(exc).__name__, failure=str(exc)))
-            print(f'{solver}/check={interval}: failed: {exc}', flush=True)
+                last_accepted_time_s=state.time,failure_phase=phase,
+                failure_type=type(exc).__name__,failure=str(exc),traceback=traceback.format_exc()))
+            print(f'{solver}/check={interval}/csr={csr_builder or config.ib_csr_assembly_backend}: '
+                  f'failed during {phase}: {exc}',flush=True)
         finally:
             del driver
             gc.collect()

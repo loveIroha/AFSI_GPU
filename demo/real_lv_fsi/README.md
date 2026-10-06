@@ -480,6 +480,21 @@ CUDA_VISIBLE_DEVICES=0 python -u validation/benchmark_paper_lv.py \
   --output results/paper_lv_hash_assembly/report.json
 ```
 
+若 `hash` 后端出现非有限流体残差，先运行不推进时间的组装诊断：
+
+```bash
+CUDA_VISIBLE_DEVICES=0 python -u validation/diagnose_csr_hash.py \
+  --checkpoint "$checkpoint" --device cuda \
+  --output results/paper_lv_hash_diagnosis/report.json
+```
+
+诊断在同一个冻结积分点 stencil 上比较两个后端的全部六个稀疏矩阵，检查
+有限性、完整 CSR 结构、数值差异、固体力传播及一次流体响应，不分配稠密
+节点×流体网格矩阵，也不改写检查点。报告保留失败阶段和完整调用栈；非有限
+诊断数值以字符串保存，避免无法写出失败报告。诊断耗时包含首次内核编译，
+不能替代预热后的性能测试。哈希桶访问全部采用原子 CAS；组装结束检查 key
+范围和数值有限性，异常在进入稀疏乘法前报错。
+
 `ib_hash_accumulate` 和 `ib_hash_finalize` 是 `ib_csr_assembly` 内的子阶段，
 finalize 包括压缩、唯一键排序、CSR/转置转换。三者不能重复相加。
 报告包含结束场差异、真实非线性残差验收、完整单步时间及测量峰值显存。

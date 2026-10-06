@@ -19,15 +19,13 @@ def _hash_add(KEY,VALUE,FLAG,key,value,valid,CAPACITY:tl.constexpr,PROBES:tl.con
     pending = valid & (value!=0)
     attempt = 0
     while (attempt<PROBES) & (tl.sum(pending.to(tl.int32),axis=0)>0):
-        current = tl.load(KEY+slot,mask=pending,other=-2)
-        empty = pending & (current==-1)
-        # atomic_cas has no mask. -2 is never a stored key: inactive lanes
-        # cannot claim or change a bucket. Their addresses remain in bounds.
-        previous = tl.full(key.shape,-2,tl.int64)
-        if tl.sum(empty.to(tl.int32),axis=0)>0:
-            previous = tl.atomic_cas(KEY+slot,tl.where(empty,-1,-2).to(tl.int64),
-                key,sem='relaxed')
-        found = pending & ((current==key) | (empty & ((previous==-1)|(previous==key))))
+        # Every key lookup is atomic, including occupied buckets. Ordinary
+        # loads must not race with other programs publishing bucket keys.
+        # atomic_cas has no mask: inactive lanes compare the never-stored -2
+        # sentinel, so their in-bounds accesses cannot modify any bucket.
+        previous = tl.atomic_cas(KEY+slot,tl.where(pending,-1,-2).to(tl.int64),
+            key,sem='acq_rel')
+        found = pending & ((previous==-1)|(previous==key))
         tl.atomic_add(VALUE+slot,value,mask=found,sem='relaxed')
         pending = pending & ~found
         slot = (slot+1) & (CAPACITY-1)
