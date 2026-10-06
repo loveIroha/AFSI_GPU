@@ -152,8 +152,8 @@ class PaperLVConfig:
             raise ValueError('newton_preconditioner must be none or solid-block')
         if self.ib_response_backend not in ('quadrature','csr'):
             raise ValueError('ib_response_backend must be quadrature or csr')
-        if self.ib_csr_assembly_backend not in ('coalesce','hash'):
-            raise ValueError('ib_csr_assembly_backend must be coalesce or hash')
+        if self.ib_csr_assembly_backend not in ('coalesce','hash','cached-hash'):
+            raise ValueError('ib_csr_assembly_backend must be coalesce, hash or cached-hash')
         if self.ib_response_backend=='csr' and self.interaction_quadrature.mode!='adaptive':
             raise ValueError('assembled IB response currently requires adaptive P1 quadrature')
         if (type(self.ib_csr_chunk_entries) is not int or self.ib_csr_chunk_entries<4

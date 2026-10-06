@@ -128,13 +128,15 @@ class AssembledP1Transfer(AdaptiveP1Transfer):
     def __init__(self,*args,chunk_entries=1048576,max_entries=32000000,assembly_backend='coalesce',**kwargs):
         if type(chunk_entries) is not int or chunk_entries<4 or type(max_entries) is not int or max_entries<1:
             raise ValueError('positive CSR entry budget and chunk_entries>=4 required')
-        if assembly_backend not in ('coalesce','hash'):
-            raise ValueError('CSR assembly_backend must be coalesce or hash')
+        if assembly_backend not in ('coalesce','hash','cached-hash'):
+            raise ValueError('CSR assembly_backend must be coalesce, hash or cached-hash')
         super().__init__(*args,**kwargs)
         self.chunk_entries,self.max_entries = chunk_entries,max_entries
         self.assembly_backend = assembly_backend
         from .hash_transfer_assembly import HashWorkspace
         self.hash_workspaces = tuple(HashWorkspace() for _ in range(3))
+        from .cached_transfer_assembly import CSRPatternCache
+        self.symbolic_caches = tuple(CSRPatternCache() for _ in range(3))
         self._last_assembly = None
         self.csr_builds = 0
 
@@ -143,7 +145,12 @@ class AssembledP1Transfer(AdaptiveP1Transfer):
         gather,spread,statistics = [],[],[]
         remaining = self.max_entries
         for c in range(3):
-            if self.assembly_backend=='hash':
+            if self.assembly_backend=='cached-hash':
+                from .cached_transfer_assembly import assemble_component_cached
+                B,BT,info = assemble_component_cached(stencil,c,self.grid,self.geometry.node_count,
+                    chunk_entries=self.chunk_entries,max_entries=remaining,workspace=self.hash_workspaces[c],
+                    cache=self.symbolic_caches[c])
+            elif self.assembly_backend=='hash':
                 from .hash_transfer_assembly import assemble_component_hash
                 B,BT,info = assemble_component_hash(stencil,c,self.grid,self.geometry.node_count,
                     chunk_entries=self.chunk_entries,max_entries=remaining,workspace=self.hash_workspaces[c])
@@ -159,7 +166,9 @@ class AssembledP1Transfer(AdaptiveP1Transfer):
                  chunk_entries=self.chunk_entries,max_entries=self.max_entries,
                  assembly_backend=self.assembly_backend,
                  hash_workspace_bytes=sum(w.storage_bytes for w in self.hash_workspaces),
-                 builder=('triton-cell+device-hash+unique-sort' if self.assembly_backend=='hash'
+                 symbolic_cache_bytes=sum(w.storage_bytes for w in self.symbolic_caches),
+                 builder=('triton-cell+cached-lookup+bounded-missing-merge' if self.assembly_backend=='cached-hash'
+                          else 'triton-cell+device-hash+unique-sort' if self.assembly_backend=='hash'
                           else 'triton-cell+torch-coalesce') if self.geometry.weights.is_cuda else 'torch-cpu-oracle'))
         self._last_assembly = dict(result.assembly,csr_storage_bytes=result.storage_bytes)
         self.csr_builds += 1

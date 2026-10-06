@@ -39,7 +39,7 @@ def main(argv=None):
     p.add_argument('--newton-preconditioner', choices=('none','solid-block'), help='solver-only option; allowed on resume')
     p.add_argument('--linear-policy', choices=('reference','estimated','inexact'), help='solver-only option; allowed on resume')
     p.add_argument('--ib-response-backend', choices=('quadrature','csr'), help='equivalent frozen IB execution; allowed on resume')
-    p.add_argument('--ib-csr-assembly-backend', choices=('coalesce','hash'), help='GPU CSR construction; allowed on resume')
+    p.add_argument('--ib-csr-assembly-backend', choices=('coalesce','hash','cached-hash'), help='GPU CSR construction; allowed on resume')
     p.add_argument('--support-backend', choices=('points', 'vertices'))
     p.add_argument('--helmholtz-backend', choices=('reference', 'workspace', 'graph'))
     p.add_argument('--ib-point-density', type=float)

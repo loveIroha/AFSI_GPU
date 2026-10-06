@@ -112,7 +112,7 @@ def finish_component(workspace,node_count,shape,max_entries):
     return matrix,transpose,len(keys)
 
 
-def assemble_component_hash(stencil,c,grid,node_count,*,chunk_entries,max_entries,workspace):
+def component_plans(stencil,c,grid):
     from .assembled_transfer import _bases
     shape = grid.face_shape(c)
     plans = []
@@ -128,6 +128,11 @@ def assemble_component_hash(stencil,c,grid,node_count,*,chunk_entries,max_entrie
         plans.append((group,offset,low,width,prefix,count))
         raw += 4*count
         offset += group.weights.numel()
+    return shape,plans,raw
+
+
+def assemble_component_hash(stencil,c,grid,node_count,*,chunk_entries,max_entries,workspace):
+    shape,plans,raw = component_plans(stencil,c,grid)
     limit = power_of_two(2*max_entries)
     # A heuristic affects capacity/retries only, never the accepted matrix.
     capacity = min(limit,max(workspace.capacity,power_of_two(max(128,raw//8))))

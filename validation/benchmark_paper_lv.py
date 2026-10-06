@@ -20,6 +20,13 @@ from afsi_torch.nonlinear import coupled_linear_policy
 from afsi_torch.cycle_checkpoint import atomic_json
 
 
+def csr_cache_work(driver):
+    caches = getattr(driver.transfer,'symbolic_caches',())
+    return {key:sum(getattr(cache,key) for cache in caches) for key in
+        ('rebuilds','reuses','extensions','resets','overflow_fallbacks',
+         'total_sorted_keys','total_missing_entries')}
+
+
 @contextmanager
 def profile_phases(driver, recorder):
     targets = [(driver.solid, 'validate', 'solid_validation'),
@@ -42,6 +49,12 @@ def profile_phases(driver, recorder):
             from afsi_torch.mac import hash_transfer_assembly as builder
             targets += [(builder,'accumulate_plans','ib_hash_accumulate'),
                         (builder,'finish_component','ib_hash_finalize')]
+        elif driver.transfer.assembly_backend=='cached-hash':
+            from afsi_torch.mac import cached_transfer_assembly as builder
+            targets += [(builder,'update_cached_plans','ib_cached_numeric'),
+                        (builder,'merge_missing','ib_cached_missing_merge'),
+                        (builder,'finish_cached_component','ib_cached_pattern_build'),
+                        (builder,'numeric_snapshot','ib_cached_snapshot')]
     targets.append((driver.flow, '_smooth', 'helmholtz_smoothing') if driver.flow.workspace is None
         else (driver.flow.workspace, 'advance', 'helmholtz_smoothing'))
     originals = [(obj, name, getattr(obj, name)) for obj, name, _ in targets]
@@ -71,7 +84,7 @@ def benchmark(checkpoint, *, device='cuda', warmup=5, steps=20, intervals=(1, 5)
             or not newton_preconditioners or any(s not in (None,'none','solid-block') for s in newton_preconditioners)
             or not linear_policies or any(s not in (None,'reference','estimated','inexact') for s in linear_policies)
             or not ib_response_backends or any(s not in (None,'quadrature','csr') for s in ib_response_backends)
-            or not csr_assembly_backends or any(s not in (None,'coalesce','hash') for s in csr_assembly_backends)
+            or not csr_assembly_backends or any(s not in (None,'coalesce','hash','cached-hash') for s in csr_assembly_backends)
             or not anderson_budgets or any(n is not None and (type(n) is not int or n<1) for n in anderson_budgets)
             or profile_steps < 1):
         raise ValueError('invalid solver/execution selections or profile steps')
@@ -149,6 +162,7 @@ def benchmark(checkpoint, *, device='cuda', warmup=5, steps=20, intervals=(1, 5)
             fallback_count = 0
             sampled_histories = []
             worst_ratio = 0.
+            cache_before = csr_cache_work(driver)
             synchronize()
             if str(device).startswith('cuda'):
                 torch.cuda.reset_peak_memory_stats(device)
@@ -185,6 +199,10 @@ def benchmark(checkpoint, *, device='cuda', warmup=5, steps=20, intervals=(1, 5)
                 newton_fallback_fraction=fallback_count/steps,sampled_histories=sampled_histories,
                 max_accepted_residual_to_tolerance=worst_ratio,
                 start_time_s=initial.time+warmup*cfg.time.dt, end_time_s=state.time)
+            if cfg.ib_response_backend=='csr' and cfg.ib_csr_assembly_backend=='cached-hash':
+                cache_after = csr_cache_work(driver)
+                result['ib_csr_cache_per_step'] = {key:(cache_after[key]-cache_before[key])/steps
+                                                 for key in cache_before}
             if str(device).startswith('cuda'):
                 result['peak_allocated_bytes'] = torch.cuda.max_memory_allocated(device)
                 result['peak_reserved_bytes'] = torch.cuda.max_memory_reserved(device)
@@ -279,7 +297,7 @@ def main():
     p.add_argument('--newton-preconditioners', nargs='+', choices=('none','solid-block'))
     p.add_argument('--linear-policies', nargs='+', choices=('reference','estimated','inexact'))
     p.add_argument('--ib-response-backends', nargs='+', choices=('quadrature','csr'))
-    p.add_argument('--csr-assembly-backends', nargs='+', choices=('coalesce','hash'))
+    p.add_argument('--csr-assembly-backends', nargs='+', choices=('coalesce','hash','cached-hash'))
     p.add_argument('--profile', action='store_true')
     p.add_argument('--profile-steps', type=int, default=3)
     p.add_argument('--output', default='results/paper_lv_performance/report.json')

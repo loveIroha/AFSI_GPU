@@ -480,6 +480,71 @@ CUDA_VISIBLE_DEVICES=0 python -u validation/benchmark_paper_lv.py \
   --output results/paper_lv_hash_assembly/report.json
 ```
 
+### Reuse CSR structure with exact numeric updates
+
+`--ib-csr-assembly-backend cached-hash` keeps the current frozen-quadrature
+BE-BE method and consistent mass solve. Every step integrates its **current**
+Gaussian rules and delta-kernel weights. Existing keys use read-only device
+lookups, avoiding atomic key claims. Values are still accumulated atomically.
+Only missing contributions enter a bounded device stream; key insertion happens
+after the read-only launches finish, so readers never race with key publication.
+
+When support introduces new keys, only these keys are sorted and merged into
+the existing gather and transpose indices. If no keys are introduced, both
+index structures are reused without sorting. Adaptive rule/order changes need
+no special approximation: the new integrals are accumulated by their exact
+node/grid keys. Keys retained from old support receive zero current weight.
+If the retained union exceeds `ib_csr_max_entries`, the missing stream fills,
+or hash probing fails, discard the partial update and rebuild the current
+matrix using bounded hash assembly. An actual current-matrix budget failure
+still raises; no entries or integration points are clipped.
+
+The cache retains two compact mapping arrays, immutable CSR indices and a
+missing-entry stream of at most `ib_csr_chunk_entries` contributions per
+component. Every returned stencil owns fresh gather/transpose values. Preparing
+another geometry cannot change an older stencil's operator. The transpose uses
+exactly the same numerical values, preserving interpolation/spreading duality.
+
+Keep `hash` as the baseline and retain the measured six-trial Anderson policy:
+
+```bash
+CUDA_VISIBLE_DEVICES=0 python -m pytest -q \
+  tests/test_csr_cached_assembly.py tests/test_csr_hash_assembly.py
+
+checkpoint="本次输出目录/simulation/checkpoint.npz"
+CUDA_VISIBLE_DEVICES=0 python -u validation/benchmark_paper_lv.py \
+  --checkpoint "$checkpoint" --device cuda --warmup 5 --steps 20 \
+  --solvers anderson-newton --anderson-budgets 6 \
+  --linear-check-intervals 5 --anderson-policies legacy \
+  --newton-preconditioners none --linear-policies inexact \
+  --ib-response-backends csr --csr-assembly-backends hash cached-hash \
+  --profile --profile-steps 3 \
+  --output results/paper_lv_cached_assembly/report.json
+```
+
+Compare total time, residual acceptance and end-state differences first. The
+`ib_csr_cache_per_step` counters sum all three velocity components and exclude
+warmup/profile steps: `reuses`, `extensions`, `resets`, `total_sorted_keys` and
+`total_missing_entries` distinguish actual savings from cache rebuilding.
+Component assembly metadata includes `sort_scope`, `symbolic_cache_bytes`,
+`missing_entries` and fallback reasons. Profile intervals are nested: do not
+sum `ib_csr_assembly` with its cached numeric/build/snapshot children.
+
+CUDA speedup must be measured on the real mesh, including contraction; the
+backend stays opt-in. After that comparison passes and wins, resume with:
+
+```bash
+CUDA_VISIBLE_DEVICES=0 python -u demo/real_lv_fsi/run_mac.py \
+  --device cuda --resume "$checkpoint" --end-time 2.4 \
+  --nonlinear-solver anderson-newton --anderson-policy legacy \
+  --anderson-max-iterations 6 --newton-preconditioner none \
+  --linear-policy inexact --ib-response-backend csr \
+  --ib-csr-assembly-backend cached-hash
+```
+
+The backend choice is persisted in the checkpoint, while the execution cache
+is rebuilt after loading; no cache is serialized as part of the physical state.
+
 ### Compare Anderson-to-Newton switching budgets
 
 For a step that repeatedly exhausts six Anderson trials before Newton, compare

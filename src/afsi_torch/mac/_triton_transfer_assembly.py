@@ -9,6 +9,36 @@ import triton.language as tl
 
 
 @triton.jit
+def _cached_add(KEY,VALUE,MKEY,MVALUE,MCOUNT,key,value,valid,
+                CAPACITY:tl.constexpr,MCAP:tl.constexpr,PROBES:tl.constexpr):
+    # Keys are immutable for this entire launch. Missing entries are published
+    # to a separate bounded stream and merged ONLY after all readers finish.
+    h = key.to(tl.uint64)
+    h = (h^(h>>30))*0xbf58476d1ce4e5b9
+    h = (h^(h>>27))*0x94d049bb133111eb
+    slot = ((h^(h>>31)) & (CAPACITY-1)).to(tl.int64)
+    pending = valid & (value!=0)
+    missing = tl.full(pending.shape,False,tl.int1)
+    attempt = 0
+    while (attempt<PROBES) & (tl.sum(pending.to(tl.int32),axis=0)>0):
+        previous = tl.load(KEY+slot,mask=pending,other=-2)
+        found = pending & (previous==key)
+        tl.atomic_add(VALUE+slot,value,mask=found,sem='relaxed')
+        empty = pending & (previous==-1)
+        missing = missing | empty
+        pending = pending & ~found & ~empty
+        slot = (slot+1) & (CAPACITY-1)
+        attempt += 1
+    missing = missing | pending
+    number = tl.sum(missing.to(tl.int32),axis=0)
+    if number>0:
+        offset = tl.atomic_add(MCOUNT,number.to(tl.int64),sem='relaxed')
+        index = offset+tl.cumsum(missing.to(tl.int32),axis=0)-1
+        tl.store(MKEY+index,key,mask=missing&(index<MCAP))
+        tl.store(MVALUE+index,value,mask=missing&(index<MCAP))
+
+
+@triton.jit
 def _hash_add(KEY,VALUE,FLAG,key,value,valid,CAPACITY:tl.constexpr,PROBES:tl.constexpr):
     # Mix both the node and lattice bits; grid strides are often powers of 2.
     h = key.to(tl.uint64)
@@ -38,7 +68,8 @@ def _hash_add(KEY,VALUE,FLAG,key,value,valid,CAPACITY:tl.constexpr,PROBES:tl.con
 def _entries(BASE,PHI,N,W,CELLS,LOW,WIDTH,PREFIX,KEY,VALUE,FLAG,
              START,COUNT,P,Q:tl.constexpr,E,C:tl.constexpr,SHARED:tl.constexpr,OFFSET,
              NY:tl.constexpr,NZ:tl.constexpr,NF:tl.constexpr,
-             SEARCH,B:tl.constexpr,BQ:tl.constexpr,HASH:tl.constexpr,CAPACITY:tl.constexpr):
+             SEARCH,B:tl.constexpr,BQ:tl.constexpr,HASH:tl.constexpr,CAPACITY:tl.constexpr,
+             CACHED:tl.constexpr,MKEY,MVALUE,MCOUNT,MCAP:tl.constexpr):
     local = tl.program_id(0)*B+tl.arange(0,B)
     site = START+local
     valid = local<COUNT
@@ -75,7 +106,9 @@ def _entries(BASE,PHI,N,W,CELLS,LOW,WIDTH,PREFIX,KEY,VALUE,FLAG,
         value = tl.sum(kernel*shape[None,:],axis=1)
         node = tl.load(CELLS+cell*4+a)
         key = node*NF+fluid
-        if HASH:
+        if CACHED:
+            _cached_add(KEY,VALUE,MKEY,MVALUE,MCOUNT,key,value,valid,CAPACITY,MCAP,128)
+        elif HASH:
             _hash_add(KEY,VALUE,FLAG,key,value,valid,CAPACITY,128)
         else:
             tl.store(KEY+local*4+a,key,mask=valid)
@@ -95,7 +128,8 @@ def entries(stencil,group,component,offset,low,width,prefix,start,count,face_sha
             start,count,stencil.base.shape[1],q,len(group.cells),component,
             getattr(stencil,'layout',None)=='shared',offset,face_shape[1],face_shape[2],
             face_shape[0]*face_shape[1]*face_shape[2],(len(group.cells)+1).bit_length()+1,
-            block,triton.next_power_of_2(q),False,0,num_warps=4,enable_fp_fusion=False)
+            block,triton.next_power_of_2(q),False,0,False,keys,values,keys,0,
+            num_warps=4,enable_fp_fusion=False)
     return keys,values
 
 
@@ -110,7 +144,24 @@ def hash_entries(stencil,group,component,offset,low,width,prefix,count,face_shap
             0,count,stencil.base.shape[1],q,len(group.cells),component,
             getattr(stencil,'layout',None)=='shared',offset,face_shape[1],face_shape[2],
             face_shape[0]*face_shape[1]*face_shape[2],(len(group.cells)+1).bit_length()+1,
-            block,triton.next_power_of_2(q),True,workspace.capacity,
+            block,triton.next_power_of_2(q),True,workspace.capacity,False,
+            workspace.keys,workspace.values,workspace.flag,0,
+            num_warps=4,enable_fp_fusion=False)
+
+
+def cached_entries(stencil,group,component,offset,low,width,prefix,count,face_shape,workspace,cache):
+    """One quadrature pass: accumulate known buckets and compact only misses."""
+    import torch
+    q = len(group.values)
+    block = 16 if q<=128 else 8
+    with torch.cuda.device(group.weights.device):
+        _entries[(triton.cdiv(count,block),)](stencil.base,stencil.phi,group.values,
+            group.weights,group.cells,low,width,prefix,workspace.keys,workspace.values,workspace.flag,
+            0,count,stencil.base.shape[1],q,len(group.cells),component,
+            getattr(stencil,'layout',None)=='shared',offset,face_shape[1],face_shape[2],
+            face_shape[0]*face_shape[1]*face_shape[2],(len(group.cells)+1).bit_length()+1,
+            block,triton.next_power_of_2(q),True,workspace.capacity,True,
+            cache.missing_keys,cache.missing_values,cache.missing_count,cache.missing_capacity,
             num_warps=4,enable_fp_fusion=False)
 
 
@@ -129,3 +180,53 @@ def hash_accumulate(keys,values,workspace):
     with torch.cuda.device(keys.device):
         _hash_test[(triton.cdiv(len(keys),128),)](keys,values,workspace.keys,
             workspace.values,workspace.flag,len(keys),workspace.capacity,128,num_warps=4)
+
+
+@triton.jit(do_not_specialize=['COUNT'])
+def _cached_test(INPUT_KEY,INPUT_VALUE,KEY,VALUE,MKEY,MVALUE,MCOUNT,COUNT,
+                 CAPACITY:tl.constexpr,MCAP:tl.constexpr,B:tl.constexpr):
+    i = tl.program_id(0)*B+tl.arange(0,B)
+    key = tl.load(INPUT_KEY+i,mask=i<COUNT,other=0)
+    value = tl.load(INPUT_VALUE+i,mask=i<COUNT,other=0)
+    _cached_add(KEY,VALUE,MKEY,MVALUE,MCOUNT,key,value,i<COUNT,CAPACITY,MCAP,128)
+
+
+def cached_accumulate(keys,values,workspace,cache):
+    """Exercise immutable-key reads and bounded miss compaction without FE."""
+    import torch
+    with torch.cuda.device(keys.device):
+        _cached_test[(triton.cdiv(len(keys),128),)](keys,values,workspace.keys,
+            workspace.values,cache.missing_keys,cache.missing_values,cache.missing_count,
+            len(keys),workspace.capacity,cache.missing_capacity,128,num_warps=4)
+
+
+@triton.jit(do_not_specialize=['COUNT'])
+def _find_slots(INPUT,KEY,OUTPUT,FLAG,COUNT,CAPACITY:tl.constexpr,B:tl.constexpr):
+    i = tl.program_id(0)*B+tl.arange(0,B)
+    key = tl.load(INPUT+i,mask=i<COUNT,other=0)
+    h = key.to(tl.uint64)
+    h = (h^(h>>30))*0xbf58476d1ce4e5b9
+    h = (h^(h>>27))*0x94d049bb133111eb
+    slot = ((h^(h>>31)) & (CAPACITY-1)).to(tl.int64)
+    pending = i<COUNT
+    attempt = 0
+    while (attempt<128) & (tl.sum(pending.to(tl.int32),axis=0)>0):
+        previous = tl.load(KEY+slot,mask=pending,other=-2)
+        found = pending & (previous==key)
+        tl.store(OUTPUT+i,slot,mask=found)
+        pending = pending & ~found
+        slot = (slot+1)&(CAPACITY-1)
+        attempt += 1
+    if tl.sum(pending.to(tl.int32),axis=0)>0:
+        tl.atomic_max(FLAG,1,sem='relaxed')
+
+
+def find_slots(keys,workspace):
+    import torch
+    result = torch.empty_like(keys)
+    with torch.cuda.device(keys.device):
+        _find_slots[(triton.cdiv(len(keys),128),)](keys,workspace.keys,result,
+            workspace.flag,len(keys),workspace.capacity,128,num_warps=4)
+    if workspace.flag.item():
+        raise RuntimeError('cached IB slot lookup failed after completed insertion')
+    return result
