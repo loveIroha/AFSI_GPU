@@ -59,7 +59,8 @@ def benchmark(checkpoint, *, device='cuda', warmup=5, steps=20, intervals=(1, 5)
               solvers=('jfnk',), shared_executions=(None,), support_backends=(None,),
               helmholtz_backends=(None,), anderson_policies=(None,),
               newton_preconditioners=(None,), linear_policies=(None,),
-              ib_response_backends=(None,),csr_assembly_backends=(None,),profile=False, profile_steps=3):
+              ib_response_backends=(None,),csr_assembly_backends=(None,),
+              anderson_budgets=(None,),profile=False, profile_steps=3):
     if warmup < 0 or steps < 1 or not intervals or any(n < 1 for n in intervals):
         raise ValueError('nonnegative warmup, positive steps and check intervals required')
     if (not solvers or any(s not in ('jfnk', 'newton', 'anderson-newton') for s in solvers)
@@ -71,6 +72,7 @@ def benchmark(checkpoint, *, device='cuda', warmup=5, steps=20, intervals=(1, 5)
             or not linear_policies or any(s not in (None,'reference','estimated','inexact') for s in linear_policies)
             or not ib_response_backends or any(s not in (None,'quadrature','csr') for s in ib_response_backends)
             or not csr_assembly_backends or any(s not in (None,'coalesce','hash') for s in csr_assembly_backends)
+            or not anderson_budgets or any(n is not None and (type(n) is not int or n<1) for n in anderson_budgets)
             or profile_steps < 1):
         raise ValueError('invalid solver/execution selections or profile steps')
     if str(device).startswith('cuda') and not torch.cuda.is_available():
@@ -81,14 +83,16 @@ def benchmark(checkpoint, *, device='cuda', warmup=5, steps=20, intervals=(1, 5)
     synchronize()
     load_seconds = perf_counter()-started
     variants, reference = [], None
-    for solver, interval, shared, support, helmholtz, policy, preconditioner, linear_policy, ib_backend, csr_builder in product(solvers, intervals,
+    for solver, interval, shared, support, helmholtz, policy, preconditioner, linear_policy, ib_backend, csr_builder, budget in product(solvers, intervals,
             shared_executions, support_backends, helmholtz_backends,anderson_policies,newton_preconditioners,
-            linear_policies,ib_response_backends,csr_assembly_backends):
+            linear_policies,ib_response_backends,csr_assembly_backends,anderson_budgets):
         # Vary check intervals only for JFNK in this comparison; the other
         # solvers use the first interval, including their GMRES fallback.
         if solver != 'jfnk' and interval != intervals[0]:
             continue
         if solver != 'anderson-newton' and policy != anderson_policies[0]:
+            continue
+        if solver != 'anderson-newton' and budget != anderson_budgets[0]:
             continue
         if solver == 'jfnk' and preconditioner != newton_preconditioners[0]:
             continue
@@ -97,6 +101,7 @@ def benchmark(checkpoint, *, device='cuda', warmup=5, steps=20, intervals=(1, 5)
         if (ib_backend or config.ib_response_backend)!='csr' and csr_builder!=csr_assembly_backends[0]:
             continue
         driver = None
+        cfg = None
         state = initial
         phase = 'setup'
         try:
@@ -111,6 +116,8 @@ def benchmark(checkpoint, *, device='cuda', warmup=5, steps=20, intervals=(1, 5)
                 cfg = replace(cfg, flow=replace(cfg.flow, helmholtz_backend=helmholtz))
             if policy is not None:
                 cfg = replace(cfg,anderson=anderson_policy(cfg.anderson,policy))
+            if solver=='anderson-newton' and budget is not None:
+                cfg = replace(cfg,anderson=replace(cfg.anderson,max_iterations=budget))
             if preconditioner is not None:
                 cfg = replace(cfg,newton_preconditioner=preconditioner)
             if linear_policy is not None:
@@ -120,6 +127,7 @@ def benchmark(checkpoint, *, device='cuda', warmup=5, steps=20, intervals=(1, 5)
             if csr_builder is not None:
                 cfg = replace(cfg,ib_csr_assembly_backend=csr_builder)
             label = (f'{solver}/aa={policy or "saved"}/pc={cfg.newton_preconditioner}/check={interval}'
+                     f'/aa-budget={cfg.anderson.max_iterations}+{cfg.anderson.extra_iterations}'
                      f'/ib={cfg.interaction_quadrature.shared_execution}/support={cfg.support_backend}'
                      f'/helmholtz={cfg.flow.helmholtz_backend}/linear={linear_policy or "saved"}'
                      f'/response={cfg.ib_response_backend}/csr={cfg.ib_csr_assembly_backend}')
@@ -217,12 +225,14 @@ def benchmark(checkpoint, *, device='cuda', warmup=5, steps=20, intervals=(1, 5)
         except (ValueError, RuntimeError, FloatingPointError) as exc:
             variants.append(dict(status='failed', solver=solver, check_every=interval,
                 anderson_policy=policy,newton_preconditioner=preconditioner,
+                anderson_budget=cfg.anderson.max_iterations if cfg is not None else budget,
                 linear_policy=linear_policy,ib_response_backend=ib_backend,
                 ib_csr_assembly_backend=csr_builder,
                 shared_execution=shared, support_backend=support, helmholtz_backend=helmholtz,
                 last_accepted_time_s=state.time,failure_phase=phase,
                 failure_type=type(exc).__name__,failure=str(exc),traceback=traceback.format_exc()))
-            print(f'{solver}/check={interval}/csr={csr_builder or config.ib_csr_assembly_backend}: '
+            print(f'{solver}/check={interval}/aa-budget={budget or config.anderson.max_iterations}'
+                  f'/csr={csr_builder or config.ib_csr_assembly_backend}: '
                   f'failed during {phase}: {exc}',flush=True)
         finally:
             del driver
@@ -238,8 +248,15 @@ def benchmark(checkpoint, *, device='cuda', warmup=5, steps=20, intervals=(1, 5)
         report['measured_speedup_first_over_second'] = variants[0]['milliseconds_per_step']/variants[1]['milliseconds_per_step']
     successful = [v for v in variants if v['status']=='completed']
     if successful:
+        baseline = successful[0]
+        report['comparison_baseline'] = dict(solver=baseline['solver'],
+            anderson_budget=baseline['anderson_budget'],
+            milliseconds_per_step=baseline['milliseconds_per_step'])
+        for variant in successful:
+            variant['speedup_vs_first_completed'] = baseline['milliseconds_per_step']/variant['milliseconds_per_step']
         fastest = min(successful,key=lambda v:v['milliseconds_per_step'])
         report['fastest_variant'] = {k:fastest[k] for k in ('solver','anderson_policy',
+            'anderson_budget',
             'newton_preconditioner','milliseconds_per_step','shared_execution','support_backend','helmholtz_backend',
             'linear_policy','ib_response_backend','ib_csr_assembly_backend')}
     return report
@@ -257,6 +274,8 @@ def main():
     p.add_argument('--support-backends', nargs='+', choices=('points', 'vertices'))
     p.add_argument('--helmholtz-backends', nargs='+', choices=('reference', 'workspace', 'graph'))
     p.add_argument('--anderson-policies', nargs='+', choices=('legacy','adaptive'))
+    p.add_argument('--anderson-budgets', nargs='+',type=int,
+                   help='trial budgets before Newton; compared only for anderson-newton')
     p.add_argument('--newton-preconditioners', nargs='+', choices=('none','solid-block'))
     p.add_argument('--linear-policies', nargs='+', choices=('reference','estimated','inexact'))
     p.add_argument('--ib-response-backends', nargs='+', choices=('quadrature','csr'))
@@ -275,6 +294,7 @@ def main():
         linear_policies=tuple(args.linear_policies or [None]),
         ib_response_backends=tuple(args.ib_response_backends or [None]),
         csr_assembly_backends=tuple(args.csr_assembly_backends or [None]),
+        anderson_budgets=tuple(args.anderson_budgets) if args.anderson_budgets is not None else (None,),
         profile=args.profile, profile_steps=args.profile_steps)
     atomic_json(args.output, report)
     print(f'report={args.output}', flush=True)

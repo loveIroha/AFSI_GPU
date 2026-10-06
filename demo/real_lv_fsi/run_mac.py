@@ -31,8 +31,11 @@ def main(argv=None):
     p.add_argument('--mu', type=float)
     p.add_argument('--kappa', type=float)
     p.add_argument('--beta', type=float)
-    p.add_argument('--nonlinear-solver', choices=('jfnk', 'newton', 'anderson-newton'))
+    p.add_argument('--nonlinear-solver', choices=('jfnk', 'newton', 'anderson-newton'),
+                   help='solver-only selection; allowed on resume')
     p.add_argument('--anderson-policy', choices=('legacy','adaptive'), help='solver-only policy; allowed on resume')
+    p.add_argument('--anderson-max-iterations', type=int,
+                   help='Anderson trial budget before Newton; adaptive policy may extend it; allowed on resume')
     p.add_argument('--newton-preconditioner', choices=('none','solid-block'), help='solver-only option; allowed on resume')
     p.add_argument('--linear-policy', choices=('reference','estimated','inexact'), help='solver-only option; allowed on resume')
     p.add_argument('--ib-response-backend', choices=('quadrature','csr'), help='equivalent frozen IB execution; allowed on resume')
@@ -54,21 +57,25 @@ def main(argv=None):
     for key in ('log-every', 'output-every', 'checkpoint-every'):
         p.add_argument('--'+key, type=int)
     args = p.parse_args(argv)
+    if args.anderson_max_iterations is not None and args.anderson_max_iterations<1:
+        p.error('--anderson-max-iterations must be a positive integer')
     if args.resume:
         forbidden = (args.config, args.write_config, args.mesh_dir, args.dt, args.fluid_cells,
             args.fluid_lengths, args.fluid_origin, args.rho, args.mu, args.kappa, args.beta,
             args.load_protocol, args.cycles,
-            args.nonlinear_solver, args.support_backend, args.helmholtz_backend,
+            args.support_backend, args.helmholtz_backend,
             args.ib_point_density, args.interaction_quadrature, args.pressure_backend,
             args.ib_rule_family, args.ib_transfer_backend, args.ib_stencil_backend, args.ib_prepare_backend,
             args.ib_shared_execution, args.reuse_ib_buffers,
             args.log_every, args.output_every, args.checkpoint_every)
         if any(v is not None for v in forbidden) or args.reference or args.no_vtk or args.no_convection:
-            p.error('resume restores paper physics/execution; only end time, original output and solver-only policy/preconditioner may be supplied')
+            p.error('resume restores paper physics/execution; only end time, original output and solver-only overrides may be supplied')
         report = run(device=args.device, output=args.output, resume=args.resume, end_time=args.end_time,
                      anderson_policy=args.anderson_policy,newton_preconditioner=args.newton_preconditioner,
                      linear_policy=args.linear_policy,ib_response_backend=args.ib_response_backend,
-                     ib_csr_assembly_backend=args.ib_csr_assembly_backend)
+                     ib_csr_assembly_backend=args.ib_csr_assembly_backend,
+                     anderson_max_iterations=args.anderson_max_iterations,
+                     nonlinear_solver=args.nonlinear_solver)
     else:
         config = load_config(args.config, CONFIG) if args.config else CONFIG
         protocol = config.load_protocol if args.load_protocol is None else args.load_protocol
@@ -112,6 +119,8 @@ def main(argv=None):
         if args.anderson_policy is not None:
             from afsi_torch.mac.midpoint_solver import anderson_policy
             config = replace(config,anderson=anderson_policy(config.anderson,args.anderson_policy))
+        if args.anderson_max_iterations is not None:
+            config = replace(config,anderson=replace(config.anderson,max_iterations=args.anderson_max_iterations))
         if args.newton_preconditioner is not None:
             config = replace(config,newton_preconditioner=args.newton_preconditioner)
         if args.linear_policy is not None:

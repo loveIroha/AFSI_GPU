@@ -480,6 +480,57 @@ CUDA_VISIBLE_DEVICES=0 python -u validation/benchmark_paper_lv.py \
   --output results/paper_lv_hash_assembly/report.json
 ```
 
+### Compare Anderson-to-Newton switching budgets
+
+For a step that repeatedly exhausts six Anderson trials before Newton, compare
+earlier switching on the same checkpoint. `--anderson-budgets` varies the primary
+trial limit only for `anderson-newton`; the pure Newton reference runs once.
+The first variant below retains six trials as the baseline. All variants include
+CSR construction in their total time and retain the original nonlinear target.
+
+```bash
+checkpoint="本次输出目录/simulation/checkpoint.npz"
+CUDA_VISIBLE_DEVICES=0 python -u validation/benchmark_paper_lv.py \
+  --checkpoint "$checkpoint" --device cuda --warmup 5 --steps 20 \
+  --solvers anderson-newton newton --anderson-budgets 6 1 2 3 \
+  --linear-check-intervals 5 --anderson-policies legacy \
+  --newton-preconditioners none --linear-policies inexact \
+  --ib-response-backends csr --csr-assembly-backends hash \
+  --profile --profile-steps 3 \
+  --output results/paper_lv_switch_performance/report.json
+```
+
+Compare `milliseconds_per_step`, `fluid_solves`, `mass_solves`, `gmres_iterations`,
+true nonlinear residual acceptance and end-state differences. The report records
+the budget in every variant and in `fastest_variant`, plus each completed variant's
+speedup relative to the first completed variant. Earlier switching may need more
+Newton/Krylov work, so fewer Anderson trials alone do not establish a speedup.
+Validate the selected policy during active contraction as well as inflation.
+
+The demo exposes `--anderson-max-iterations` for new runs and checkpoint resumes.
+Use `--anderson-policy legacy` to make the selected budget a hard limit; `adaptive`
+can add its separately recorded extension allowance. Default and saved budgets
+are restored when no override is given. An accepted short result remains subject
+to the same BE-BE residual, loads, consistent mass and geometry checks.
+
+For example, **after a budget of two has passed the comparison**, apply it:
+
+```bash
+CUDA_VISIBLE_DEVICES=0 python -u demo/real_lv_fsi/run_mac.py \
+  --device cuda --resume "$checkpoint" --end-time 2.4 \
+  --nonlinear-solver anderson-newton --anderson-policy legacy \
+  --anderson-max-iterations 2 --newton-preconditioner none \
+  --linear-policy inexact --ib-response-backend csr \
+  --ib-csr-assembly-backend hash
+```
+
+The nonlinear solver choice is also a solver-only resume override. Select
+`--nonlinear-solver newton` if that measured variant wins; its unused Anderson
+budget does not control Newton iterations. Overrides are persisted in subsequent
+checkpoints and reports. Performance measurements never overwrite the source
+checkpoint. Switching is implemented by the existing GPU Newton/GMRES path;
+no CPU linear solve or reduced acceptance criterion is introduced.
+
 若 `hash` 后端出现非有限流体残差，先运行不推进时间的组装诊断：
 
 ```bash

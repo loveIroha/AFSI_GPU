@@ -15,7 +15,11 @@ from ..mac.memory import allocator_sample
 @torch.no_grad()
 def run(*, case_config=None, device='cuda', output=None, resume=None, end_time=None,
         anderson_policy=None, newton_preconditioner=None,linear_policy=None,ib_response_backend=None,
-        ib_csr_assembly_backend=None):
+        ib_csr_assembly_backend=None,anderson_max_iterations=None,nonlinear_solver=None):
+    if anderson_max_iterations is not None and (type(anderson_max_iterations) is not int or anderson_max_iterations<1):
+        raise ValueError('positive integer anderson_max_iterations required')
+    if nonlinear_solver is not None and nonlinear_solver not in ('jfnk','newton','anderson-newton'):
+        raise ValueError('invalid paper nonlinear_solver')
     if str(device).startswith('cuda') and not torch.cuda.is_available():
         raise RuntimeError('CUDA requested but unavailable')
     if resume and case_config is not None:
@@ -43,6 +47,10 @@ def run(*, case_config=None, device='cuda', output=None, resume=None, end_time=N
     if anderson_policy is not None:
         from ..mac.midpoint_solver import anderson_policy as select_policy
         config = replace(config,anderson=select_policy(config.anderson,anderson_policy))
+    if anderson_max_iterations is not None:
+        config = replace(config,anderson=replace(config.anderson,max_iterations=anderson_max_iterations))
+    if nonlinear_solver is not None:
+        config = replace(config,nonlinear_solver=nonlinear_solver)
     if newton_preconditioner is not None:
         config = replace(config,newton_preconditioner=newton_preconditioner)
     if linear_policy is not None:
