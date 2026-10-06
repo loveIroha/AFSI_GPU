@@ -5,7 +5,7 @@ import pytest
 from afsi_torch.mac.assembled_transfer import AssembledP1Transfer
 from afsi_torch.mac.cached_transfer_assembly import (CSRPatternCache,_cpu_cached_add,
     merge_missing,finish_cached_component,numeric_snapshot)
-from afsi_torch.mac.hash_transfer_assembly import HashWorkspace,cpu_accumulate,hash_slot,sorted_entries
+from afsi_torch.mac.hash_transfer_assembly import HashWorkspace,cpu_accumulate,hash_slot,sorted_entries,power_of_two
 from test_gpu_coupled_work import pair,DEVICES
 from test_csr_hash_assembly import insert
 from test_real_lv import real_case
@@ -156,6 +156,14 @@ def test_union_budget_compacts_inactive_keys_without_changing_current_matrix(dev
     expected_old,expected_new = oracle.prepare(X),oracle.prepare(moved)
     limit = max(expected_old.gather[0].values().numel(),expected_new.gather[0].values().numel())
     work,cache = HashWorkspace(),CSRPatternCache()
+    # Isolate the UNION budget from probe overflow. The production heuristic
+    # can choose a smaller table whose concurrent insertion overflows first.
+    # Reserve the largest capacity allowed for this budget, without changing
+    # the budget itself or the numeric assembly/acceptance implementation.
+    work.reset(power_of_two(2*limit),X)
+    union_nnz = int(((expected_old.gather[0].to_dense()!=0)|
+                     (expected_new.gather[0].to_dense()!=0)).sum())
+    assert limit<union_nnz<=work.capacity//2
     old,_,_ = assemble_component_cached(r.prepare(X),0,r.grid,r.geometry.node_count,
         chunk_entries=16384,max_entries=limit,workspace=work,cache=cache)
     saved = old.values().clone()
@@ -166,6 +174,33 @@ def test_union_budget_compacts_inactive_keys_without_changing_current_matrix(dev
     torch.testing.assert_close(transpose.to_dense(),matrix.to_dense().T,atol=0,rtol=0)
     torch.testing.assert_close(old.values(),saved,atol=0,rtol=0)
     assert info['nnz']<=limit
+
+
+@pytest.mark.parametrize('device',DEVICES)
+def test_probe_overflow_rebuild_discards_partial_update_and_preserves_snapshots(device,monkeypatch):
+    from afsi_torch.mac import cached_transfer_assembly as builder
+    X,r,oracle,cached = cached_pair(device,torch.float64,chunk=16384)
+    first = cached.prepare(X)
+    saved = [B.values().clone() for B in first.gather+first.spread]
+    merge = builder.merge_missing
+    def overflow(work,cache,count):
+        merge(work,cache,count)
+        if count:
+            # Deterministically exercise the actual overflow-flag recovery
+            # after contributions may already have reached the scratch table.
+            work.flag.fill_(1)
+    moved = X+X.new_tensor([.9,.9,.9])
+    with monkeypatch.context() as patch:
+        patch.setattr(builder,'merge_missing',overflow)
+        actual = cached.prepare(moved)
+    assert all(i['symbolic_reason']=='probe-overflow-reset' and i['symbolic_resets']==1
+               and i['overflow_fallbacks']==1 for i in actual.assembly['components'])
+    close_operators(actual,oracle.prepare(moved),X.dtype)
+    for B,values in zip(first.gather+first.spread,saved):
+        torch.testing.assert_close(B.values(),values,atol=0,rtol=0)
+    repeated = cached.prepare(moved)
+    assert all(i['symbolic_reused'] for i in repeated.assembly['components'])
+    close_operators(repeated,actual,X.dtype)
 
 
 def test_cached_cli_configuration_preserves_solver_physics(tmp_path):
