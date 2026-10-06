@@ -289,3 +289,60 @@ CUDA_VISIBLE_DEVICES=0 python -u validation/benchmark_paper_lv.py \
 `reference` 仍为 GPU 内核。浮点累加次序可能不同；应结合最终场差异判断。
 Anderson–Newton 属于论文代数求解器替换，报告继续注明这项复现差异；
 短阶段加速与收敛不能保证整个 1.5 s 的行为。
+
+## 降低每步完整耦合求值次数
+
+`fluid solves` 包含非线性残差求值与 Newton/GMRES 的流体响应。一轮通常包括
+两次一致质量矩阵求解、IB 传播、BE 黏性/压力投影和 IB 插值。报告与历史现在
+分别记录 AA、Newton、GMRES、切线组装、质量求解和总压力循环数。
+这些计数只增加 CPU 整数，不增加逐算子的 GPU 同步或计时。
+
+Anderson 回退到 Newton 时，复用已经计算过的最佳点真实残差，避免在相同
+位置再次执行整轮耦合；Newton 的初始几何检查和最终 BE 残差检查继续保留。
+复用的是完全相同的坐标和同一时间步的残差，不用上一时间步的残差代替。
+
+`--anderson-policy legacy` 保留保存配置的基础 AA 预算，关闭额外迭代和停滞
+判断；所有变体都包含上述残差复用。`adaptive` 最多额外允许 4 次 AA：
+最近 3 次真实残差的几何平均每步下降率必须不大于 0.8，并且预测在剩余预算内达到原
+容差。若最近 3 次最佳残差改善不足 5%，且已有至少 history_size 次 AA（默认 4），则提前回退。
+每次新增试探仍检查几何及真实残差。原纸面 BE–BE 方程、dt、载荷、质量矩阵
+和最终非线性容差不变。这是有界的代数求解策略，不保证每个时间段都更快。
+JSON 的 `anderson` 对象可以单独设置这些控制值；默认额外预算为零。
+
+`--newton-preconditioner solid-block` 提供可选右预条件器。从当前组装的固体
+力 Jacobian 提取节点 3×3 块，使用 P1 参考节点体积近似局部流体惯性，构造
+`B_i = I - dt²/(rho*m_i) * sym(K_ii)`。对其特征值设置下界 1，再在 GPU 上
+应用块逆。CSR 块索引只构建一次，不构造稠密全局耦合矩阵。
+节点体积近似只用于预条件器；真实 Jacobian 仍经过原一致质量逆、IB、黏性
+及压力投影。最终检查原残差。默认 `none`，因为这一局部近似不包括流体
+非局部性，可能帮助或拖慢特定变形状态，需测量后选择。
+
+从本次较慢的约 0.3 s 检查点比较，而非使用 0.005 s 的早期检查点。
+下面变量需替换为本次实际路径；基准不修改输入检查点或模拟输出：
+
+```bash
+checkpoint="本次输出目录/simulation/checkpoint.npz"
+CUDA_VISIBLE_DEVICES=0 python -u validation/benchmark_paper_lv.py \
+  --checkpoint "$checkpoint" --device cuda --warmup 5 --steps 20 \
+  --solvers anderson-newton --linear-check-intervals 5 \
+  --anderson-policies legacy adaptive \
+  --newton-preconditioners none solid-block \
+  --profile --profile-steps 3 \
+  --output results/paper_lv_solver_performance/report.json
+```
+
+四种组合从同一检查点开始。报告含每步耗时、前 3 个测量步的完整残差历史、
+Newton 回退比例和结束场差异，`fastest_variant` 指明本次最快配置。
+分项计时含嵌套区间，不将父子项相加。GPU 正在运行其他模拟时，应先停止该
+任务再做性能对照；并发任务会影响计时。
+
+两项求解器配置允许在原检查点续算时覆盖，例如基准确认 adaptive/none 更快后：
+
+```bash
+CUDA_VISIBLE_DEVICES=0 python -u demo/real_lv_fsi/run_mac.py \
+  --device cuda --resume "$checkpoint" --end-time 2.4 \
+  --anderson-policy adaptive --newton-preconditioner none
+```
+
+续算保持材料、网格、时间步长和载荷，写回原模拟目录；旧 CSV 会补充新计数
+字段，旧检查点中未保存的求解器设置使用兼容默认值。中途不能改变物理配置。

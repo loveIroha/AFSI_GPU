@@ -23,6 +23,9 @@ class HOTangentAssembler:
         row, self.col = keys//self.size, keys % self.size
         self.diagonal_indices = torch.where(row==self.col)[0]
         self.diagonal_rows = row[self.diagonal_indices]
+        self.block_indices = torch.where(row//3==self.col//3)[0]
+        block_row,block_col = row[self.block_indices],self.col[self.block_indices]
+        self.block_offsets = (block_row//3)*9+(block_row%3)*3+block_col%3
         self.crow = torch.cat((row.new_zeros(1), torch.bincount(row, minlength=self.size).cumsum(0)))
         # d(basal nodal force)/dx = beta*integral Na Nb*(rhat*rhat^T-I).
         base, radial = model.base, model.radial
@@ -39,6 +42,11 @@ class HOTangentAssembler:
         """Extract the diagonal with cached indices, avoiding a full row array."""
         return tangent.values().new_zeros(self.size).index_add(0,self.diagonal_rows,
             tangent.values()[self.diagonal_indices])
+
+    def nodal_diagonal_blocks(self, tangent):
+        """3x3 force-Jacobian blocks, with the CSR index selection cached."""
+        return tangent.values().new_zeros(3*self.size).index_add(0,self.block_offsets,
+            tangent.values()[self.block_indices]).reshape(-1,3,3)
 
     def _volume(self, F, fiber, sheet, gradients, volumes, tension):
         def stress(F, fiber, sheet):

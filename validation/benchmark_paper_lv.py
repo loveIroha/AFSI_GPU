@@ -13,7 +13,8 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT/'src'))
 from afsi_torch.paper_lv_checkpoint import load
-from afsi_torch.mac.paper_coupling import BEIBStepper
+from afsi_torch.mac.paper_coupling import BEIBStepper, BEProblem
+from afsi_torch.mac.midpoint_solver import anderson_policy
 from afsi_torch.cycle_checkpoint import atomic_json
 
 
@@ -31,6 +32,8 @@ def profile_phases(driver, recorder):
         (driver.flow.pressure_solver, 'solve', 'pressure_solve'),
         (driver.flow, '_metrics', 'helmholtz_initial_metrics'),
         (driver.flow, '_residual_norms', 'helmholtz_residual_metrics')]
+    targets += [(BEProblem,'linearization','tangent_assembly'),
+                (BEProblem,'preconditioner','preconditioner_build')]
     targets.append((driver.flow, '_smooth', 'helmholtz_smoothing') if driver.flow.workspace is None
         else (driver.flow.workspace, 'advance', 'helmholtz_smoothing'))
     originals = [(obj, name, getattr(obj, name)) for obj, name, _ in targets]
@@ -46,13 +49,16 @@ def profile_phases(driver, recorder):
 @torch.no_grad()
 def benchmark(checkpoint, *, device='cuda', warmup=5, steps=20, intervals=(1, 5),
               solvers=('jfnk',), shared_executions=(None,), support_backends=(None,),
-              helmholtz_backends=(None,), profile=False, profile_steps=3):
+              helmholtz_backends=(None,), anderson_policies=(None,),
+              newton_preconditioners=(None,), profile=False, profile_steps=3):
     if warmup < 0 or steps < 1 or not intervals or any(n < 1 for n in intervals):
         raise ValueError('nonnegative warmup, positive steps and check intervals required')
     if (not solvers or any(s not in ('jfnk', 'newton', 'anderson-newton') for s in solvers)
             or not shared_executions or any(s not in (None, 'reference', 'vector', 'reduced') for s in shared_executions)
             or not support_backends or any(s not in (None, 'points', 'vertices') for s in support_backends)
             or not helmholtz_backends or any(s not in (None, 'reference', 'workspace', 'graph') for s in helmholtz_backends)
+            or not anderson_policies or any(s not in (None,'legacy','adaptive') for s in anderson_policies)
+            or not newton_preconditioners or any(s not in (None,'none','solid-block') for s in newton_preconditioners)
             or profile_steps < 1):
         raise ValueError('invalid solver/execution selections or profile steps')
     if str(device).startswith('cuda') and not torch.cuda.is_available():
@@ -63,11 +69,15 @@ def benchmark(checkpoint, *, device='cuda', warmup=5, steps=20, intervals=(1, 5)
     synchronize()
     load_seconds = perf_counter()-started
     variants, reference = [], None
-    for solver, interval, shared, support, helmholtz in product(solvers, intervals,
-            shared_executions, support_backends, helmholtz_backends):
+    for solver, interval, shared, support, helmholtz, policy, preconditioner in product(solvers, intervals,
+            shared_executions, support_backends, helmholtz_backends,anderson_policies,newton_preconditioners):
         # Vary check intervals only for JFNK in this comparison; the other
         # solvers use the first interval, including their GMRES fallback.
         if solver != 'jfnk' and interval != intervals[0]:
+            continue
+        if solver != 'anderson-newton' and policy != anderson_policies[0]:
+            continue
+        if solver == 'jfnk' and preconditioner != newton_preconditioners[0]:
             continue
         driver = None
         state = initial
@@ -81,7 +91,13 @@ def benchmark(checkpoint, *, device='cuda', warmup=5, steps=20, intervals=(1, 5)
                 cfg = replace(cfg, support_backend=support)
             if helmholtz is not None:
                 cfg = replace(cfg, flow=replace(cfg.flow, helmholtz_backend=helmholtz))
-            label = f'{solver}/check={interval}/ib={cfg.interaction_quadrature.shared_execution}/support={cfg.support_backend}/helmholtz={cfg.flow.helmholtz_backend}'
+            if policy is not None:
+                cfg = replace(cfg,anderson=anderson_policy(cfg.anderson,policy))
+            if preconditioner is not None:
+                cfg = replace(cfg,newton_preconditioner=preconditioner)
+            label = (f'{solver}/aa={policy or "saved"}/pc={cfg.newton_preconditioner}/check={interval}'
+                     f'/ib={cfg.interaction_quadrature.shared_execution}/support={cfg.support_backend}'
+                     f'/helmholtz={cfg.flow.helmholtz_backend}')
             driver = BEIBStepper(model, cfg, device)
             state = initial
             for _ in range(warmup):
@@ -92,25 +108,38 @@ def benchmark(checkpoint, *, device='cuda', warmup=5, steps=20, intervals=(1, 5)
             print(f'{label}: warmup completed; measuring {steps} steps', flush=True)
             totals = {key: 0 for key in ('iterations', 'fluid_solves', 'jacobian_actions',
                 'true_residual_checks', 'residual_restarts', 'scalar_reads',
-                'anderson_iterations', 'newton_iterations')}
+                'anderson_iterations', 'newton_iterations','anderson_extra_iterations',
+                'seeded_residual_reuses','residual_evaluations','gmres_iterations',
+                'tangent_assemblies','preconditioner_applications','mass_solves','mass_iterations',
+                'pressure_solves','pressure_cycles','helmholtz_sweeps')}
+            fallback_count = 0
+            sampled_histories = []
             worst_ratio = 0.
             synchronize()
             start = perf_counter()
             for _ in range(steps):
                 state, info = driver.step(state, diagnostics=False)
                 nonlinear = info['nonlinear']
+                fallback_count += int(nonlinear.get('newton_fallback',False))
+                if len(sampled_histories)<3:
+                    sampled_histories.append(dict(step=state.step,time_s=state.time,
+                        nonlinear=nonlinear))
                 for key in totals:
                     totals[key] += nonlinear.get(key, 0)
                 worst_ratio = max(worst_ratio, nonlinear['residual_norm']/nonlinear['tolerance'])
             synchronize()
             elapsed = perf_counter()-start
             result = dict(status='completed', solver=solver, check_every=interval,
+                anderson_policy=policy or 'saved',newton_preconditioner=cfg.newton_preconditioner,
+                anderson_budget=cfg.anderson.max_iterations,anderson_extra_budget=cfg.anderson.extra_iterations,
+                anderson_stall_iterations=cfg.anderson.stall_iterations,
                 shared_execution=cfg.interaction_quadrature.shared_execution,
                 support_backend=cfg.support_backend, helmholtz_backend=cfg.flow.helmholtz_backend,
                 measured_steps=steps,
                 setup_and_warmup_seconds=setup_seconds, elapsed_seconds=elapsed,
                 milliseconds_per_step=1000*elapsed/steps,
                 per_step={key: value/steps for key, value in totals.items()},
+                newton_fallback_fraction=fallback_count/steps,sampled_histories=sampled_histories,
                 max_accepted_residual_to_tolerance=worst_ratio,
                 start_time_s=initial.time+warmup*cfg.time.dt, end_time_s=state.time)
             if reference is None:
@@ -124,7 +153,10 @@ def benchmark(checkpoint, *, device='cuda', warmup=5, steps=20, intervals=(1, 5)
                 if hasattr(driver.transfer, 'quadrature_summary') else dict(mode='fixed'))
             print(f'{label}: {result["milliseconds_per_step"]:.3f} ms/step; '
                   f'fluid solves={result["per_step"]["fluid_solves"]:.2f}, '
-                  f'true checks={result["per_step"]["true_residual_checks"]:.2f}', flush=True)
+                  f'AA={result["per_step"]["anderson_iterations"]:.2f}, '
+                  f'Newton={result["per_step"]["newton_iterations"]:.2f}, '
+                  f'GMRES={result["per_step"]["gmres_iterations"]:.2f}, '
+                  f'mass solves={result["per_step"]["mass_solves"]:.2f}', flush=True)
             if profile:
                 from validation.benchmark_mac import PhaseRecorder
                 recorder = PhaseRecorder(initial.x.device)
@@ -145,6 +177,7 @@ def benchmark(checkpoint, *, device='cuda', warmup=5, steps=20, intervals=(1, 5)
             # Release this driver's workspaces before constructing the next one.
         except (ValueError, RuntimeError, FloatingPointError) as exc:
             variants.append(dict(status='failed', solver=solver, check_every=interval,
+                anderson_policy=policy,newton_preconditioner=preconditioner,
                 shared_execution=shared, support_backend=support, helmholtz_backend=helmholtz,
                 last_accepted_time_s=state.time, failure_type=type(exc).__name__, failure=str(exc)))
             print(f'{solver}/check={interval}: failed: {exc}', flush=True)
@@ -160,6 +193,11 @@ def benchmark(checkpoint, *, device='cuda', warmup=5, steps=20, intervals=(1, 5)
         scalar_reads_scope='BiCGSTAB scalar transfers only; excludes nested fluid/mass/validation checks')
     if len(variants) == 2 and all(v['status']=='completed' for v in variants):
         report['measured_speedup_first_over_second'] = variants[0]['milliseconds_per_step']/variants[1]['milliseconds_per_step']
+    successful = [v for v in variants if v['status']=='completed']
+    if successful:
+        fastest = min(successful,key=lambda v:v['milliseconds_per_step'])
+        report['fastest_variant'] = {k:fastest[k] for k in ('solver','anderson_policy',
+            'newton_preconditioner','milliseconds_per_step','shared_execution','support_backend','helmholtz_backend')}
     return report
 
 
@@ -174,6 +212,8 @@ def main():
     p.add_argument('--ib-shared-executions', nargs='+', choices=('reference', 'vector', 'reduced'))
     p.add_argument('--support-backends', nargs='+', choices=('points', 'vertices'))
     p.add_argument('--helmholtz-backends', nargs='+', choices=('reference', 'workspace', 'graph'))
+    p.add_argument('--anderson-policies', nargs='+', choices=('legacy','adaptive'))
+    p.add_argument('--newton-preconditioners', nargs='+', choices=('none','solid-block'))
     p.add_argument('--profile', action='store_true')
     p.add_argument('--profile-steps', type=int, default=3)
     p.add_argument('--output', default='results/paper_lv_performance/report.json')
@@ -183,6 +223,8 @@ def main():
         shared_executions=tuple(args.ib_shared_executions or [None]),
         support_backends=tuple(args.support_backends or [None]),
         helmholtz_backends=tuple(args.helmholtz_backends or [None]),
+        anderson_policies=tuple(args.anderson_policies or [None]),
+        newton_preconditioners=tuple(args.newton_preconditioners or [None]),
         profile=args.profile, profile_steps=args.profile_steps)
     atomic_json(args.output, report)
     print(f'report={args.output}', flush=True)

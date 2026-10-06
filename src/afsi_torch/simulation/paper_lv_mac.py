@@ -13,7 +13,8 @@ from ..mac.memory import allocator_sample
 
 
 @torch.no_grad()
-def run(*, case_config=None, device='cuda', output=None, resume=None, end_time=None):
+def run(*, case_config=None, device='cuda', output=None, resume=None, end_time=None,
+        anderson_policy=None, newton_preconditioner=None):
     if str(device).startswith('cuda') and not torch.cuda.is_available():
         raise RuntimeError('CUDA requested but unavailable')
     if resume and case_config is not None:
@@ -38,6 +39,11 @@ def run(*, case_config=None, device='cuda', output=None, resume=None, end_time=N
             config = replace(config, time=TimeConfig(config.time.dt, end_time))
         model = imported_model(config, device)
         progress = dict(elapsed_seconds=0.)
+    if anderson_policy is not None:
+        from ..mac.midpoint_solver import anderson_policy as select_policy
+        config = replace(config,anderson=select_policy(config.anderson,anderson_policy))
+    if newton_preconditioner is not None:
+        config = replace(config,newton_preconditioner=newton_preconditioner)
     driver = BEIBStepper(model, config, device)
     if not resume:
         state = driver.initialize(model.mesh.X)
@@ -64,6 +70,12 @@ def run(*, case_config=None, device='cuda', output=None, resume=None, end_time=N
             divergence_l2=info.get('divergence_l2', 0.), power_error=info.get('power_error', 0.),
             nonlinear_iterations=nonlinear.get('iterations', 0), nonlinear_residual=nonlinear.get('residual_norm', 0.),
             fluid_solves=nonlinear.get('fluid_solves', 0), courant=info.get('courant', 0.),
+            anderson_iterations=nonlinear.get('anderson_iterations', 0),
+            newton_iterations=nonlinear.get('newton_iterations', nonlinear.get('iterations',0) if config.nonlinear_solver=='newton' else 0),
+            gmres_iterations=nonlinear.get('gmres_iterations', 0),
+            tangent_assemblies=nonlinear.get('tangent_assemblies', 0),
+            mass_solves=nonlinear.get('mass_solves', 0),
+            total_pressure_cycles=nonlinear.get('pressure_cycles', 0),
             pressure_cycles=info.get('flow', {}).get('pressure', {}).get('cycles', 0))
 
     def save(status):
@@ -71,7 +83,9 @@ def run(*, case_config=None, device='cuda', output=None, resume=None, end_time=N
         if not history or float(history[-1]['time_s']) != state.time:
             history.append(row())
         with (folder/'history.csv').open('w', newline='') as stream:
-            w = csv.DictWriter(stream, fieldnames=list(history[0])); w.writeheader(); w.writerows(history)
+            # Resume older histories that did not yet contain solver counters.
+            fields = list(dict.fromkeys(k for record in history for k in record))
+            w = csv.DictWriter(stream, fieldnames=fields); w.writeheader(); w.writerows(history)
         report = dict(status=status, accepted_steps=state.step, reached_time_s=state.time,
             requested_end_time_s=config.time.end_time, dt_s=config.time.dt, elapsed_seconds=progress['elapsed_seconds'],
             reference='Ma et al., Physics of Fluids 36, 081914 (2024), section V.F', doi='10.1063/5.0225605',
@@ -94,7 +108,8 @@ def run(*, case_config=None, device='cuda', output=None, resume=None, end_time=N
                 + (['user 0.8 s periodic pressure and active PK1 added; not the paper V.F passive benchmark'] if active_cycle else []),
             energy_claim='no unconditional energy theorem asserted for this loaded open-boundary corrected H-O experiment',
             interaction_quadrature=driver.transfer.quadrature_summary() if hasattr(driver.transfer, 'quadrature_summary') else dict(mode='fixed'),
-            nonlinear_solver=config.nonlinear_solver, pressure_backend=driver.flow.pressure_solver.backend,
+            nonlinear_solver=config.nonlinear_solver, newton_preconditioner=config.newton_preconditioner,
+            pressure_backend=driver.flow.pressure_solver.backend,
             gpu_memory=allocator_sample(state.x.device), last=history[-1], last_solver_info=info,
             visualization=writer.summary() if writer else dict(enabled=False),
             full_horizon_validated=status == 'completed' and state.time >= max(config.time.end_time,
@@ -120,6 +135,10 @@ def run(*, case_config=None, device='cuda', output=None, resume=None, end_time=N
               f'solver={config.nonlinear_solver}; open pressure boundary; radial base retained', flush=True)
         print(f'Execution: support={config.support_backend}, Helmholtz={config.flow.helmholtz_backend}, '
               f'IB shared={config.interaction_quadrature.shared_execution}', flush=True)
+        if config.nonlinear_solver != 'jfnk':
+            print(f'Anderson budget={config.anderson.max_iterations}+{config.anderson.extra_iterations}, '
+                  f'stagnation window={config.anderson.stall_iterations}; '
+                  f'Newton preconditioner={config.newton_preconditioner}',flush=True)
         for _ in range(state.step, steps):
             sample = (state.step+1) % config.output.log_every == 0 or state.step+1 == steps
             state, info = driver.step(state, diagnostics=sample)
@@ -128,10 +147,13 @@ def run(*, case_config=None, device='cuda', output=None, resume=None, end_time=N
             if sample:
                 history.append(row()); last = history[-1]
                 active_text = f'T={last["active_tension_dyn_per_cm2"]/10000:.4g} kPa, ' if active_cycle else ''
+                solver_text = (f'AA={last["anderson_iterations"]}, Newton={last["newton_iterations"]}, '
+                               f'GMRES={last["gmres_iterations"]}, ' if config.nonlinear_solver!='jfnk' else '')
                 print(f'step {state.step}/{steps}, t={state.time:.6f}, V={last["cavity_volume_ml"]:.8g} mL, '
                     f'p_endo={last["endocardial_pressure_mmhg"]:.4g} mmHg, {active_text}minJ={last["minimum_detF"]:.6g}, '
                     f'div={last["divergence_l2"]:.3g}, iterations={last["nonlinear_iterations"]}, '
-                    f'fluid solves={last["fluid_solves"]}, residual={last["nonlinear_residual"]:.3g}', flush=True)
+                    f'{solver_text}fluid solves={last["fluid_solves"]}, '
+                    f'mass solves={last["mass_solves"]}, residual={last["nonlinear_residual"]:.3g}', flush=True)
             if state.step % config.output.checkpoint_every == 0:
                 save('running')
         return save('completed')

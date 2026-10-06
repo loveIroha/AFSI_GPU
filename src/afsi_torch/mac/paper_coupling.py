@@ -182,6 +182,8 @@ class BEProblem:
         self.last_data = None
         self.pressure_initial = state.pressure
         self.evaluations = 0
+        self.jacobian_actions = self.tangent_assemblies = self.preconditioner_applications = 0
+        self._tangent = None
         self._trial_y = self._trial_version = self._trial_x = None
         self._trial_state_version = self._validated_x_version = None
         self._last_input = self._last_version = self._last_state_version = self._last_x = None
@@ -251,7 +253,10 @@ class BEProblem:
         if d.assembler is None:
             d.assembler = d.model.tangent_factory()
         tangent = d.assembler.assemble(self.state.x+y, self.time)
+        self._tangent = tangent
+        self.tangent_assemblies += 1
         def action(v):
+            self.jacobian_actions += 1
             df = torch.sparse.mm(tangent, v.reshape(-1, 1)).reshape_as(v)
             # No warm-start-dependent affine offset in the derivative map.
             d.transfer.reset_warm_start()
@@ -262,7 +267,19 @@ class BEProblem:
         return normalized_linear_action(action)
 
     def preconditioner(self, y):
-        return None
+        if self.driver.config.newton_preconditioner == 'none':
+            return None
+        if self._tangent is None:
+            raise RuntimeError('assemble the current tangent before preconditioning')
+        d = self.driver
+        if d.block_preconditioner is None:
+            from .solid_preconditioner import SolidBlockPreconditioner
+            d.block_preconditioner = SolidBlockPreconditioner(d.assembler,dt=d.flow.dt,rho=d.flow.rho)
+        inverse = d.block_preconditioner.build(self._tangent)
+        def apply(v):
+            self.preconditioner_applications += 1
+            return inverse(v)
+        return apply
 
 
 class BEIBStepper:
@@ -283,6 +300,15 @@ class BEIBStepper:
             mass_backend=config.execution.mass_backend, options=config.mass_solver, **extra)
         self.solid = model.execution_factory() if fused else model
         self.assembler = None
+        self.block_preconditioner = None
+        self.mass_calls = self.mass_iterations = 0
+        original_mass_solve = self.transfer.solve_mass
+        def counted_mass_solve(rhs, initial):
+            result,info = original_mass_solve(rhs,initial)
+            self.mass_calls += 1
+            self.mass_iterations += info.iterations
+            return result,info
+        self.transfer.solve_mass = counted_mass_solve
 
     def initialize(self, x):
         self.solid.validate(x)
@@ -307,13 +333,16 @@ class BEIBStepper:
         problem = BEProblem(self, state, stencil, departure)
         initial = torch.zeros_like(state.x) if state.previous_x is None else state.x-state.previous_x
         before = self.flow.calls
+        mass_before,mass_iterations_before = self.mass_calls,self.mass_iterations
+        cycles_before,sweeps_before = self.flow.pressure_cycles,self.flow.helmholtz_sweeps
         solver = self.config.nonlinear_solver
         acceleration = {}
         if solver == 'jfnk':
             result = jfnk(problem, initial, self.config.nonlinear)
         elif solver == 'newton':
             result = newton(problem.residual, initial, validate=problem.validate,
-                linearization_factory=problem.linearization, options=self.config.nonlinear)
+                linearization_factory=problem.linearization, preconditioner_factory=problem.preconditioner,
+                options=self.config.nonlinear)
         else:
             result, acceleration = accelerated_midpoint(problem, initial, self.config.nonlinear,
                 self.config.anderson, newton_solve=newton)
@@ -329,13 +358,24 @@ class BEIBStepper:
             raise ValueError(f'BE/semi-Lagrangian characteristic CFL {courant:g} > {self.config.max_courant:g}; reduce dt')
         next_state = PaperState(state.step+1, problem.time, x, velocity, pressure,
             force, problem.time, pressure_time=problem.time, previous_x=state.x.clone())
+        solver_counts = dict(anderson_iterations=0,
+            newton_iterations=result.iterations if solver=='newton' else 0,newton_fallback=False)
+        solver_counts.update(acceleration)
         info = dict(nonlinear=dict(iterations=result.iterations,
             residual_norm=result.residual_norm, tolerance=result.tolerance, history=result.history,
             residual_evaluations=problem.evaluations, fluid_solves=self.flow.calls-before,
-            **dict(acceleration, solver=solver)),
+            jacobian_actions=problem.jacobian_actions, tangent_assemblies=problem.tangent_assemblies,
+            preconditioner_applications=problem.preconditioner_applications,
+            mass_solves=self.mass_calls-mass_before, mass_iterations=self.mass_iterations-mass_iterations_before,
+            pressure_solves=self.flow.calls-before, pressure_cycles=self.flow.pressure_cycles-cycles_before,
+            helmholtz_sweeps=self.flow.helmholtz_sweeps-sweeps_before,
+            newton_preconditioner=self.config.newton_preconditioner,
+            **dict(solver_counts, solver=solver)),
             flow=flow, force_mass=asdict(spread), velocity_mass=asdict(interpolation), courant=courant,
             max_grid_displacement=(result.x.abs()/x.new_tensor(self.grid.spacing)).max().item())
         linear_history = [entry['linear'] for entry in result.history if 'linear' in entry]
+        info['nonlinear']['gmres_iterations'] = (sum(h['iterations'] for h in linear_history)
+                                               if solver != 'jfnk' else 0)
         if solver == 'jfnk':
             info['nonlinear'].update({key: sum(entry.get(key, 0) for entry in linear_history)
                 for key in ('jacobian_actions', 'true_residual_checks', 'residual_restarts', 'scalar_reads')})

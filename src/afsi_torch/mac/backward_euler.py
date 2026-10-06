@@ -56,6 +56,7 @@ class BackwardEulerFlow:
             self._residual_norms = tensor_kernel(self._residual_norms, device)
             self._project = tensor_kernel(self._project, device)
         self.calls = 0
+        self.pressure_cycles = self.helmholtz_sweeps = 0
         self.workspace = None
         if self.options.helmholtz_backend != 'reference':
             from .be_workspace import BEHelmholtzWorkspace
@@ -117,6 +118,8 @@ class BackwardEulerFlow:
         pressure, info = self.pressure_solver.solve(-self.rho/self.dt*divergence(u, self.grid.spacing), pressure_initial)
         velocity = self._project(u, pressure)
         self.calls += 1
+        self.pressure_cycles += info['cycles']
+        self.helmholtz_sweeps += count
         return velocity, pressure, dict(pressure=info, helmholtz_sweeps=count,
             helmholtz_residuals=residuals, helmholtz_tolerances=targets,
             helmholtz_backend=('graph' if self.workspace is not None and self.workspace.graph is not None

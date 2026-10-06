@@ -115,6 +115,7 @@ class PaperLVConfig:
         execution_backend='fused', pressure_backend='graph', mass_backend='graph',
         coupling_backend='optimized', warm_start=True))
     nonlinear_solver: str = 'jfnk'
+    newton_preconditioner: str = 'none'
     support_backend: str = 'vertices'
     nonlinear: NewtonOptions = field(default_factory=lambda: NewtonOptions(rtol=1e-6, atol=1e-9,
         max_iterations=15, linear=GMRESOptions(rtol=1e-3, atol=1e-11, max_iterations=240),
@@ -140,6 +141,8 @@ class PaperLVConfig:
             raise ValueError('invalid basal coefficient or quadrature degree')
         if self.nonlinear_solver not in ('jfnk', 'newton', 'anderson-newton'):
             raise ValueError('nonlinear solver must be jfnk, newton or anderson-newton')
+        if self.newton_preconditioner not in ('none','solid-block'):
+            raise ValueError('newton_preconditioner must be none or solid-block')
         if self.support_backend not in ('points', 'vertices'):
             raise ValueError('support backend must be points or vertices')
         if not isfinite(self.max_courant) or self.max_courant <= 0:

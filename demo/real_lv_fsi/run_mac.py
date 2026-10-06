@@ -32,6 +32,8 @@ def main(argv=None):
     p.add_argument('--kappa', type=float)
     p.add_argument('--beta', type=float)
     p.add_argument('--nonlinear-solver', choices=('jfnk', 'newton', 'anderson-newton'))
+    p.add_argument('--anderson-policy', choices=('legacy','adaptive'), help='solver-only policy; allowed on resume')
+    p.add_argument('--newton-preconditioner', choices=('none','solid-block'), help='solver-only option; allowed on resume')
     p.add_argument('--support-backend', choices=('points', 'vertices'))
     p.add_argument('--helmholtz-backend', choices=('reference', 'workspace', 'graph'))
     p.add_argument('--ib-point-density', type=float)
@@ -59,8 +61,9 @@ def main(argv=None):
             args.ib_shared_execution, args.reuse_ib_buffers,
             args.log_every, args.output_every, args.checkpoint_every)
         if any(v is not None for v in forbidden) or args.reference or args.no_vtk or args.no_convection:
-            p.error('resume restores paper physics/execution; only --end-time and the original --output may be supplied')
-        report = run(device=args.device, output=args.output, resume=args.resume, end_time=args.end_time)
+            p.error('resume restores paper physics/execution; only end time, original output and solver-only policy/preconditioner may be supplied')
+        report = run(device=args.device, output=args.output, resume=args.resume, end_time=args.end_time,
+                     anderson_policy=args.anderson_policy,newton_preconditioner=args.newton_preconditioner)
     else:
         config = load_config(args.config, CONFIG) if args.config else CONFIG
         protocol = config.load_protocol if args.load_protocol is None else args.load_protocol
@@ -101,6 +104,11 @@ def main(argv=None):
             output=replace(config.output, **{k:v for k,v in dict(
                 log_every=args.log_every, output_every=args.output_every, checkpoint_every=args.checkpoint_every,
                 write_vtk=False if args.no_vtk else None).items() if v is not None}))
+        if args.anderson_policy is not None:
+            from afsi_torch.mac.midpoint_solver import anderson_policy
+            config = replace(config,anderson=anderson_policy(config.anderson,args.anderson_policy))
+        if args.newton_preconditioner is not None:
+            config = replace(config,newton_preconditioner=args.newton_preconditioner)
         if args.write_config:
             save_config(args.write_config, config)
             return
