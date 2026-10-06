@@ -96,11 +96,25 @@ def test_csr_ib_original_quadrature_force_torque_and_power(device,dtype,layout):
     torch.testing.assert_close(U,X@A.T+v,**tolerance)
     resultant = assembled.grid.volume*torch.stack([f.sum() for f in density])
     torch.testing.assert_close(resultant,force.sum(0),**tolerance)
-    torque = X.new_zeros(3)
-    for c,f in enumerate(density):
-        vector = X.new_zeros((*f.shape,3)); vector[...,c] = f
-        torque += assembled.grid.volume*torch.linalg.cross(assembled.grid.coordinates(c,device=device,dtype=dtype),vector).sum((0,1,2))
-    torch.testing.assert_close(torque,torch.linalg.cross(X,force).sum(0),**tolerance)
+    # A zero resultant moment still comes from nonzero cancelling terms.
+    # Accumulate diagnostics in float64; bound float32 transfer roundoff by
+    # the unsigned moment contributions, not the near-zero resultant.
+    target_torque = torch.linalg.cross(X.double(),force.double()).sum(0)
+    for values in (expected,density):
+        torque = torch.zeros(3,device=device,dtype=torch.float64)
+        unsigned_moment = torch.zeros_like(torque)
+        for c,f in enumerate(values):
+            vector = torch.zeros((*f.shape,3),device=device,dtype=torch.float64)
+            vector[...,c] = f.double()
+            coordinates = assembled.grid.coordinates(c,device=device,dtype=torch.float64)
+            moment = assembled.grid.volume*torch.linalg.cross(coordinates,vector)
+            torque += moment.sum((0,1,2))
+            unsigned_moment += moment.abs().sum((0,1,2))
+        bound = (tolerance['atol'] + tolerance['rtol']*target_torque.abs()
+                 + 8*torch.finfo(dtype).eps*unsigned_moment)
+        assert torch.all((torque-target_torque).abs()<=bound), (
+            f'torque error {(torque-target_torque).abs().tolist()} exceeds '
+            f'cancellation-aware bound {bound.tolist()}')
     torch.testing.assert_close((force*U).sum(),assembled.grid.volume*sum((u*f).sum() for u,f in zip(field,density)),**tolerance)
     assert all(B.layout==torch.sparse_csr and B.device==X.device for B in stencil.gather+stencil.spread)
     assert max(v['maximum_batch_entries'] for v in stencil.assembly['components'])<=512
