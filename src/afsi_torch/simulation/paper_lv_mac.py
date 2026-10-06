@@ -1,10 +1,10 @@
-"""Real LV passive-inflation reproduction, Ma et al. 2024 section V.F."""
+"""Real-LV BE-BE driver for paper inflation and prescribed active cycles."""
 import csv
 from dataclasses import asdict, replace
 from pathlib import Path
 from time import perf_counter
 import torch
-from ..paper_lv import PaperLVConfig, imported_model
+from ..paper_lv import PaperHOParameters, PaperLVConfig, imported_model
 from ..paper_lv_checkpoint import save as save_checkpoint, load as load_checkpoint
 from ..config import TimeConfig
 from ..cycle_checkpoint import atomic_json
@@ -52,13 +52,15 @@ def run(*, case_config=None, device='cuda', output=None, resume=None, end_time=N
     writer = MACWriter(folder/'vtk', model, driver.grid, resume_time=state.time if resume else None,
         pressure_description='physical MAC projection pressure; p=0 at outer box faces; endpoint time') if config.output.write_vtk else None
     steps = round(config.time.end_time/config.time.dt)
+    active_cycle = config.load_protocol=='active-cycle'
 
     def row():
         nonlinear = info.get('nonlinear', {})
+        pressure, tension = model.loads.at(state.time)
         return dict(step=state.step, time_s=state.time,
-            endocardial_pressure_mmhg=model.loads.at(state.time)[0]/1333.22387415,
-            endocardial_pressure_dyn_per_cm2=model.loads.at(state.time)[0],
-            active_tension_dyn_per_cm2=0., **model.diagnostics(state.x),
+            endocardial_pressure_mmhg=pressure/1333.22387415,
+            endocardial_pressure_dyn_per_cm2=pressure,
+            active_tension_dyn_per_cm2=tension, **model.diagnostics(state.x),
             divergence_l2=info.get('divergence_l2', 0.), power_error=info.get('power_error', 0.),
             nonlinear_iterations=nonlinear.get('iterations', 0), nonlinear_residual=nonlinear.get('residual_norm', 0.),
             fluid_solves=nonlinear.get('fluid_solves', 0), courant=info.get('courant', 0.),
@@ -75,6 +77,11 @@ def run(*, case_config=None, device='cuda', output=None, resume=None, end_time=N
             reference='Ma et al., Physics of Fluids 36, 081914 (2024), section V.F', doi='10.1063/5.0225605',
             units='cm-g-s', solid_nodes=len(state.x), solid_cells=len(model.mesh.cells), fluid_shape=driver.grid.shape,
             config=asdict(config), material='eq81/82 RAW I1 H-O with normal-stress removal and log(I3) penalty',
+            load_protocol=config.load_protocol,
+            case_purpose='user active-cycle extension' if active_cycle else 'paper passive-inflation reproduction',
+            active_stress=dict(enabled=active_cycle, form='T(t)*(1+slope*(lambda_f-1))*(F*f0) outer f0',
+                stretch_slope=config.material.active_stretch_slope, coefficient_units='dyn/cm2',
+                stretch_multiplier_clipped=False),
             time_scheme='BE-BE; endpoint FE force; old-geometry dual IB; BE diffusion/Chorin projection',
             convection='first-order characteristic tracing and trilinear semi-Lagrangian MAC sampling' if config.flow.convection else 'disabled',
             fluid_boundaries='homogeneous Neumann velocity diffusion; homogeneous Dirichlet pressure on physical box faces',
@@ -82,13 +89,17 @@ def run(*, case_config=None, device='cuda', output=None, resume=None, end_time=N
                 'fixed dt rather than the adaptive time sequence shown in Fig26',
                 'characteristic tracing/interpolation reconstructed; authors implementation unavailable',
                 'interaction quadrature density/rule and solver tolerances are explicit implementation choices']
-                + ([] if config.nonlinear_solver == 'jfnk' else ['Anderson/assembled-CSR Newton instead of paper JFNK/BiCGSTAB; same BE-BE residual']),
+                + ([] if config.nonlinear_solver == 'jfnk' else ['Anderson/assembled-CSR Newton instead of paper JFNK/BiCGSTAB; same BE-BE residual'])
+                + (['user material coefficients differ from paper V.F; see config.material'] if config.material != PaperHOParameters() else [])
+                + (['user 0.8 s periodic pressure and active PK1 added; not the paper V.F passive benchmark'] if active_cycle else []),
             energy_claim='no unconditional energy theorem asserted for this loaded open-boundary corrected H-O experiment',
             interaction_quadrature=driver.transfer.quadrature_summary() if hasattr(driver.transfer, 'quadrature_summary') else dict(mode='fixed'),
             nonlinear_solver=config.nonlinear_solver, pressure_backend=driver.flow.pressure_solver.backend,
             gpu_memory=allocator_sample(state.x.device), last=history[-1], last_solver_info=info,
             visualization=writer.summary() if writer else dict(enabled=False),
-            full_horizon_validated=status == 'completed' and state.time >= 1.5,
+            full_horizon_validated=status == 'completed' and state.time >= max(config.time.end_time,
+                config.cyclic_loads.period if active_cycle else 1.5)-1e-12,
+            completed_active_cycles=int((state.time+1e-12)/config.cyclic_loads.period) if active_cycle else 0,
             published_results_reproduced=False, **{k:v for k,v in progress.items() if k != 'elapsed_seconds'})
         save_checkpoint(folder/'checkpoint.npz', model, state, config, progress)
         atomic_json(folder/'configuration.json', asdict(config)); atomic_json(folder/'report.json', report)
@@ -102,7 +113,10 @@ def run(*, case_config=None, device='cuda', output=None, resume=None, end_time=N
         save('running')
         print(f'Real LV Ma2024 BE-BE/P1: {device}, grid={driver.grid.shape}, nodes={len(state.x)}, '
               f'cells={len(model.mesh.cells)}, dt={config.time.dt:g}; steps {state.step}->{steps}', flush=True)
-        print(f'Passive inflation: 0->{config.loads.target_mmhg:g} mmHg over {config.loads.ramp_seconds:g} s, then held; mu={config.fluid.mu:g}; '
+        load_description = (f'Active cycle: period={config.cyclic_loads.period:g} s, user pressure/tension waveform, '
+                            f'active stretch slope={config.material.active_stretch_slope:g}' if active_cycle else
+                            f'Passive inflation: 0->{config.loads.target_mmhg:g} mmHg over {config.loads.ramp_seconds:g} s, then held')
+        print(f'{load_description}; mu={config.fluid.mu:g}; '
               f'solver={config.nonlinear_solver}; open pressure boundary; radial base retained', flush=True)
         print(f'Execution: support={config.support_backend}, Helmholtz={config.flow.helmholtz_backend}, '
               f'IB shared={config.interaction_quadrature.shared_execution}', flush=True)
@@ -113,8 +127,9 @@ def run(*, case_config=None, device='cuda', output=None, resume=None, end_time=N
                 writer.write(state)
             if sample:
                 history.append(row()); last = history[-1]
+                active_text = f'T={last["active_tension_dyn_per_cm2"]/10000:.4g} kPa, ' if active_cycle else ''
                 print(f'step {state.step}/{steps}, t={state.time:.6f}, V={last["cavity_volume_ml"]:.8g} mL, '
-                    f'p_endo={last["endocardial_pressure_mmhg"]:.4g} mmHg, minJ={last["minimum_detF"]:.6g}, '
+                    f'p_endo={last["endocardial_pressure_mmhg"]:.4g} mmHg, {active_text}minJ={last["minimum_detF"]:.6g}, '
                     f'div={last["divergence_l2"]:.3g}, iterations={last["nonlinear_iterations"]}, '
                     f'fluid solves={last["fluid_solves"]}, residual={last["nonlinear_residual"]:.3g}', flush=True)
             if state.step % config.output.checkpoint_every == 0:

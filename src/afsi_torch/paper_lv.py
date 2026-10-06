@@ -14,7 +14,7 @@ from .mac.adaptive_transfer import InteractionQuadratureOptions
 from .mac.backward_euler import BEFlowOptions
 from .nonlinear import NewtonOptions, GMRESOptions
 from .mac.midpoint_solver import AndersonOptions
-from .holzapfel_ogden import invariants, cofactor
+from .holzapfel_ogden import invariants, cofactor, RealLVLoads
 from .real_lv import RealLVSolid
 from .mesh_io import read_solid_mesh
 from .ho_tangent import HOTangentAssembler
@@ -33,6 +33,7 @@ class PaperHOParameters:
     a_fs: float = 4108.
     b_fs: float = 11.3
     kappa: float = 5e6
+    active_stretch_slope: float = 4.9
 
     def __post_init__(self):
         if any(not isfinite(v) or v <= 0 for v in vars(self).values()):
@@ -49,8 +50,8 @@ def paper_energy(F, fiber, sheet, p):
         + p.a_fs/(2*p.b_fs)*torch.expm1(p.b_fs*I8.square()))
 
 
-def paper_pk1(F, fiber, sheet, p):
-    """Eq. 82: derivative of RAW-I1 W plus normal-stress and log(I3) terms."""
+def paper_pk1(F, fiber, sheet, p, tension=0.):
+    """Eq. 82 passive PK1, optionally plus the user's prescribed active PK1."""
     J, I1, _, Ff, Fs, I4f, I4s, I8 = invariants(F, fiber, sheet)
     invT = cofactor(F)/J[..., None, None]
     matrix = p.a*torch.exp(p.b*(I1-3))
@@ -60,7 +61,11 @@ def paper_pk1(F, fiber, sheet, p):
     P = P+(2*p.a_f*ef*torch.exp(p.b_f*ef.square()))[..., None, None]*outer(Ff, fiber)
     P = P+(2*p.a_s*es*torch.exp(p.b_s*es.square()))[..., None, None]*outer(Fs, sheet)
     P = P+(p.a_fs*I8*torch.exp(p.b_fs*I8.square()))[..., None, None]*(outer(Ff, sheet)+outer(Fs, fiber))
-    return P+(2*p.kappa*torch.log(J))[..., None, None]*invT
+    P = P+(2*p.kappa*torch.log(J))[..., None, None]*invT
+    # T is a nominal active coefficient, not a prescribed Cauchy stress.
+    # Preserve the supplied UFL, including its unclipped stretch multiplier.
+    active = tension*(1+p.active_stretch_slope*(torch.sqrt(I4f)-1))
+    return P+active[..., None, None]*outer(Ff, fiber)
 
 
 @dataclass(frozen=True)
@@ -98,6 +103,8 @@ class PaperLVConfig:
     fluid: FluidConfig = field(default_factory=lambda: FluidConfig((128,)*3, (13.,)*3, rho=1., mu=.04))
     material: PaperHOParameters = field(default_factory=PaperHOParameters)
     loads: InflationLoads = field(default_factory=InflationLoads)
+    load_protocol: str = 'inflation'
+    cyclic_loads: RealLVLoads = field(default_factory=RealLVLoads)
     flow: BEFlowOptions = field(default_factory=BEFlowOptions)
     pressure_solver: MGOptions = field(default_factory=MGOptions)
     mass_solver: SolverOptions = field(default_factory=mass_options)
@@ -117,6 +124,8 @@ class PaperLVConfig:
     output: OutputConfig = field(default_factory=lambda: OutputConfig(100, 1000, 200, True))
 
     def __post_init__(self):
+        if self.load_protocol not in ('inflation', 'active-cycle'):
+            raise ValueError('load_protocol must be inflation or active-cycle')
         for name in ('fiber_files', 'sheet_files', 'basal_center_cm'):
             object.__setattr__(self, name, tuple(getattr(self, name)))
         if len(self.fiber_files) != 3 or len(self.sheet_files) != 3:
@@ -138,15 +147,20 @@ class PaperLVConfig:
         if not self.output.fluid_fields:
             raise ValueError('paper LV output requires paired solid/fluid fields')
 
+    @property
+    def applied_loads(self):
+        return self.cyclic_loads if self.load_protocol=='active-cycle' else self.loads
+
 
 class PaperLVSolid(RealLVSolid):
     """Reuse imported P1 assembly, follower pressure and blocked geometry checks."""
     def __init__(self, mesh, config):
         super().__init__(mesh, config)
+        self.loads = config.applied_loads
         self.reference_energy = paper_energy(self.element_gradient(mesh.X), mesh.fiber, mesh.sheet, config.material)
 
     def force_from_geometry(self, x, F, endo_area, loads):
-        P = paper_pk1(F, self.mesh.fiber, self.mesh.sheet, self.parameters)
+        P = paper_pk1(F, self.mesh.fiber, self.mesh.sheet, self.parameters, loads[1])
         local = -self.volumes[:, None, None]*torch.einsum('eiJ,eaJ->eai', P, self.gradients)
         force = torch.zeros_like(x).index_add(0, self.mesh.cells.reshape(-1), local.reshape(-1, 3))
         pressure = bd._scatter(torch.einsum('q,qa,bqi->bai', self.endo.quadrature_weights,
@@ -167,7 +181,7 @@ class PaperLVSolid(RealLVSolid):
 
 class PaperHOTangent(HOTangentAssembler):
     def _volume(self, F, fiber, sheet, gradients, volumes, tension):
-        stress = lambda F, f, s: paper_pk1(F, f, s, self.model.parameters)
+        stress = lambda F, f, s: paper_pk1(F, f, s, self.model.parameters, tension)
         D = torch.vmap(torch.func.jacrev(stress, argnums=0))(F, fiber, sheet)
         return -torch.einsum('e,eaJ,eiJkL,ebL->eaibk', volumes, gradients, D, gradients)
 

@@ -1,0 +1,23 @@
+{
+  "load_protocol": "active-cycle",
+  "time": {"dt": 0.0001, "end_time": 2.4},
+  "cyclic_loads": {
+    "period": 0.8,
+    "pressure_kpa": 1.067,
+    "pressure_increment_kpa": 13.46,
+    "tension_kpa": 84.26
+  },
+  "material": {
+    "a": 2400.0, "b": 5.08,
+    "a_f": 14600.0, "b_f": 4.15,
+    "a_s": 8700.0, "b_s": 1.6,
+    "a_fs": 3000.0, "b_fs": 1.3,
+    "kappa": 5000000.0,
+    "active_stretch_slope": 4.9
+  },
+  "nonlinear_solver": "anderson-newton",
+  "support_backend": "vertices",
+  "flow": {"helmholtz_backend": "graph"},
+  "interaction_quadrature": {"shared_execution": "reference"},
+  "output": {"log_every": 100, "output_every": 1000, "checkpoint_every": 1000}
+}

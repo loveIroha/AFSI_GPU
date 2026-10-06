@@ -3,7 +3,8 @@
 本 demo 现以 *An unconditionally stable scheme for the immersed boundary
 method with application in cardiac mechanics* 的 V.F 节为复现目标。
 [论文信息及作者接受稿](https://eprints.gla.ac.uk/333577/)，DOI: 10.1063/5.0225605。
-旧的主动收缩三周期预设已被替换；旧求解器仍保留在库中。
+默认是被动充盈；`active_cycle.json` 在同一 BE–BE 框架上加入用户指定的
+周期压力和主动收缩，作为单独的拓展算例，不属于论文 V.F 被动算例的复现。
 输入真实网格和 fiber/sheet 属于用户数据，不随仓库分发。
 
 ## 对齐设置
@@ -72,6 +73,95 @@ JFNK 缓存每个非线性残差的范数。BiCGSTAB 使用递推残差，在候
 论文能量证明的适用假设不能直接推广为此开放边界、外载荷、修正 H–O 模型
 在任意 dt 下无条件收敛。隐式格式也不保证 JFNK 一定收敛。通过一次运行不等于
 空间/时间收敛验证；程序不会将完成时长自动解释为论文结果复现。
+
+## 周期压力与主动收缩拓展
+
+`--config demo/real_lv_fsi/active_cycle.json` 选择此拓展，默认三个 0.8 s 周期。
+采用用户指定的材料参数，保留当前 RAW-I1/应力修正形式、128³ 流体、dt=1e-4、
+径向底部约束和 BE–BE 残差。原论文参数继续作为默认被动算例的参数。
+采用实测较快的 Anderson–Newton、Helmholtz Graph、共享 IB reference 执行。
+`reference` 在这里仍是融合 GPU 内核。其他参数可通过部分 JSON 或命令行修改。
+
+| 参数 | 主动拓展的用户参数 |
+| --- | --- |
+| a, b | 2400 dyn/cm², 5.08 |
+| a_f, b_f | 14600 dyn/cm², 4.15 |
+| a_s, b_s | 8700 dyn/cm², 1.6 |
+| a_fs, b_fs | 3000 dyn/cm², 1.3 |
+| beta_s，即代码 kappa | 5e6 dyn/cm²，体积惩罚 |
+| 底部 beta | 5e6 dyn/cm³，独立的径向约束系数 |
+
+材料数值已是厘米制应力单位，不再乘 10000；只有 kPa 波形需要单位换算。
+这是参数替换，不会自动改回旧 UFL 的等容 I1bar 形式。
+
+总第一类 Piola 应力为 `P = P_passive + P_active`，其中
+
+`P_active = T(t) * [1 + 4.9*(lambda_f - 1)] * (F*f0) ⊗ f0`，
+`lambda_f = sqrt(f0ᵀ Fᵀ F f0)`。
+
+这与用户之前提供的 UFL 一致。T 是主动应力系数，单位 dyn/cm²；不能直接把
+标量 T 加到应力张量，也不把 T 当作已经归一化的 Cauchy 主动应力。该主动项
+在新时刻、新试探位置求值，包含在编译有限元力与组装 CSR Newton 切线中。
+默认不截断伸长因子；当 lambda_f < 1-1/4.9≈0.796 时它会变负，这是原式的性质。
+
+相位 `tau = t mod 0.8`，以下值先按 kPa 求出，再乘 10000 转为 dyn/cm²：
+
+| 相位（s） | 内膜压力 p（kPa） | 张力系数 T（kPa） |
+| --- | --- | --- |
+| 0–0.2 | 1.067*tau/0.2 | 0 |
+| 0.2–0.5 | 1.067 | 0 |
+| 0.5–0.65 | 1.067+13.46*(1-exp(-d²/0.004)), d=tau-0.5 | 84.26*(1-exp(-d²/0.005)) |
+| 0.65–0.8 | 同上，d=0.8-tau | 同上，d=0.8-tau |
+
+周期边界压力从约 1.067 kPa 重置到 0，保留原表达式的跳变。84.26 kPa 是
+张力表达式的幅值系数，实际峰值约 83.324 kPa；压力峰值约 14.4785 kPa。
+这些是给定的压力/激活载荷，没有瓣膜或闭环循环模型，不能把分段名称当作
+已强制满足等容收缩、射血等生理约束。时变主动项会输入机械能，不能据此
+宣称无外力系统的能量单调衰减定理适用。
+
+主动测试覆盖应力、力、切线、加载时刻、真实耦合残差、检查点和输出：
+
+```bash
+CUDA_VISIBLE_DEVICES=0 python -m pytest -q tests/test_paper_active.py
+```
+
+真实网格验证需要覆盖 t>0.5 s，0.005 s 短模拟尚未激活。先跑一个周期可用：
+
+```bash
+CUDA_VISIBLE_DEVICES=0 python -u demo/real_lv_fsi/run_mac.py \
+  --config demo/real_lv_fsi/active_cycle.json \
+  --mesh-dir /mnt/large2/gjh/realistic_left_ventricle \
+  --device cuda --cycles 1 --output results/real_lv_active_1cycle
+```
+
+三个周期后台运行（24,000 步）：
+
+```bash
+run_dir="results/real_lv_active_$(date +%Y%m%d_%H%M%S)"
+mkdir -p "$run_dir"
+CUDA_VISIBLE_DEVICES=0 nohup /usr/bin/time \
+  -f 'elapsed_seconds=%e exit_code=%x' -o "$run_dir/runtime.txt" \
+  python -u demo/real_lv_fsi/run_mac.py \
+  --config demo/real_lv_fsi/active_cycle.json \
+  --mesh-dir /mnt/large2/gjh/realistic_left_ventricle \
+  --device cuda --cycles 3 --output "$run_dir/simulation" \
+  > "$run_dir/run.log" 2>&1 < /dev/null &
+echo $! > "$run_dir/launcher.pid"
+echo "$run_dir"
+```
+
+从未变形网格、零流速开始；不会把被动充盈末态当作新的无应力参考构形。
+`--resume` 只恢复原检查点的协议，禁止中途把被动载荷改为主动载荷。
+主动检查点可用同一入口续算，例如 `--resume .../checkpoint.npz --end-time 2.4`。
+`history.csv` 记录真实 T(t)，报告区分主动拓展和被动复现。
+`--cycles` 要求 active-cycle 协议，不与 `--end-time` 同时使用。
+若要先隔离材料变化对充盈的影响，可用同一预设加
+`--load-protocol inflation --end-time 1.5`，仅运行 0–8 mmHg 被动充盈。
+
+V 表示内膜与虚拟底部封口围成的腔内容积，cm³=mL，并非累计流入量。
+论文图 25 的末期体积约 132–133 mL（读图估计）。完成时间推进不等于该曲线
+已经复现；如果结果明显偏离，需先核对参考网格、fiber/sheet、边界和离散解。
+添加主动应力本身不能修复被动充盈偏小。
 
 ## 安装与短模拟
 

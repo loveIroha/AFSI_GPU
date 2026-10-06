@@ -42,7 +42,7 @@ def load(path, device='cpu'):
             or metadata.get('material_model') != 'paper-eq81-eq82-raw-I1'
             or metadata.get('time_scheme') != 'BE-BE-semilagrangian'
             or metadata.get('units') != 'cm-g-s' or digest(metadata, data) != checksum):
-        raise ValueError('paper BE-BE checkpoint required; old CNAB/active-cycle checkpoints cannot be resumed')
+        raise ValueError('paper BE-BE checkpoint required; old CNAB/active-cycle checkpoints from the pre-BE driver cannot be resumed')
     integers = {'cells', 'faces', 'facet_tags', 'boundary_cells', 'boundary_local_facets'}
     for n, a in data.items():
         if a.dtype != (np.int64 if n in integers else np.float64) or not np.isfinite(a).all():

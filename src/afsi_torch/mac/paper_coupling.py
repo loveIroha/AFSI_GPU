@@ -175,7 +175,9 @@ def jfnk(problem, initial, options):
 class BEProblem:
     def __init__(self, driver, state, stencil, departure):
         self.driver, self.state, self.stencil, self.departure = driver, state, stencil, departure
-        self.time = state.time+driver.flow.dt
+        # One canonical endpoint clock for loads, state and checkpoint fields.
+        # Repeated addition may differ by one ulp from (step+1)*dt.
+        self.time = (state.step+1)*driver.flow.dt
         self.last_y = self.last_residual = None
         self.last_data = None
         self.pressure_initial = state.pressure
@@ -325,7 +327,7 @@ class BEIBStepper:
         courant = self.flow.dt*sum(u.abs().max()/h for u, h in zip(velocity, self.grid.spacing)).item()
         if not isfinite(courant) or courant > self.config.max_courant:
             raise ValueError(f'BE/semi-Lagrangian characteristic CFL {courant:g} > {self.config.max_courant:g}; reduce dt')
-        next_state = PaperState(state.step+1, (state.step+1)*self.flow.dt, x, velocity, pressure,
+        next_state = PaperState(state.step+1, problem.time, x, velocity, pressure,
             force, problem.time, pressure_time=problem.time, previous_x=state.x.clone())
         info = dict(nonlinear=dict(iterations=result.iterations,
             residual_norm=result.residual_norm, tolerance=result.tolerance, history=result.history,

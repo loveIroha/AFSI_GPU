@@ -1,4 +1,4 @@
-"""Ma et al. 2024 real-LV passive inflation. Edit CONFIG or pass partial JSON."""
+"""Real-LV BE-BE: paper passive inflation or prescribed active cycles."""
 import argparse
 from dataclasses import replace
 from pathlib import Path
@@ -22,6 +22,8 @@ def main(argv=None):
     p.add_argument('--resume', help='paper BE-BE checkpoint only; old CNAB checkpoints are incompatible')
     p.add_argument('--dt', type=float)
     p.add_argument('--end-time', type=float)
+    p.add_argument('--load-protocol', choices=('inflation', 'active-cycle'))
+    p.add_argument('--cycles', type=int, help='number of 0.8 s active cycles; alternative to --end-time')
     p.add_argument('--fluid-cells', type=int)
     p.add_argument('--fluid-lengths', nargs=3, type=float)
     p.add_argument('--fluid-origin', nargs=3, type=float)
@@ -50,6 +52,7 @@ def main(argv=None):
     if args.resume:
         forbidden = (args.config, args.write_config, args.mesh_dir, args.dt, args.fluid_cells,
             args.fluid_lengths, args.fluid_origin, args.rho, args.mu, args.kappa, args.beta,
+            args.load_protocol, args.cycles,
             args.nonlinear_solver, args.support_backend, args.helmholtz_backend,
             args.ib_point_density, args.interaction_quadrature, args.pressure_backend,
             args.ib_rule_family, args.ib_transfer_backend, args.ib_stencil_backend, args.ib_prepare_backend,
@@ -60,6 +63,12 @@ def main(argv=None):
         report = run(device=args.device, output=args.output, resume=args.resume, end_time=args.end_time)
     else:
         config = load_config(args.config, CONFIG) if args.config else CONFIG
+        protocol = config.load_protocol if args.load_protocol is None else args.load_protocol
+        end_time = config.time.end_time if args.end_time is None else args.end_time
+        if args.cycles is not None:
+            if protocol!='active-cycle' or args.cycles<1 or args.end_time is not None:
+                p.error('--cycles requires active-cycle, a positive integer, and no --end-time')
+            end_time = args.cycles*config.cyclic_loads.period
         execution = LVExecutionConfig(warm_start=True) if args.reference else config.execution
         if args.pressure_backend is not None:
             execution = replace(execution, pressure_backend=args.pressure_backend)
@@ -76,8 +85,8 @@ def main(argv=None):
                 shared_execution=args.ib_shared_execution, reuse_stencil_buffers=args.reuse_ib_buffers).items() if v is not None})
         config = replace(config,
             source_dir=config.source_dir if args.mesh_dir is None else args.mesh_dir,
-            time=TimeConfig(config.time.dt if args.dt is None else args.dt,
-                config.time.end_time if args.end_time is None else args.end_time),
+            load_protocol=protocol,
+            time=TimeConfig(config.time.dt if args.dt is None else args.dt,end_time),
             fluid=replace(config.fluid, **{k:v for k,v in dict(
                 shape=(args.fluid_cells,)*3 if args.fluid_cells else None, lengths=args.fluid_lengths,
                 origin=args.fluid_origin, rho=args.rho, mu=args.mu).items() if v is not None}),
