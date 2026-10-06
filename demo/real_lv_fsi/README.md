@@ -545,6 +545,65 @@ CUDA_VISIBLE_DEVICES=0 python -u demo/real_lv_fsi/run_mac.py \
 The backend choice is persisted in the checkpoint, while the execution cache
 is rebuilt after loading; no cache is serialized as part of the physical state.
 
+### Reuse quadrature data within a cell
+
+`--ib-csr-contraction-backend cell` schedules one GPU program per tetrahedron.
+It loads that cell's current quadrature bases, all four delta weights on each
+axis, volume weights and P1 shape values before traversing its lattice tiles.
+The program reuses these vectors throughout the cell, rather than loading
+site-by-quadrature arrays for every tile. The original `sites` kernel remains
+the default and comparison baseline. Both `hash` and `cached-hash` can use
+the cell kernel, including initial assembly and bounded-cache reset paths.
+
+This changes execution only: the current adaptive quadrature and all delta
+weights are still integrated. No points are removed, mass is still consistent,
+CSR spreading uses the exact transpose of interpolation, and BE-BE loads and
+true nonlinear residual acceptance are unchanged. Cell ownership removes the
+per-site prefix binary search. The site-by-quadrature register tile is bounded;
+rules above 128 points use eight warps to distribute retained quadrature data.
+Hardware speedup is not assumed: larger cells or higher orders can change
+occupancy, so compare complete warmed steps on the intended GPU.
+
+Run only the new tests, then compare with your existing BE-BE checkpoint:
+
+```bash
+CUDA_VISIBLE_DEVICES=0 python -m pytest -q tests/test_csr_cell_contraction.py
+
+checkpoint="results/real_lv_active_20261006_195906/simulation/checkpoint.npz"
+CUDA_VISIBLE_DEVICES=0 python -u validation/benchmark_paper_lv.py \
+  --checkpoint "$checkpoint" --device cuda --warmup 5 --steps 20 \
+  --solvers anderson-newton --anderson-budgets 6 \
+  --linear-check-intervals 5 --anderson-policies legacy \
+  --newton-preconditioners none --linear-policies inexact \
+  --ib-response-backends csr --csr-assembly-backends cached-hash \
+  --csr-contraction-backends sites cell \
+  --profile --profile-steps 3 \
+  --output results/paper_lv_cell_contraction/report.json
+```
+
+The benchmark does not overwrite the checkpoint. Every variant records its
+contraction selection, full-step time, endpoint differences, true residual
+acceptance and cache work. Assembly metadata identifies the actual CUDA
+execution; CPU runs retain the independent tensor oracle.
+
+Profiles now **continue from the measured endpoint**, with each driver's
+existing cache history, instead of replaying an earlier state using a later
+cache union. The profile's start/end times and cache counters are recorded
+separately. Its steps lie just after the measured interval; profile phases
+remain nested inclusive intervals and must not be added to their parents.
+
+After CUDA tests pass and the cell variant wins, select it for a checkpoint
+resume; the choice is saved, while execution caches are reconstructed:
+
+```bash
+CUDA_VISIBLE_DEVICES=0 python -u demo/real_lv_fsi/run_mac.py \
+  --device cuda --resume "$checkpoint" --end-time 2.4 \
+  --nonlinear-solver anderson-newton --anderson-policy legacy \
+  --anderson-max-iterations 6 --newton-preconditioner none \
+  --linear-policy inexact --ib-response-backend csr \
+  --ib-csr-assembly-backend cached-hash --ib-csr-contraction-backend cell
+```
+
 ### Compare Anderson-to-Newton switching budgets
 
 For a step that repeatedly exhausts six Anderson trials before Newton, compare

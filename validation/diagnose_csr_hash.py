@@ -61,7 +61,8 @@ def compare_matrices(actual,expected):
 @torch.no_grad()
 def diagnose(checkpoint,device):
     model,state,config,_ = load(checkpoint,device)
-    config = replace(config,ib_response_backend='csr',ib_csr_assembly_backend='coalesce')
+    config = replace(config,ib_response_backend='csr',ib_csr_assembly_backend='coalesce',
+                     ib_csr_contraction_backend='sites')
     driver = BEIBStepper(model,config,device)
     sync = lambda: torch.cuda.synchronize(device) if state.x.is_cuda else None
     report = dict(checkpoint=str(checkpoint),time_s=state.time,device=str(device),

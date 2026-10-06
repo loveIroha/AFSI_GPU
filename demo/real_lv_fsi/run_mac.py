@@ -40,6 +40,7 @@ def main(argv=None):
     p.add_argument('--linear-policy', choices=('reference','estimated','inexact'), help='solver-only option; allowed on resume')
     p.add_argument('--ib-response-backend', choices=('quadrature','csr'), help='equivalent frozen IB execution; allowed on resume')
     p.add_argument('--ib-csr-assembly-backend', choices=('coalesce','hash','cached-hash'), help='GPU CSR construction; allowed on resume')
+    p.add_argument('--ib-csr-contraction-backend', choices=('sites','cell'), help='GPU quadrature data reuse; cell requires hash/cached-hash; allowed on resume')
     p.add_argument('--support-backend', choices=('points', 'vertices'))
     p.add_argument('--helmholtz-backend', choices=('reference', 'workspace', 'graph'))
     p.add_argument('--ib-point-density', type=float)
@@ -74,6 +75,7 @@ def main(argv=None):
                      anderson_policy=args.anderson_policy,newton_preconditioner=args.newton_preconditioner,
                      linear_policy=args.linear_policy,ib_response_backend=args.ib_response_backend,
                      ib_csr_assembly_backend=args.ib_csr_assembly_backend,
+                     ib_csr_contraction_backend=args.ib_csr_contraction_backend,
                      anderson_max_iterations=args.anderson_max_iterations,
                      nonlinear_solver=args.nonlinear_solver)
     else:
@@ -126,10 +128,9 @@ def main(argv=None):
         if args.linear_policy is not None:
             from afsi_torch.nonlinear import coupled_linear_policy
             config = replace(config,nonlinear=coupled_linear_policy(config.nonlinear,args.linear_policy))
-        if args.ib_response_backend is not None:
-            config = replace(config,ib_response_backend=args.ib_response_backend)
-        if args.ib_csr_assembly_backend is not None:
-            config = replace(config,ib_csr_assembly_backend=args.ib_csr_assembly_backend)
+        config = replace(config,**{k:v for k,v in dict(ib_response_backend=args.ib_response_backend,
+            ib_csr_assembly_backend=args.ib_csr_assembly_backend,
+            ib_csr_contraction_backend=args.ib_csr_contraction_backend).items() if v is not None})
         if args.write_config:
             save_config(args.write_config, config)
             return

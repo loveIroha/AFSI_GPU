@@ -300,7 +300,8 @@ class BEIBStepper:
             from .assembled_transfer import AssembledP1Transfer
             cls = AssembledP1Transfer
             extra.update(chunk_entries=config.ib_csr_chunk_entries,max_entries=config.ib_csr_max_entries,
-                         assembly_backend=config.ib_csr_assembly_backend)
+                         assembly_backend=config.ib_csr_assembly_backend,
+                         contraction_backend=config.ib_csr_contraction_backend)
         self.transfer = cls(self.grid, geometry, warm_start=config.execution.warm_start,
             mass_backend=config.execution.mass_backend, options=config.mass_solver, **extra)
         self.solid = model.execution_factory() if fused else model

@@ -73,6 +73,7 @@ def benchmark(checkpoint, *, device='cuda', warmup=5, steps=20, intervals=(1, 5)
               helmholtz_backends=(None,), anderson_policies=(None,),
               newton_preconditioners=(None,), linear_policies=(None,),
               ib_response_backends=(None,),csr_assembly_backends=(None,),
+              csr_contraction_backends=(None,),
               anderson_budgets=(None,),profile=False, profile_steps=3):
     if warmup < 0 or steps < 1 or not intervals or any(n < 1 for n in intervals):
         raise ValueError('nonnegative warmup, positive steps and check intervals required')
@@ -85,6 +86,7 @@ def benchmark(checkpoint, *, device='cuda', warmup=5, steps=20, intervals=(1, 5)
             or not linear_policies or any(s not in (None,'reference','estimated','inexact') for s in linear_policies)
             or not ib_response_backends or any(s not in (None,'quadrature','csr') for s in ib_response_backends)
             or not csr_assembly_backends or any(s not in (None,'coalesce','hash','cached-hash') for s in csr_assembly_backends)
+            or not csr_contraction_backends or any(s not in (None,'sites','cell') for s in csr_contraction_backends)
             or not anderson_budgets or any(n is not None and (type(n) is not int or n<1) for n in anderson_budgets)
             or profile_steps < 1):
         raise ValueError('invalid solver/execution selections or profile steps')
@@ -96,9 +98,9 @@ def benchmark(checkpoint, *, device='cuda', warmup=5, steps=20, intervals=(1, 5)
     synchronize()
     load_seconds = perf_counter()-started
     variants, reference = [], None
-    for solver, interval, shared, support, helmholtz, policy, preconditioner, linear_policy, ib_backend, csr_builder, budget in product(solvers, intervals,
+    for solver, interval, shared, support, helmholtz, policy, preconditioner, linear_policy, ib_backend, csr_builder, contraction, budget in product(solvers, intervals,
             shared_executions, support_backends, helmholtz_backends,anderson_policies,newton_preconditioners,
-            linear_policies,ib_response_backends,csr_assembly_backends,anderson_budgets):
+            linear_policies,ib_response_backends,csr_assembly_backends,csr_contraction_backends,anderson_budgets):
         # Vary check intervals only for JFNK in this comparison; the other
         # solvers use the first interval, including their GMRES fallback.
         if solver != 'jfnk' and interval != intervals[0]:
@@ -112,6 +114,8 @@ def benchmark(checkpoint, *, device='cuda', warmup=5, steps=20, intervals=(1, 5)
         if solver == 'jfnk' and linear_policy != linear_policies[0]:
             continue
         if (ib_backend or config.ib_response_backend)!='csr' and csr_builder!=csr_assembly_backends[0]:
+            continue
+        if (ib_backend or config.ib_response_backend)!='csr' and contraction!=csr_contraction_backends[0]:
             continue
         driver = None
         cfg = None
@@ -135,15 +139,14 @@ def benchmark(checkpoint, *, device='cuda', warmup=5, steps=20, intervals=(1, 5)
                 cfg = replace(cfg,newton_preconditioner=preconditioner)
             if linear_policy is not None:
                 cfg = replace(cfg,nonlinear=coupled_linear_policy(cfg.nonlinear,linear_policy))
-            if ib_backend is not None:
-                cfg = replace(cfg,ib_response_backend=ib_backend)
-            if csr_builder is not None:
-                cfg = replace(cfg,ib_csr_assembly_backend=csr_builder)
+            cfg = replace(cfg,**{k:v for k,v in dict(ib_response_backend=ib_backend,
+                ib_csr_assembly_backend=csr_builder,ib_csr_contraction_backend=contraction).items() if v is not None})
             label = (f'{solver}/aa={policy or "saved"}/pc={cfg.newton_preconditioner}/check={interval}'
                      f'/aa-budget={cfg.anderson.max_iterations}+{cfg.anderson.extra_iterations}'
                      f'/ib={cfg.interaction_quadrature.shared_execution}/support={cfg.support_backend}'
                      f'/helmholtz={cfg.flow.helmholtz_backend}/linear={linear_policy or "saved"}'
-                     f'/response={cfg.ib_response_backend}/csr={cfg.ib_csr_assembly_backend}')
+                     f'/response={cfg.ib_response_backend}/csr={cfg.ib_csr_assembly_backend}'
+                     f'/contraction={cfg.ib_csr_contraction_backend}')
             driver = BEIBStepper(model, cfg, device)
             state = initial
             phase = 'warmup'
@@ -151,7 +154,6 @@ def benchmark(checkpoint, *, device='cuda', warmup=5, steps=20, intervals=(1, 5)
                 state, _ = driver.step(state, diagnostics=False)
             synchronize()
             setup_seconds = perf_counter()-setup
-            warm_state = state
             print(f'{label}: warmup completed; measuring {steps} steps', flush=True)
             totals = {key: 0 for key in ('iterations', 'fluid_solves', 'jacobian_actions',
                 'true_residual_checks', 'estimated_residual_checks','residual_restarts', 'scalar_reads',
@@ -184,6 +186,7 @@ def benchmark(checkpoint, *, device='cuda', warmup=5, steps=20, intervals=(1, 5)
                 anderson_policy=policy or 'saved',newton_preconditioner=cfg.newton_preconditioner,
                 linear_policy=linear_policy or 'saved',ib_response_backend=cfg.ib_response_backend,
                 ib_csr_assembly_backend=cfg.ib_csr_assembly_backend,
+                ib_csr_contraction_backend=cfg.ib_csr_contraction_backend,
                 linear_options=dict(check_policy=cfg.nonlinear.linear.check_policy,
                     true_check_interval=cfg.nonlinear.linear.true_check_interval,
                     forcing=cfg.nonlinear.linear_forcing,
@@ -225,7 +228,11 @@ def benchmark(checkpoint, *, device='cuda', warmup=5, steps=20, intervals=(1, 5)
                 phase = 'profile'
                 from validation.benchmark_mac import PhaseRecorder
                 recorder = PhaseRecorder(initial.x.device)
-                probe = warm_state
+                # Continue from the measured endpoint. Replaying warm_state
+                # with the later union cache would conceal support extensions.
+                probe = state
+                profile_time = probe.time
+                profile_cache_before = csr_cache_work(driver)
                 synchronize()
                 profile_start = perf_counter()
                 with profile_phases(driver, recorder):
@@ -233,6 +240,10 @@ def benchmark(checkpoint, *, device='cuda', warmup=5, steps=20, intervals=(1, 5)
                         probe, _ = driver.step(probe, diagnostics=False)
                 synchronize()
                 result['profile'] = dict(steps=profile_steps,
+                    start_time_s=profile_time,end_time_s=probe.time,
+                    cache_history='continues measured endpoint; no earlier-state replay',
+                    ib_csr_cache_per_step={key:(csr_cache_work(driver)[key]-profile_cache_before[key])/profile_steps
+                                          for key in profile_cache_before},
                     milliseconds_per_step=1000*(perf_counter()-profile_start)/profile_steps,
                     phases=recorder.summary(profile_steps),
                     interpretation='nested inclusive event intervals; do not sum parent and child phases; '
@@ -246,11 +257,13 @@ def benchmark(checkpoint, *, device='cuda', warmup=5, steps=20, intervals=(1, 5)
                 anderson_budget=cfg.anderson.max_iterations if cfg is not None else budget,
                 linear_policy=linear_policy,ib_response_backend=ib_backend,
                 ib_csr_assembly_backend=csr_builder,
+                ib_csr_contraction_backend=contraction,
                 shared_execution=shared, support_backend=support, helmholtz_backend=helmholtz,
                 last_accepted_time_s=state.time,failure_phase=phase,
                 failure_type=type(exc).__name__,failure=str(exc),traceback=traceback.format_exc()))
             print(f'{solver}/check={interval}/aa-budget={budget or config.anderson.max_iterations}'
-                  f'/csr={csr_builder or config.ib_csr_assembly_backend}: '
+                  f'/csr={csr_builder or config.ib_csr_assembly_backend}'
+                  f'/contraction={contraction or config.ib_csr_contraction_backend}: '
                   f'failed during {phase}: {exc}',flush=True)
         finally:
             del driver
@@ -276,7 +289,7 @@ def benchmark(checkpoint, *, device='cuda', warmup=5, steps=20, intervals=(1, 5)
         report['fastest_variant'] = {k:fastest[k] for k in ('solver','anderson_policy',
             'anderson_budget',
             'newton_preconditioner','milliseconds_per_step','shared_execution','support_backend','helmholtz_backend',
-            'linear_policy','ib_response_backend','ib_csr_assembly_backend')}
+            'linear_policy','ib_response_backend','ib_csr_assembly_backend','ib_csr_contraction_backend')}
     return report
 
 
@@ -298,6 +311,8 @@ def main():
     p.add_argument('--linear-policies', nargs='+', choices=('reference','estimated','inexact'))
     p.add_argument('--ib-response-backends', nargs='+', choices=('quadrature','csr'))
     p.add_argument('--csr-assembly-backends', nargs='+', choices=('coalesce','hash','cached-hash'))
+    p.add_argument('--csr-contraction-backends', nargs='+', choices=('sites','cell'),
+                   help='cell-resident quadrature reuse vs original site contraction; requires hash/cached-hash')
     p.add_argument('--profile', action='store_true')
     p.add_argument('--profile-steps', type=int, default=3)
     p.add_argument('--output', default='results/paper_lv_performance/report.json')
@@ -312,6 +327,7 @@ def main():
         linear_policies=tuple(args.linear_policies or [None]),
         ib_response_backends=tuple(args.ib_response_backends or [None]),
         csr_assembly_backends=tuple(args.csr_assembly_backends or [None]),
+        csr_contraction_backends=tuple(args.csr_contraction_backends or [None]),
         anderson_budgets=tuple(args.anderson_budgets) if args.anderson_budgets is not None else (None,),
         profile=args.profile, profile_steps=args.profile_steps)
     atomic_json(args.output, report)

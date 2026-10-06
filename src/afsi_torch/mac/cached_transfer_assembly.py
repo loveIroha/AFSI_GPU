@@ -199,13 +199,17 @@ def _cpu_cached_add(keys,values,workspace,cache):
             cache.missing_count += 1
 
 
-def update_cached_plans(stencil,c,plans,shape,workspace,cache,chunk_entries):
+def update_cached_plans(stencil,c,plans,shape,workspace,cache,chunk_entries,*,contraction_backend='sites'):
     from .assembled_transfer import _cpu_entries
     launches = peak = 0
     for group,offset,low,width,prefix,count in plans:
         if group.weights.is_cuda:
-            from ._triton_transfer_assembly import cached_entries
-            cached_entries(stencil,group,c,offset,low,width,prefix,count,shape,workspace,cache)
+            if contraction_backend=='cell':
+                from ._triton_cell_transfer_assembly import cell_entries
+                cell_entries(stencil,group,c,offset,low,width,prefix,count,shape,workspace,cache)
+            else:
+                from ._triton_transfer_assembly import cached_entries
+                cached_entries(stencil,group,c,offset,low,width,prefix,count,shape,workspace,cache)
             launches += 1
         else:
             for start in range(0,count,chunk_entries//4):
@@ -227,7 +231,7 @@ def merge_missing(workspace,cache,count):
         cpu_accumulate(keys,values,workspace)
 
 
-def assemble_component_cached(stencil,c,grid,node_count,*,chunk_entries,max_entries,workspace,cache):
+def assemble_component_cached(stencil,c,grid,node_count,*,chunk_entries,max_entries,workspace,cache,contraction_backend='sites'):
     shape,plans,raw = component_plans(stencil,c,grid)
     like = stencil.rule.groups[0].weights
     attempts = launches = peak = missing = 0
@@ -241,7 +245,8 @@ def assemble_component_cached(stencil,c,grid,node_count,*,chunk_entries,max_entr
                   cache.pattern_shape==(node_count,*shape))
     if compatible and cache.nnz<=max_entries:
         workspace.values.zero_(); workspace.flag.zero_(); workspace.reuses += 1
-        calls,peak = update_cached_plans(stencil,c,plans,shape,workspace,cache,chunk_entries)
+        calls,peak = update_cached_plans(stencil,c,plans,shape,workspace,cache,chunk_entries,
+                                       contraction_backend=contraction_backend)
         launches += calls
         missing = int(cache.missing_count.item())
         cache.total_missing_entries += missing
@@ -293,7 +298,8 @@ def assemble_component_cached(stencil,c,grid,node_count,*,chunk_entries,max_entr
     while True:
         workspace.reset(capacity,like)
         attempts += 1
-        calls,batch_peak = accumulate_plans(stencil,c,plans,shape,workspace,chunk_entries)
+        calls,batch_peak = accumulate_plans(stencil,c,plans,shape,workspace,chunk_entries,
+                                           contraction_backend=contraction_backend)
         launches += calls; peak = max(peak,batch_peak)
         if not workspace.flag.item():
             break

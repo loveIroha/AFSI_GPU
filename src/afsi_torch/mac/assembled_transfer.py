@@ -125,14 +125,20 @@ def assemble_component(stencil,c,grid,node_count,*,chunk_entries,max_entries):
 
 
 class AssembledP1Transfer(AdaptiveP1Transfer):
-    def __init__(self,*args,chunk_entries=1048576,max_entries=32000000,assembly_backend='coalesce',**kwargs):
+    def __init__(self,*args,chunk_entries=1048576,max_entries=32000000,assembly_backend='coalesce',
+                 contraction_backend='sites',**kwargs):
         if type(chunk_entries) is not int or chunk_entries<4 or type(max_entries) is not int or max_entries<1:
             raise ValueError('positive CSR entry budget and chunk_entries>=4 required')
         if assembly_backend not in ('coalesce','hash','cached-hash'):
             raise ValueError('CSR assembly_backend must be coalesce, hash or cached-hash')
+        if contraction_backend not in ('sites','cell'):
+            raise ValueError('CSR contraction_backend must be sites or cell')
+        if contraction_backend=='cell' and assembly_backend=='coalesce':
+            raise ValueError('cell contraction requires hash or cached-hash assembly')
         super().__init__(*args,**kwargs)
         self.chunk_entries,self.max_entries = chunk_entries,max_entries
         self.assembly_backend = assembly_backend
+        self.contraction_backend = contraction_backend
         from .hash_transfer_assembly import HashWorkspace
         self.hash_workspaces = tuple(HashWorkspace() for _ in range(3))
         from .cached_transfer_assembly import CSRPatternCache
@@ -149,11 +155,12 @@ class AssembledP1Transfer(AdaptiveP1Transfer):
                 from .cached_transfer_assembly import assemble_component_cached
                 B,BT,info = assemble_component_cached(stencil,c,self.grid,self.geometry.node_count,
                     chunk_entries=self.chunk_entries,max_entries=remaining,workspace=self.hash_workspaces[c],
-                    cache=self.symbolic_caches[c])
+                    cache=self.symbolic_caches[c],contraction_backend=self.contraction_backend)
             elif self.assembly_backend=='hash':
                 from .hash_transfer_assembly import assemble_component_hash
                 B,BT,info = assemble_component_hash(stencil,c,self.grid,self.geometry.node_count,
-                    chunk_entries=self.chunk_entries,max_entries=remaining,workspace=self.hash_workspaces[c])
+                    chunk_entries=self.chunk_entries,max_entries=remaining,workspace=self.hash_workspaces[c],
+                    contraction_backend=self.contraction_backend)
             else:
                 B,BT,info = assemble_component(stencil,c,self.grid,self.geometry.node_count,
                     chunk_entries=self.chunk_entries,max_entries=remaining)
@@ -165,6 +172,9 @@ class AssembledP1Transfer(AdaptiveP1Transfer):
             dict(components=statistics,total_nnz=sum(v['nnz'] for v in statistics),
                  chunk_entries=self.chunk_entries,max_entries=self.max_entries,
                  assembly_backend=self.assembly_backend,
+                 contraction_backend=self.contraction_backend,
+                 contraction_execution=('triton-cell-resident' if self.contraction_backend=='cell'
+                    else 'triton-sites') if self.geometry.weights.is_cuda else 'torch-cpu-oracle',
                  hash_workspace_bytes=sum(w.storage_bytes for w in self.hash_workspaces),
                  symbolic_cache_bytes=sum(w.storage_bytes for w in self.symbolic_caches),
                  builder=('triton-cell+cached-lookup+bounded-missing-merge' if self.assembly_backend=='cached-hash'

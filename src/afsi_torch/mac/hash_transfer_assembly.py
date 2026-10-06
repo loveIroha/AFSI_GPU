@@ -77,13 +77,17 @@ def sorted_entries(workspace):
     return keys,values[permutation]
 
 
-def accumulate_plans(stencil,c,plans,shape,workspace,chunk_entries):
+def accumulate_plans(stencil,c,plans,shape,workspace,chunk_entries,*,contraction_backend='sites'):
     from .assembled_transfer import _cpu_entries
     launches = peak_batch = 0
     for group,offset,low,width,prefix,count in plans:
         if group.weights.is_cuda:
-            from ._triton_transfer_assembly import hash_entries
-            hash_entries(stencil,group,c,offset,low,width,prefix,count,shape,workspace)
+            if contraction_backend=='cell':
+                from ._triton_cell_transfer_assembly import cell_entries
+                cell_entries(stencil,group,c,offset,low,width,prefix,count,shape,workspace)
+            else:
+                from ._triton_transfer_assembly import hash_entries
+                hash_entries(stencil,group,c,offset,low,width,prefix,count,shape,workspace)
             launches += 1
         else:
             for start in range(0,count,chunk_entries//4):
@@ -131,7 +135,7 @@ def component_plans(stencil,c,grid):
     return shape,plans,raw
 
 
-def assemble_component_hash(stencil,c,grid,node_count,*,chunk_entries,max_entries,workspace):
+def assemble_component_hash(stencil,c,grid,node_count,*,chunk_entries,max_entries,workspace,contraction_backend='sites'):
     shape,plans,raw = component_plans(stencil,c,grid)
     limit = power_of_two(2*max_entries)
     # A heuristic affects capacity/retries only, never the accepted matrix.
@@ -140,7 +144,8 @@ def assemble_component_hash(stencil,c,grid,node_count,*,chunk_entries,max_entrie
     while True:
         workspace.reset(capacity,stencil.rule.groups[0].weights)
         attempts += 1
-        calls,peak = accumulate_plans(stencil,c,plans,shape,workspace,chunk_entries)
+        calls,peak = accumulate_plans(stencil,c,plans,shape,workspace,chunk_entries,
+                                     contraction_backend=contraction_backend)
         launches += calls; peak_batch = max(peak_batch,peak)
         if not workspace.flag.item():
             break
