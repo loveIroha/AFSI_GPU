@@ -8,11 +8,39 @@ import triton
 import triton.language as tl
 
 
+@triton.jit
+def _hash_add(KEY,VALUE,FLAG,key,value,valid,CAPACITY:tl.constexpr,PROBES:tl.constexpr):
+    # Mix both the node and lattice bits; grid strides are often powers of 2.
+    h = key.to(tl.uint64)
+    h = (h^(h>>30))*0xbf58476d1ce4e5b9
+    h = (h^(h>>27))*0x94d049bb133111eb
+    h = h^(h>>31)
+    slot = (h & (CAPACITY-1)).to(tl.int64)
+    pending = valid & (value!=0)
+    attempt = 0
+    while (attempt<PROBES) & (tl.sum(pending.to(tl.int32),axis=0)>0):
+        current = tl.load(KEY+slot,mask=pending,other=-2)
+        empty = pending & (current==-1)
+        # atomic_cas has no mask. -2 is never a stored key: inactive lanes
+        # cannot claim or change a bucket. Their addresses remain in bounds.
+        previous = tl.full(key.shape,-2,tl.int64)
+        if tl.sum(empty.to(tl.int32),axis=0)>0:
+            previous = tl.atomic_cas(KEY+slot,tl.where(empty,-1,-2).to(tl.int64),
+                key,sem='relaxed')
+        found = pending & ((current==key) | (empty & ((previous==-1)|(previous==key))))
+        tl.atomic_add(VALUE+slot,value,mask=found,sem='relaxed')
+        pending = pending & ~found
+        slot = (slot+1) & (CAPACITY-1)
+        attempt += 1
+    if tl.sum(pending.to(tl.int32),axis=0)>0:
+        tl.atomic_max(FLAG,1,sem='relaxed')
+
+
 @triton.jit(do_not_specialize=['START','COUNT','P','E','OFFSET','SEARCH'])
-def _entries(BASE,PHI,N,W,CELLS,LOW,WIDTH,PREFIX,KEY,VALUE,
+def _entries(BASE,PHI,N,W,CELLS,LOW,WIDTH,PREFIX,KEY,VALUE,FLAG,
              START,COUNT,P,Q:tl.constexpr,E,C:tl.constexpr,SHARED:tl.constexpr,OFFSET,
              NY:tl.constexpr,NZ:tl.constexpr,NF:tl.constexpr,
-             SEARCH,B:tl.constexpr,BQ:tl.constexpr):
+             SEARCH,B:tl.constexpr,BQ:tl.constexpr,HASH:tl.constexpr,CAPACITY:tl.constexpr):
     local = tl.program_id(0)*B+tl.arange(0,B)
     site = START+local
     valid = local<COUNT
@@ -48,8 +76,12 @@ def _entries(BASE,PHI,N,W,CELLS,LOW,WIDTH,PREFIX,KEY,VALUE,
         shape = tl.load(N+q*4+a,mask=q<Q,other=0)
         value = tl.sum(kernel*shape[None,:],axis=1)
         node = tl.load(CELLS+cell*4+a)
-        tl.store(KEY+local*4+a,node*NF+fluid,mask=valid)
-        tl.store(VALUE+local*4+a,value,mask=valid)
+        key = node*NF+fluid
+        if HASH:
+            _hash_add(KEY,VALUE,FLAG,key,value,valid,CAPACITY,128)
+        else:
+            tl.store(KEY+local*4+a,key,mask=valid)
+            tl.store(VALUE+local*4+a,value,mask=valid)
 
 
 def entries(stencil,group,component,offset,low,width,prefix,start,count,face_shape):
@@ -61,9 +93,41 @@ def entries(stencil,group,component,offset,low,width,prefix,start,count,face_sha
     block = 16 if q<=128 else 8
     with torch.cuda.device(group.weights.device):
         _entries[(triton.cdiv(count,block),)](stencil.base,stencil.phi,group.values,
-            group.weights,group.cells,low,width,prefix,keys,values,
+            group.weights,group.cells,low,width,prefix,keys,values,keys,
             start,count,stencil.base.shape[1],q,len(group.cells),component,
             getattr(stencil,'layout',None)=='shared',offset,face_shape[1],face_shape[2],
             face_shape[0]*face_shape[1]*face_shape[2],(len(group.cells)+1).bit_length()+1,
-            block,triton.next_power_of_2(q),num_warps=4,enable_fp_fusion=False)
+            block,triton.next_power_of_2(q),False,0,num_warps=4,enable_fp_fusion=False)
     return keys,values
+
+
+def hash_entries(stencil,group,component,offset,low,width,prefix,count,face_shape,workspace):
+    """Integrate directly into bounded device buckets; no raw entry arrays."""
+    import torch
+    q = len(group.values)
+    block = 16 if q<=128 else 8
+    with torch.cuda.device(group.weights.device):
+        _entries[(triton.cdiv(count,block),)](stencil.base,stencil.phi,group.values,
+            group.weights,group.cells,low,width,prefix,workspace.keys,workspace.values,workspace.flag,
+            0,count,stencil.base.shape[1],q,len(group.cells),component,
+            getattr(stencil,'layout',None)=='shared',offset,face_shape[1],face_shape[2],
+            face_shape[0]*face_shape[1]*face_shape[2],(len(group.cells)+1).bit_length()+1,
+            block,triton.next_power_of_2(q),True,workspace.capacity,
+            num_warps=4,enable_fp_fusion=False)
+
+
+@triton.jit(do_not_specialize=['COUNT'])
+def _hash_test(INPUT_KEY,INPUT_VALUE,KEY,VALUE,FLAG,COUNT,
+               CAPACITY:tl.constexpr,B:tl.constexpr):
+    i = tl.program_id(0)*B+tl.arange(0,B)
+    key = tl.load(INPUT_KEY+i,mask=i<COUNT,other=0)
+    value = tl.load(INPUT_VALUE+i,mask=i<COUNT,other=0)
+    _hash_add(KEY,VALUE,FLAG,key,value,i<COUNT,CAPACITY,128)
+
+
+def hash_accumulate(keys,values,workspace):
+    """Exercise the actual collision/overflow kernel independently of FE."""
+    import torch
+    with torch.cuda.device(keys.device):
+        _hash_test[(triton.cdiv(len(keys),128),)](keys,values,workspace.keys,
+            workspace.values,workspace.flag,len(keys),workspace.capacity,128,num_warps=4)

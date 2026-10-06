@@ -299,7 +299,8 @@ class BEIBStepper:
         if config.ib_response_backend=='csr':
             from .assembled_transfer import AssembledP1Transfer
             cls = AssembledP1Transfer
-            extra.update(chunk_entries=config.ib_csr_chunk_entries,max_entries=config.ib_csr_max_entries)
+            extra.update(chunk_entries=config.ib_csr_chunk_entries,max_entries=config.ib_csr_max_entries,
+                         assembly_backend=config.ib_csr_assembly_backend)
         self.transfer = cls(self.grid, geometry, warm_start=config.execution.warm_start,
             mass_backend=config.execution.mass_backend, options=config.mass_solver, **extra)
         self.solid = model.execution_factory() if fused else model

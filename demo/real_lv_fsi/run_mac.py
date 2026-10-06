@@ -36,6 +36,7 @@ def main(argv=None):
     p.add_argument('--newton-preconditioner', choices=('none','solid-block'), help='solver-only option; allowed on resume')
     p.add_argument('--linear-policy', choices=('reference','estimated','inexact'), help='solver-only option; allowed on resume')
     p.add_argument('--ib-response-backend', choices=('quadrature','csr'), help='equivalent frozen IB execution; allowed on resume')
+    p.add_argument('--ib-csr-assembly-backend', choices=('coalesce','hash'), help='GPU CSR construction; allowed on resume')
     p.add_argument('--support-backend', choices=('points', 'vertices'))
     p.add_argument('--helmholtz-backend', choices=('reference', 'workspace', 'graph'))
     p.add_argument('--ib-point-density', type=float)
@@ -66,7 +67,8 @@ def main(argv=None):
             p.error('resume restores paper physics/execution; only end time, original output and solver-only policy/preconditioner may be supplied')
         report = run(device=args.device, output=args.output, resume=args.resume, end_time=args.end_time,
                      anderson_policy=args.anderson_policy,newton_preconditioner=args.newton_preconditioner,
-                     linear_policy=args.linear_policy,ib_response_backend=args.ib_response_backend)
+                     linear_policy=args.linear_policy,ib_response_backend=args.ib_response_backend,
+                     ib_csr_assembly_backend=args.ib_csr_assembly_backend)
     else:
         config = load_config(args.config, CONFIG) if args.config else CONFIG
         protocol = config.load_protocol if args.load_protocol is None else args.load_protocol
@@ -117,6 +119,8 @@ def main(argv=None):
             config = replace(config,nonlinear=coupled_linear_policy(config.nonlinear,args.linear_policy))
         if args.ib_response_backend is not None:
             config = replace(config,ib_response_backend=args.ib_response_backend)
+        if args.ib_csr_assembly_backend is not None:
+            config = replace(config,ib_csr_assembly_backend=args.ib_csr_assembly_backend)
         if args.write_config:
             save_config(args.write_config, config)
             return

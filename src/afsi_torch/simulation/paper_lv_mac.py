@@ -14,7 +14,8 @@ from ..mac.memory import allocator_sample
 
 @torch.no_grad()
 def run(*, case_config=None, device='cuda', output=None, resume=None, end_time=None,
-        anderson_policy=None, newton_preconditioner=None,linear_policy=None,ib_response_backend=None):
+        anderson_policy=None, newton_preconditioner=None,linear_policy=None,ib_response_backend=None,
+        ib_csr_assembly_backend=None):
     if str(device).startswith('cuda') and not torch.cuda.is_available():
         raise RuntimeError('CUDA requested but unavailable')
     if resume and case_config is not None:
@@ -49,6 +50,8 @@ def run(*, case_config=None, device='cuda', output=None, resume=None, end_time=N
         config = replace(config,nonlinear=coupled_linear_policy(config.nonlinear,linear_policy))
     if ib_response_backend is not None:
         config = replace(config,ib_response_backend=ib_response_backend)
+    if ib_csr_assembly_backend is not None:
+        config = replace(config,ib_csr_assembly_backend=ib_csr_assembly_backend)
     driver = BEIBStepper(model, config, device)
     if not resume:
         state = driver.initialize(model.mesh.X)
@@ -140,7 +143,8 @@ def run(*, case_config=None, device='cuda', output=None, resume=None, end_time=N
         print(f'{load_description}; mu={config.fluid.mu:g}; '
               f'solver={config.nonlinear_solver}; open pressure boundary; radial base retained', flush=True)
         print(f'Execution: support={config.support_backend}, Helmholtz={config.flow.helmholtz_backend}, '
-              f'IB shared={config.interaction_quadrature.shared_execution}, response={config.ib_response_backend}; '
+              f'IB shared={config.interaction_quadrature.shared_execution}, response={config.ib_response_backend}, '
+              f'CSR assembly={config.ib_csr_assembly_backend}; '
               f'GMRES checks={config.nonlinear.linear.check_policy}, forcing={config.nonlinear.linear_forcing}', flush=True)
         if config.nonlinear_solver != 'jfnk':
             print(f'Anderson budget={config.anderson.max_iterations}+{config.anderson.extra_iterations}, '

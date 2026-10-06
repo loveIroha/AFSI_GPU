@@ -37,6 +37,10 @@ def profile_phases(driver, recorder):
                 (BEProblem,'preconditioner','preconditioner_build')]
     if hasattr(driver.transfer,'assemble_stencil'):
         targets.append((driver.transfer,'assemble_stencil','ib_csr_assembly'))
+        if driver.transfer.assembly_backend=='hash':
+            from afsi_torch.mac import hash_transfer_assembly as builder
+            targets += [(builder,'accumulate_plans','ib_hash_accumulate'),
+                        (builder,'finish_component','ib_hash_finalize')]
     targets.append((driver.flow, '_smooth', 'helmholtz_smoothing') if driver.flow.workspace is None
         else (driver.flow.workspace, 'advance', 'helmholtz_smoothing'))
     originals = [(obj, name, getattr(obj, name)) for obj, name, _ in targets]
@@ -54,7 +58,7 @@ def benchmark(checkpoint, *, device='cuda', warmup=5, steps=20, intervals=(1, 5)
               solvers=('jfnk',), shared_executions=(None,), support_backends=(None,),
               helmholtz_backends=(None,), anderson_policies=(None,),
               newton_preconditioners=(None,), linear_policies=(None,),
-              ib_response_backends=(None,),profile=False, profile_steps=3):
+              ib_response_backends=(None,),csr_assembly_backends=(None,),profile=False, profile_steps=3):
     if warmup < 0 or steps < 1 or not intervals or any(n < 1 for n in intervals):
         raise ValueError('nonnegative warmup, positive steps and check intervals required')
     if (not solvers or any(s not in ('jfnk', 'newton', 'anderson-newton') for s in solvers)
@@ -65,6 +69,7 @@ def benchmark(checkpoint, *, device='cuda', warmup=5, steps=20, intervals=(1, 5)
             or not newton_preconditioners or any(s not in (None,'none','solid-block') for s in newton_preconditioners)
             or not linear_policies or any(s not in (None,'reference','estimated','inexact') for s in linear_policies)
             or not ib_response_backends or any(s not in (None,'quadrature','csr') for s in ib_response_backends)
+            or not csr_assembly_backends or any(s not in (None,'coalesce','hash') for s in csr_assembly_backends)
             or profile_steps < 1):
         raise ValueError('invalid solver/execution selections or profile steps')
     if str(device).startswith('cuda') and not torch.cuda.is_available():
@@ -75,9 +80,9 @@ def benchmark(checkpoint, *, device='cuda', warmup=5, steps=20, intervals=(1, 5)
     synchronize()
     load_seconds = perf_counter()-started
     variants, reference = [], None
-    for solver, interval, shared, support, helmholtz, policy, preconditioner, linear_policy, ib_backend in product(solvers, intervals,
+    for solver, interval, shared, support, helmholtz, policy, preconditioner, linear_policy, ib_backend, csr_builder in product(solvers, intervals,
             shared_executions, support_backends, helmholtz_backends,anderson_policies,newton_preconditioners,
-            linear_policies,ib_response_backends):
+            linear_policies,ib_response_backends,csr_assembly_backends):
         # Vary check intervals only for JFNK in this comparison; the other
         # solvers use the first interval, including their GMRES fallback.
         if solver != 'jfnk' and interval != intervals[0]:
@@ -87,6 +92,8 @@ def benchmark(checkpoint, *, device='cuda', warmup=5, steps=20, intervals=(1, 5)
         if solver == 'jfnk' and preconditioner != newton_preconditioners[0]:
             continue
         if solver == 'jfnk' and linear_policy != linear_policies[0]:
+            continue
+        if (ib_backend or config.ib_response_backend)!='csr' and csr_builder!=csr_assembly_backends[0]:
             continue
         driver = None
         state = initial
@@ -108,10 +115,12 @@ def benchmark(checkpoint, *, device='cuda', warmup=5, steps=20, intervals=(1, 5)
                 cfg = replace(cfg,nonlinear=coupled_linear_policy(cfg.nonlinear,linear_policy))
             if ib_backend is not None:
                 cfg = replace(cfg,ib_response_backend=ib_backend)
+            if csr_builder is not None:
+                cfg = replace(cfg,ib_csr_assembly_backend=csr_builder)
             label = (f'{solver}/aa={policy or "saved"}/pc={cfg.newton_preconditioner}/check={interval}'
                      f'/ib={cfg.interaction_quadrature.shared_execution}/support={cfg.support_backend}'
                      f'/helmholtz={cfg.flow.helmholtz_backend}/linear={linear_policy or "saved"}'
-                     f'/response={cfg.ib_response_backend}')
+                     f'/response={cfg.ib_response_backend}/csr={cfg.ib_csr_assembly_backend}')
             driver = BEIBStepper(model, cfg, device)
             state = initial
             for _ in range(warmup):
@@ -148,6 +157,7 @@ def benchmark(checkpoint, *, device='cuda', warmup=5, steps=20, intervals=(1, 5)
             result = dict(status='completed', solver=solver, check_every=interval,
                 anderson_policy=policy or 'saved',newton_preconditioner=cfg.newton_preconditioner,
                 linear_policy=linear_policy or 'saved',ib_response_backend=cfg.ib_response_backend,
+                ib_csr_assembly_backend=cfg.ib_csr_assembly_backend,
                 linear_options=dict(check_policy=cfg.nonlinear.linear.check_policy,
                     true_check_interval=cfg.nonlinear.linear.true_check_interval,
                     forcing=cfg.nonlinear.linear_forcing,
@@ -203,6 +213,7 @@ def benchmark(checkpoint, *, device='cuda', warmup=5, steps=20, intervals=(1, 5)
             variants.append(dict(status='failed', solver=solver, check_every=interval,
                 anderson_policy=policy,newton_preconditioner=preconditioner,
                 linear_policy=linear_policy,ib_response_backend=ib_backend,
+                ib_csr_assembly_backend=csr_builder,
                 shared_execution=shared, support_backend=support, helmholtz_backend=helmholtz,
                 last_accepted_time_s=state.time, failure_type=type(exc).__name__, failure=str(exc)))
             print(f'{solver}/check={interval}: failed: {exc}', flush=True)
@@ -223,7 +234,7 @@ def benchmark(checkpoint, *, device='cuda', warmup=5, steps=20, intervals=(1, 5)
         fastest = min(successful,key=lambda v:v['milliseconds_per_step'])
         report['fastest_variant'] = {k:fastest[k] for k in ('solver','anderson_policy',
             'newton_preconditioner','milliseconds_per_step','shared_execution','support_backend','helmholtz_backend',
-            'linear_policy','ib_response_backend')}
+            'linear_policy','ib_response_backend','ib_csr_assembly_backend')}
     return report
 
 
@@ -242,6 +253,7 @@ def main():
     p.add_argument('--newton-preconditioners', nargs='+', choices=('none','solid-block'))
     p.add_argument('--linear-policies', nargs='+', choices=('reference','estimated','inexact'))
     p.add_argument('--ib-response-backends', nargs='+', choices=('quadrature','csr'))
+    p.add_argument('--csr-assembly-backends', nargs='+', choices=('coalesce','hash'))
     p.add_argument('--profile', action='store_true')
     p.add_argument('--profile-steps', type=int, default=3)
     p.add_argument('--output', default='results/paper_lv_performance/report.json')
@@ -255,6 +267,7 @@ def main():
         newton_preconditioners=tuple(args.newton_preconditioners or [None]),
         linear_policies=tuple(args.linear_policies or [None]),
         ib_response_backends=tuple(args.ib_response_backends or [None]),
+        csr_assembly_backends=tuple(args.csr_assembly_backends or [None]),
         profile=args.profile, profile_steps=args.profile_steps)
     atomic_json(args.output, report)
     print(f'report={args.output}', flush=True)

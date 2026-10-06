@@ -431,3 +431,64 @@ CUDA_VISIBLE_DEVICES=0 python -u demo/real_lv_fsi/run_mac.py \
   --anderson-policy legacy --newton-preconditioner none \
   --linear-policy inexact --ib-response-backend quadrature
 ```
+
+## CSR 组装的 GPU 哈希累加
+
+`--ib-csr-assembly-backend coalesce|hash` 只改变执行方式，允许从已有
+BE–BE 检查点续算。兼容默认值是 `coalesce`，保留旧的分批排序/分层合并。
+选择 `hash` 时，CUDA 单元积分直接把四个顶点贡献累加到设备端哈希表，
+不再生成完整的单元/节点/流体格点 key/value 数组。相同 key 通过 GPU
+原子操作合并；最后仅压缩、排序唯一 key，再由 PyTorch 转为 B 和 B.T 的 CSR。
+转置仍需库内部的重新排序；没有声称消除全部 CSR 转换成本。
+
+三个分量各自保存一份有界 scratch 表，后续时间步复用分配。**每次组装均清空
+表并重新计算全部贡献**，不冻结上一步权重，不复用过期支撑或积分阶数。
+返回的 CSR 数值与 scratch 独立，后来的组装不能覆盖旧 stencil。
+哈希冲突使用线性探测；探测预算耗尽时丢弃整个失败结果、扩容并重新积分。
+表容量最大为 `next_power_of_two(2*当前分量剩余 nnz 预算)`。超过最终三个分量
+总 nnz 预算或最大探测容量会明确失败，不丢弃条目、不裁剪权重。
+表容量估计只影响分配和重试，不影响积分规则。
+
+此实现沿用原 Gaussian 规则、Peskin 权重、参考体积和一致质量矩阵，仍执行
+`B.T @ M^-1 force / grid_volume` 与 `M^-1 @ B @ velocity`。浮点累加顺序变化，
+需要按原精度标准验证，不要求逐位相同。CUDA 积分、哈希与排序都在 GPU 执行；
+CPU 仅接收分配大小和溢出标志。非 CUDA 环境提供一个小规模独立 CPU 哈希
+oracle，用于测试，**不是 GPU 求解中的 CPU 回退**。原子操作接口参见
+[Triton CAS](https://triton-lang.org/main/python-api/generated/triton.language.atomic_cas.html)
+和 [atomic add](https://triton-lang.org/main/python-api/generated/triton.language.atomic_add.html)。
+
+哈希 scratch 消耗额外显存，实际峰值必须由对照报告确认；nnz 预算仍不是字节
+上限。报告新增 `hash_capacity`、`hash_attempts`、工作区分配/复用次数、工作区
+字节和 `raw_entries_materialized`。`unique_key_sorts=1` 仅计显式唯一 key 排序，
+不包含转置 CSR 的库内部操作。新后端不保证在所有网格或阶段更快。
+
+先检查实际 CUDA 碰撞、重复 key、溢出、积分、传递配对和配置兼容性，再比较
+同一检查点的完整单步耗时（包括组装）：
+
+```bash
+CUDA_VISIBLE_DEVICES=0 python -m pytest -q \
+  tests/test_csr_hash_assembly.py tests/test_gpu_coupled_work.py
+
+checkpoint="本次输出目录/simulation/checkpoint.npz"
+CUDA_VISIBLE_DEVICES=0 python -u validation/benchmark_paper_lv.py \
+  --checkpoint "$checkpoint" --device cuda --warmup 5 --steps 20 \
+  --solvers anderson-newton --linear-check-intervals 5 \
+  --anderson-policies legacy --newton-preconditioners none \
+  --linear-policies inexact --ib-response-backends csr \
+  --csr-assembly-backends coalesce hash \
+  --profile --profile-steps 3 \
+  --output results/paper_lv_hash_assembly/report.json
+```
+
+`ib_hash_accumulate` 和 `ib_hash_finalize` 是 `ib_csr_assembly` 内的子阶段，
+finalize 包括压缩、唯一键排序、CSR/转置转换。三者不能重复相加。
+报告包含结束场差异、真实非线性残差验收、完整单步时间及测量峰值显存。
+确认新后端通过且更快后才选择它续算：
+
+```bash
+CUDA_VISIBLE_DEVICES=0 python -u demo/real_lv_fsi/run_mac.py \
+  --device cuda --resume "$checkpoint" --end-time 2.4 \
+  --anderson-policy legacy --newton-preconditioner none \
+  --linear-policy inexact --ib-response-backend csr \
+  --ib-csr-assembly-backend hash
+```
