@@ -3,7 +3,7 @@ from dataclasses import replace
 import pytest
 import torch
 from afsi_torch.mac.assembled_transfer import AssembledP1Transfer,_bases,_cpu_entries
-from afsi_torch.mac.hash_transfer_assembly import HashWorkspace,hash_slot,cpu_accumulate,sorted_entries
+from afsi_torch.mac.hash_transfer_assembly import HashWorkspace,hash_slot,cpu_accumulate,sorted_entries,power_of_two
 from test_gpu_coupled_work import pair,DEVICES
 from test_real_lv import real_case
 
@@ -107,13 +107,14 @@ def test_hash_rebuild_changes_quadrature_and_support_without_stale_values(device
         torch.testing.assert_close(a,b,rtol=2e-11,atol=2e-12)
 
 
+@pytest.mark.parametrize('device',DEVICES)
 @pytest.mark.parametrize('dtype',[torch.float32,torch.float64])
 @pytest.mark.parametrize('layout',['component','shared'])
-@pytest.mark.skipif(not torch.cuda.is_available(),reason='CUDA unavailable')
-def test_actual_fused_hash_cell_integrals_match_tensor_oracle(dtype,layout):
-    pytest.importorskip('triton')
-    from afsi_torch.mac._triton_transfer_assembly import hash_entries
-    X,r,_ = pair('cuda',dtype,layout)
+def test_direct_hash_cell_integrals_match_tensor_oracle(device,dtype,layout):
+    if device=='cuda':
+        pytest.importorskip('triton')
+        from afsi_torch.mac._triton_transfer_assembly import hash_entries
+    X,r,_ = pair(device,dtype,layout)
     stencil = r.prepare(X)
     offset = 0
     for group in stencil.rule.groups:
@@ -124,19 +125,46 @@ def test_actual_fused_hash_cell_integrals_match_tensor_oracle(dtype,layout):
             size = width.prod(-1)
             prefix = torch.cat((size.new_zeros(1),size.cumsum(0)))
             count = int(prefix[-1])
-            work = HashWorkspace(); work.reset(1<<(4*count-1).bit_length(),group.weights)
+            # Up to four UNIQUE keys per site, so raw_count buckets can be
+            # 100% full. Direct kernel tests must reserve probe headroom;
+            # production's separate overflow/retry path is tested below.
+            work = HashWorkspace(); work.reset(power_of_two(2*4*count),group.weights)
             shape = r.grid.face_shape(c)
-            hash_entries(stencil,group,c,offset,low,width,prefix,count,shape,work)
-            assert work.flag.item()==0
             keys,values = _cpu_entries(stencil,group,c,offset,low,width,prefix,0,count,shape)
+            if device=='cuda':
+                hash_entries(stencil,group,c,offset,low,width,prefix,count,shape,work)
+            else:
+                cpu_accumulate(keys,values,work)
+            assert work.flag.item()==0
             from afsi_torch.mac.assembled_transfer import _coalesce
             expected_keys,expected_values = _coalesce(keys,values)
+            assert len(expected_keys)<=work.capacity//2
             actual_keys,actual_values = sorted_entries(work)
             torch.testing.assert_close(actual_keys,expected_keys,atol=0,rtol=0)
             torch.testing.assert_close(actual_values,expected_values,
                 rtol=3e-6 if dtype==torch.float32 else 3e-13,
                 atol=3e-8 if dtype==torch.float32 else 3e-16)
         offset += group.weights.numel()
+
+
+@pytest.mark.parametrize('device',DEVICES)
+def test_hash_automatic_growth_keeps_all_contributions(device):
+    X,r,coalesce = pair(device,torch.float64)
+    hashed = AssembledP1Transfer(r.grid,r.geometry,quadrature_options=r.quadrature_options,
+        options=r.options,fused=False,assembly_backend='hash')
+    stencil = r.prepare(X)
+    expected = coalesce.assemble_stencil(stencil)
+    actual = hashed.assemble_stencil(stencil)
+    # This mesh starts at 128 buckets/component; one cell alone has 256
+    # distinct nonzero keys. The heuristic must overflow and retry.
+    assert all(v['hash_attempts']>1 for v in actual.assembly['components'])
+    for a,b in zip(actual.gather+actual.spread,expected.gather+expected.spread):
+        torch.testing.assert_close(a.to_dense(),b.to_dense(),rtol=2e-11,atol=2e-12)
+    assert actual.assembly['total_nnz']==expected.assembly['total_nnz']
+    again = hashed.assemble_stencil(stencil)
+    assert all(v['hash_attempts']==1 for v in again.assembly['components'])
+    for a,b in zip(again.gather,actual.gather):
+        torch.testing.assert_close(a.to_dense(),b.to_dense(),rtol=2e-11,atol=2e-12)
 
 
 def test_hash_configuration_and_cli_roundtrip(tmp_path):
