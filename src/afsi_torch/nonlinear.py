@@ -17,13 +17,17 @@ class GMRESOptions:
     restart: int = 50
     max_iterations: int = 1000
     check_every: int = 5
+    check_policy: str = 'periodic'
+    true_check_interval: int = 25
 
     def __post_init__(self):
         if not all(isfinite(t) and t >= 0 for t in (self.rtol,self.atol)) or self.rtol+self.atol == 0:
             raise ValueError('invalid linear tolerances')
-        for n in (self.restart,self.max_iterations,self.check_every):
+        for n in (self.restart,self.max_iterations,self.check_every,self.true_check_interval):
             if not isinstance(n,int) or isinstance(n,bool) or n < 1:
                 raise ValueError('positive integer GMRES controls required')
+        if self.check_policy not in ('periodic','estimated'):
+            raise ValueError('GMRES check_policy must be periodic or estimated')
 
 
 @dataclass(frozen=True)
@@ -35,6 +39,7 @@ class NewtonOptions:
     armijo: float = 1e-4
     linear: GMRESOptions = field(default_factory=GMRESOptions)
     linear_tolerance_fraction: float = 0.
+    linear_forcing: str = 'fixed'
 
     def __post_init__(self):
         if not all(isfinite(t) and t >= 0 for t in (self.rtol,self.atol)) or self.rtol+self.atol == 0:
@@ -49,6 +54,20 @@ class NewtonOptions:
         if (not isfinite(self.linear_tolerance_fraction) or
                 not 0 <= self.linear_tolerance_fraction < 1-self.armijo):
             raise ValueError('linear tolerance fraction must be nonnegative and ensure descent')
+        if self.linear_forcing not in ('fixed','adaptive'):
+            raise ValueError('linear_forcing must be fixed or adaptive')
+
+
+def coupled_linear_policy(options, policy):
+    """Execution-only comparisons, with the same final nonlinear target."""
+    if policy == 'reference':
+        return replace(options,linear=replace(options.linear,check_policy='periodic'),linear_forcing='fixed')
+    if policy == 'estimated':
+        return replace(options,linear=replace(options.linear,check_policy='estimated'),linear_forcing='fixed')
+    if policy == 'inexact':
+        return replace(options,linear=replace(options.linear,check_policy='estimated'),
+                       linear_forcing='adaptive',linear_tolerance_fraction=.5)
+    raise ValueError('linear policy must be reference, estimated or inexact')
 
 
 @dataclass(frozen=True)
@@ -108,7 +127,10 @@ def gmres(action,rhs,*,precondition=None,options=None):
     norm = lambda x: torch.linalg.vector_norm(x).item()
     tol = max(opt.atol,opt.rtol*norm(rhs))
     shape = rhs.shape
+    actions = true_checks = estimated_checks = residual_restarts = 0
     def apply(v):
+        nonlocal actions
+        actions += 1
         out = action(v.reshape(shape))
         _check(out,rhs,'operator action')
         return out.reshape(-1)
@@ -120,12 +142,21 @@ def gmres(action,rhs,*,precondition=None,options=None):
     b = rhs.reshape(-1)
     residual = b-apply(x)
     count = 0
+    def info():
+        return dict(iterations=count,residual_norm=norm(residual),tolerance=tol,
+                    operator_actions=actions,true_residual_checks=true_checks,
+                    estimated_residual_checks=estimated_checks,residual_restarts=residual_restarts)
     while norm(residual) > tol and count < opt.max_iterations:
         beta = torch.linalg.vector_norm(residual)
         width = min(opt.restart,opt.max_iterations-count,b.numel())
         V = b.new_zeros((b.numel(),width+1))
         Z = b.new_zeros((b.numel(),width))
         H = b.new_zeros((width+1,width))
+        # Givens rotations update only the small device-side Hessenberg system.
+        # No coupled operator is called to obtain this residual estimate.
+        rotated = b.new_zeros((width+1,width)) if opt.check_policy=='estimated' else None
+        cosines,sines = b.new_zeros(width),b.new_zeros(width)
+        g = b.new_zeros(width+1); g[0] = beta
         V[:,0] = residual/beta
         base = x.clone()
         for j in range(width):
@@ -141,7 +172,25 @@ def gmres(action,rhs,*,precondition=None,options=None):
             if not breakdown:
                 V[:,j+1] = w/H[j+1,j]
             count += 1
-            if breakdown or (j+1)%opt.check_every == 0 or j+1 == width:
+            estimated_converged = False
+            if rotated is not None:
+                column = H[:j+2,j].clone()
+                for k in range(j):
+                    a,c = column[k].clone(),column[k+1].clone()
+                    column[k] = cosines[k]*a+sines[k]*c
+                    column[k+1] = -sines[k]*a+cosines[k]*c
+                radius = torch.hypot(column[j],column[j+1])
+                denominator = radius.clamp_min(torch.finfo(b.dtype).tiny)
+                cosines[j],sines[j] = column[j]/denominator,column[j+1]/denominator
+                column[j] = radius; column[j+1] = 0
+                rotated[:j+2,j] = column
+                previous = g[j].clone()
+                g[j+1] = -sines[j]*previous; g[j] = cosines[j]*previous
+                estimated_checks += 1
+                estimated_converged = g[j+1].abs().item() <= tol
+            scheduled = ((j+1)%opt.check_every==0 if rotated is None
+                         else count%opt.true_check_interval==0)
+            if breakdown or scheduled or estimated_converged or j+1 == width:
                 Q,R = torch.linalg.qr(H[:j+2,:j+1],mode='reduced')
                 if (R.diagonal().abs() <= torch.finfo(b.dtype).eps*R.abs().max()).any():
                     raise RuntimeError('GMRES singular Hessenberg system')
@@ -150,13 +199,19 @@ def gmres(action,rhs,*,precondition=None,options=None):
                 y = torch.linalg.solve_triangular(R,(Q.T@target)[:,None],upper=True)[:,0]
                 x = base+Z[:,:j+1]@y
                 residual = b-apply(x)
+                true_checks += 1
                 if norm(residual) <= tol:
-                    return x.reshape(shape),dict(iterations=count,residual_norm=norm(residual),tolerance=tol)
+                    return x.reshape(shape),info()
                 if breakdown:
                     raise RuntimeError('GMRES breakdown before true-residual convergence')
+                if estimated_converged:
+                    # Nested mass/pressure solves may make the action inexact.
+                    # A rejected estimate restarts from its measured residual.
+                    residual_restarts += 1
+                    break
     if norm(residual) > tol:
         raise RuntimeError(f'GMRES failed: true residual {norm(residual):.6g} > {tol:.6g} after {count} iterations')
-    return x.reshape(shape),dict(iterations=count,residual_norm=norm(residual),tolerance=tol)
+    return x.reshape(shape),info()
 
 
 @torch.no_grad()
@@ -210,10 +265,21 @@ def newton(residual,x0,*,validate,fixed=None,values=None,preconditioner_factory=
                 return project(out).detach()
             inverse = None if preconditioner_factory is None else preconditioner_factory(x)
             precondition = None if inverse is None else lambda v: project(inverse(project(v)))
-            linear = replace(opt.linear,atol=max(opt.linear.atol,opt.linear_tolerance_fraction*tol))
+            forcing = opt.linear.rtol
+            if opt.linear_forcing=='adaptive':
+                current = norm(r)
+                previous = initial if len(history)==1 else history[-2]['residual_norm']
+                forcing = min(.5,max(opt.linear.rtol,.9*(current/max(previous,torch.finfo(x.dtype).tiny))**2))
+                if len(history)==1:
+                    forcing = min(forcing,.1)
+                if current <= 200*tol:
+                    forcing = min(forcing,.5*tol/current)
+            linear = replace(opt.linear,rtol=forcing,
+                             atol=max(opt.linear.atol,opt.linear_tolerance_fraction*tol))
             step,linear_info = gmres(action,-r,precondition=precondition,options=linear)
             linear_info.update(nonlinear_residual_norm=norm(r),nonlinear_tolerance=tol,
-                               configured_atol=opt.linear.atol,effective_atol=linear.atol)
+                               configured_atol=opt.linear.atol,effective_atol=linear.atol,
+                               effective_rtol=linear.rtol,linear_forcing=opt.linear_forcing)
         except (RuntimeError,FloatingPointError) as exc:
             raise NonlinearFailure(f'Newton linear solve failed: {exc}',result(False)) from exc
         old_norm = norm(r)

@@ -296,6 +296,10 @@ class BEIBStepper:
         geometry = prepare_p1(model.mesh.X, model.mesh.cells, config.interaction_degree)
         cls = AdaptiveP1Transfer if config.interaction_quadrature.mode == 'adaptive' else CompactFETransfer
         extra = dict(quadrature_options=config.interaction_quadrature, fused=fused) if cls is AdaptiveP1Transfer else {}
+        if config.ib_response_backend=='csr':
+            from .assembled_transfer import AssembledP1Transfer
+            cls = AssembledP1Transfer
+            extra.update(chunk_entries=config.ib_csr_chunk_entries,max_entries=config.ib_csr_max_entries)
         self.transfer = cls(self.grid, geometry, warm_start=config.execution.warm_start,
             mass_backend=config.execution.mass_backend, options=config.mass_solver, **extra)
         self.solid = model.execution_factory() if fused else model
@@ -376,6 +380,9 @@ class BEIBStepper:
         linear_history = [entry['linear'] for entry in result.history if 'linear' in entry]
         info['nonlinear']['gmres_iterations'] = (sum(h['iterations'] for h in linear_history)
                                                if solver != 'jfnk' else 0)
+        if solver != 'jfnk':
+            info['nonlinear'].update({key:sum(h.get(key,0) for h in linear_history)
+                for key in ('true_residual_checks','estimated_residual_checks','residual_restarts')})
         if solver == 'jfnk':
             info['nonlinear'].update({key: sum(entry.get(key, 0) for entry in linear_history)
                 for key in ('jacobian_actions', 'true_residual_checks', 'residual_restarts', 'scalar_reads')})

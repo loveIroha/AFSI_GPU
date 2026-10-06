@@ -346,3 +346,88 @@ CUDA_VISIBLE_DEVICES=0 python -u demo/real_lv_fsi/run_mac.py \
 
 续算保持材料、网格、时间步长和载荷，写回原模拟目录；旧 CSV 会补充新计数
 字段，旧检查点中未保存的求解器设置使用兼容默认值。中途不能改变物理配置。
+
+## GPU 线性求解控制与冻结 IB 的 CSR 执行
+
+以下选项都保持 BE–BE 方程和最终非线性接受标准。有限元力/切线组装、
+一致质量矩阵求解、传递组装与稀疏乘法、流体求解在张量所在设备执行。
+CUDA 路径使用 PyTorch 的设备端稀疏算子和 Triton 并行单元/积分点归约；
+CPU 只处理迭代分支、分配大小、日志和输出，没有 CPU 稠密线性求解。
+GPU 并行由这些内核调度，不通过 OMP_NUM_THREADS 设置 CUDA 核心数量。
+
+`--linear-policy` 有三种对照：
+
+- `reference`：周期性 GMRES 真残差检查，固定内层 forcing，保留检查点中的精度设置。
+- `estimated`：设备端 Givens 旋转逐次估计 Arnoldi 残差，预测收敛、重启结束、
+  breakdown 或 `true_check_interval`（默认 25）到达时检查原算子的真实残差。
+  估计残差不直接构成接受条件；未通过的收敛候选从真实残差重新开始。
+- `inexact`：增加目标相关的内层控制。forcing 上限 0.5，首次上限 0.1；后续
+  根据相邻非线性残差比的平方调整。距最终目标不超过 200 倍时，线性目标
+  不超过最终非线性目标的一半；绝对精度下界设为该目标的 0.5 倍。
+  仍执行 Armijo、几何检查和最终真实非线性残差验收。此控制是显式实现选择，
+  不保证所有阶段的总求解次数都更少。
+
+上述小型旋转/QR/三角求解也在原设备执行。通用 Newton/GMRES 默认行为兼容
+旧版本；新策略只在显式选择后启用。报告记录真残差检查次数、GMRES 次数、
+实际雅可比作用、质量求解和流体响应次数。
+
+`--ib-response-backend quadrature` 保留现有融合积分点传递。
+`csr` 是需要实测的可选后端，仅支持当前自适应 P1 四面体：
+
+1. 沿用同一步旧几何、Gaussian 积分点、参考体积权重和 Peskin 邻居。
+2. GPU 单元内归约产生单元/流体格点与四个 FE 顶点的贡献；合并重复索引，
+   得到三个分量的 `B[a,i] = sum_q W[q] N[a,q] phi_c(i,X[q])`。
+3. 传播执行 `B.T @ (M^-1 force) / grid_volume`，插值执行 `M^-1 @ (B @ u)`。
+   配对 CSR 的数值来自同一个 B，保留一致质量矩阵和离散功一致性。
+4. 每步只组装一次，此步所有 Anderson、Newton、GMRES 求值复用 CSR。
+   新时间步重新计算权重；旧 stencil 保存独立 CSR，不受后来准备的几何覆盖。
+
+构建使用有界批次和分层合并，不展开全体积分点的 `64*4` 项。
+批次偏移、积分点数和单元数作为 Triton 运行时参数，避免每批/每次变形重复编译。
+配置字段 `ib_csr_chunk_entries` 默认 1,048,576，`ib_csr_max_entries` 默认
+32,000,000（三个分量总 nnz）。后者不是总字节显存上限：还需存储转置 CSR、
+归并临时区和原 stencil workspace。超过 entry 预算会明确失败，不截断权重。
+现有 `quadrature` 仍为默认；CSR 的组装、排序和额外显存可能抵消其乘法收益。
+
+先使用同一较晚时刻检查点比较线性控制，暂停其他 GPU 任务后执行：
+
+```bash
+checkpoint="本次输出目录/simulation/checkpoint.npz"
+CUDA_VISIBLE_DEVICES=0 python -m pytest -q \
+  tests/test_gpu_coupled_work.py tests/test_paper_solver_performance.py
+
+CUDA_VISIBLE_DEVICES=0 python -u validation/benchmark_paper_lv.py \
+  --checkpoint "$checkpoint" --device cuda --warmup 5 --steps 20 \
+  --solvers anderson-newton --linear-check-intervals 5 \
+  --anderson-policies legacy --newton-preconditioners none \
+  --linear-policies reference estimated inexact \
+  --ib-response-backends quadrature \
+  --profile --profile-steps 3 \
+  --output results/paper_lv_linear_control/report.json
+```
+
+随后比较 IB 后端，下面使用 inexact 作为例子，应根据前一对照的结果替换：
+
+```bash
+CUDA_VISIBLE_DEVICES=0 python -u validation/benchmark_paper_lv.py \
+  --checkpoint "$checkpoint" --device cuda --warmup 5 --steps 20 \
+  --solvers anderson-newton --linear-check-intervals 5 \
+  --anderson-policies legacy --newton-preconditioners none \
+  --linear-policies inexact --ib-response-backends quadrature csr \
+  --profile --profile-steps 3 \
+  --output results/paper_lv_csr_transfer/report.json
+```
+
+计时包括**每一步 CSR 组装**，不能只比较组装后的 SpMV。分项中 `ib_csr_assembly`
+包含在 `ib_prepare` 中；质量/压力求解也包含在父阶段内，不能重复相加。
+报告包含实际 nnz、最大原始批次大小、CSR 存储字节、构建次数和测量区间 GPU
+峰值 allocated/reserved。结合接受残差和结束场差异决定是否使用新配置。
+
+两项均可从旧检查点续算覆盖；例如对照通过后选择 inexact/quadrature：
+
+```bash
+CUDA_VISIBLE_DEVICES=0 python -u demo/real_lv_fsi/run_mac.py \
+  --device cuda --resume "$checkpoint" --end-time 2.4 \
+  --anderson-policy legacy --newton-preconditioner none \
+  --linear-policy inexact --ib-response-backend quadrature
+```

@@ -34,6 +34,8 @@ def main(argv=None):
     p.add_argument('--nonlinear-solver', choices=('jfnk', 'newton', 'anderson-newton'))
     p.add_argument('--anderson-policy', choices=('legacy','adaptive'), help='solver-only policy; allowed on resume')
     p.add_argument('--newton-preconditioner', choices=('none','solid-block'), help='solver-only option; allowed on resume')
+    p.add_argument('--linear-policy', choices=('reference','estimated','inexact'), help='solver-only option; allowed on resume')
+    p.add_argument('--ib-response-backend', choices=('quadrature','csr'), help='equivalent frozen IB execution; allowed on resume')
     p.add_argument('--support-backend', choices=('points', 'vertices'))
     p.add_argument('--helmholtz-backend', choices=('reference', 'workspace', 'graph'))
     p.add_argument('--ib-point-density', type=float)
@@ -63,7 +65,8 @@ def main(argv=None):
         if any(v is not None for v in forbidden) or args.reference or args.no_vtk or args.no_convection:
             p.error('resume restores paper physics/execution; only end time, original output and solver-only policy/preconditioner may be supplied')
         report = run(device=args.device, output=args.output, resume=args.resume, end_time=args.end_time,
-                     anderson_policy=args.anderson_policy,newton_preconditioner=args.newton_preconditioner)
+                     anderson_policy=args.anderson_policy,newton_preconditioner=args.newton_preconditioner,
+                     linear_policy=args.linear_policy,ib_response_backend=args.ib_response_backend)
     else:
         config = load_config(args.config, CONFIG) if args.config else CONFIG
         protocol = config.load_protocol if args.load_protocol is None else args.load_protocol
@@ -109,6 +112,11 @@ def main(argv=None):
             config = replace(config,anderson=anderson_policy(config.anderson,args.anderson_policy))
         if args.newton_preconditioner is not None:
             config = replace(config,newton_preconditioner=args.newton_preconditioner)
+        if args.linear_policy is not None:
+            from afsi_torch.nonlinear import coupled_linear_policy
+            config = replace(config,nonlinear=coupled_linear_policy(config.nonlinear,args.linear_policy))
+        if args.ib_response_backend is not None:
+            config = replace(config,ib_response_backend=args.ib_response_backend)
         if args.write_config:
             save_config(args.write_config, config)
             return

@@ -14,7 +14,7 @@ from ..mac.memory import allocator_sample
 
 @torch.no_grad()
 def run(*, case_config=None, device='cuda', output=None, resume=None, end_time=None,
-        anderson_policy=None, newton_preconditioner=None):
+        anderson_policy=None, newton_preconditioner=None,linear_policy=None,ib_response_backend=None):
     if str(device).startswith('cuda') and not torch.cuda.is_available():
         raise RuntimeError('CUDA requested but unavailable')
     if resume and case_config is not None:
@@ -44,6 +44,11 @@ def run(*, case_config=None, device='cuda', output=None, resume=None, end_time=N
         config = replace(config,anderson=select_policy(config.anderson,anderson_policy))
     if newton_preconditioner is not None:
         config = replace(config,newton_preconditioner=newton_preconditioner)
+    if linear_policy is not None:
+        from ..nonlinear import coupled_linear_policy
+        config = replace(config,nonlinear=coupled_linear_policy(config.nonlinear,linear_policy))
+    if ib_response_backend is not None:
+        config = replace(config,ib_response_backend=ib_response_backend)
     driver = BEIBStepper(model, config, device)
     if not resume:
         state = driver.initialize(model.mesh.X)
@@ -73,6 +78,7 @@ def run(*, case_config=None, device='cuda', output=None, resume=None, end_time=N
             anderson_iterations=nonlinear.get('anderson_iterations', 0),
             newton_iterations=nonlinear.get('newton_iterations', nonlinear.get('iterations',0) if config.nonlinear_solver=='newton' else 0),
             gmres_iterations=nonlinear.get('gmres_iterations', 0),
+            linear_true_checks=nonlinear.get('true_residual_checks',0),
             tangent_assemblies=nonlinear.get('tangent_assemblies', 0),
             mass_solves=nonlinear.get('mass_solves', 0),
             total_pressure_cycles=nonlinear.get('pressure_cycles', 0),
@@ -134,7 +140,8 @@ def run(*, case_config=None, device='cuda', output=None, resume=None, end_time=N
         print(f'{load_description}; mu={config.fluid.mu:g}; '
               f'solver={config.nonlinear_solver}; open pressure boundary; radial base retained', flush=True)
         print(f'Execution: support={config.support_backend}, Helmholtz={config.flow.helmholtz_backend}, '
-              f'IB shared={config.interaction_quadrature.shared_execution}', flush=True)
+              f'IB shared={config.interaction_quadrature.shared_execution}, response={config.ib_response_backend}; '
+              f'GMRES checks={config.nonlinear.linear.check_policy}, forcing={config.nonlinear.linear_forcing}', flush=True)
         if config.nonlinear_solver != 'jfnk':
             print(f'Anderson budget={config.anderson.max_iterations}+{config.anderson.extra_iterations}, '
                   f'stagnation window={config.anderson.stall_iterations}; '

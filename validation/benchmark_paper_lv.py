@@ -15,6 +15,7 @@ sys.path.insert(0, str(ROOT/'src'))
 from afsi_torch.paper_lv_checkpoint import load
 from afsi_torch.mac.paper_coupling import BEIBStepper, BEProblem
 from afsi_torch.mac.midpoint_solver import anderson_policy
+from afsi_torch.nonlinear import coupled_linear_policy
 from afsi_torch.cycle_checkpoint import atomic_json
 
 
@@ -34,6 +35,8 @@ def profile_phases(driver, recorder):
         (driver.flow, '_residual_norms', 'helmholtz_residual_metrics')]
     targets += [(BEProblem,'linearization','tangent_assembly'),
                 (BEProblem,'preconditioner','preconditioner_build')]
+    if hasattr(driver.transfer,'assemble_stencil'):
+        targets.append((driver.transfer,'assemble_stencil','ib_csr_assembly'))
     targets.append((driver.flow, '_smooth', 'helmholtz_smoothing') if driver.flow.workspace is None
         else (driver.flow.workspace, 'advance', 'helmholtz_smoothing'))
     originals = [(obj, name, getattr(obj, name)) for obj, name, _ in targets]
@@ -50,7 +53,8 @@ def profile_phases(driver, recorder):
 def benchmark(checkpoint, *, device='cuda', warmup=5, steps=20, intervals=(1, 5),
               solvers=('jfnk',), shared_executions=(None,), support_backends=(None,),
               helmholtz_backends=(None,), anderson_policies=(None,),
-              newton_preconditioners=(None,), profile=False, profile_steps=3):
+              newton_preconditioners=(None,), linear_policies=(None,),
+              ib_response_backends=(None,),profile=False, profile_steps=3):
     if warmup < 0 or steps < 1 or not intervals or any(n < 1 for n in intervals):
         raise ValueError('nonnegative warmup, positive steps and check intervals required')
     if (not solvers or any(s not in ('jfnk', 'newton', 'anderson-newton') for s in solvers)
@@ -59,6 +63,8 @@ def benchmark(checkpoint, *, device='cuda', warmup=5, steps=20, intervals=(1, 5)
             or not helmholtz_backends or any(s not in (None, 'reference', 'workspace', 'graph') for s in helmholtz_backends)
             or not anderson_policies or any(s not in (None,'legacy','adaptive') for s in anderson_policies)
             or not newton_preconditioners or any(s not in (None,'none','solid-block') for s in newton_preconditioners)
+            or not linear_policies or any(s not in (None,'reference','estimated','inexact') for s in linear_policies)
+            or not ib_response_backends or any(s not in (None,'quadrature','csr') for s in ib_response_backends)
             or profile_steps < 1):
         raise ValueError('invalid solver/execution selections or profile steps')
     if str(device).startswith('cuda') and not torch.cuda.is_available():
@@ -69,8 +75,9 @@ def benchmark(checkpoint, *, device='cuda', warmup=5, steps=20, intervals=(1, 5)
     synchronize()
     load_seconds = perf_counter()-started
     variants, reference = [], None
-    for solver, interval, shared, support, helmholtz, policy, preconditioner in product(solvers, intervals,
-            shared_executions, support_backends, helmholtz_backends,anderson_policies,newton_preconditioners):
+    for solver, interval, shared, support, helmholtz, policy, preconditioner, linear_policy, ib_backend in product(solvers, intervals,
+            shared_executions, support_backends, helmholtz_backends,anderson_policies,newton_preconditioners,
+            linear_policies,ib_response_backends):
         # Vary check intervals only for JFNK in this comparison; the other
         # solvers use the first interval, including their GMRES fallback.
         if solver != 'jfnk' and interval != intervals[0]:
@@ -78,6 +85,8 @@ def benchmark(checkpoint, *, device='cuda', warmup=5, steps=20, intervals=(1, 5)
         if solver != 'anderson-newton' and policy != anderson_policies[0]:
             continue
         if solver == 'jfnk' and preconditioner != newton_preconditioners[0]:
+            continue
+        if solver == 'jfnk' and linear_policy != linear_policies[0]:
             continue
         driver = None
         state = initial
@@ -95,9 +104,14 @@ def benchmark(checkpoint, *, device='cuda', warmup=5, steps=20, intervals=(1, 5)
                 cfg = replace(cfg,anderson=anderson_policy(cfg.anderson,policy))
             if preconditioner is not None:
                 cfg = replace(cfg,newton_preconditioner=preconditioner)
+            if linear_policy is not None:
+                cfg = replace(cfg,nonlinear=coupled_linear_policy(cfg.nonlinear,linear_policy))
+            if ib_backend is not None:
+                cfg = replace(cfg,ib_response_backend=ib_backend)
             label = (f'{solver}/aa={policy or "saved"}/pc={cfg.newton_preconditioner}/check={interval}'
                      f'/ib={cfg.interaction_quadrature.shared_execution}/support={cfg.support_backend}'
-                     f'/helmholtz={cfg.flow.helmholtz_backend}')
+                     f'/helmholtz={cfg.flow.helmholtz_backend}/linear={linear_policy or "saved"}'
+                     f'/response={cfg.ib_response_backend}')
             driver = BEIBStepper(model, cfg, device)
             state = initial
             for _ in range(warmup):
@@ -107,7 +121,7 @@ def benchmark(checkpoint, *, device='cuda', warmup=5, steps=20, intervals=(1, 5)
             warm_state = state
             print(f'{label}: warmup completed; measuring {steps} steps', flush=True)
             totals = {key: 0 for key in ('iterations', 'fluid_solves', 'jacobian_actions',
-                'true_residual_checks', 'residual_restarts', 'scalar_reads',
+                'true_residual_checks', 'estimated_residual_checks','residual_restarts', 'scalar_reads',
                 'anderson_iterations', 'newton_iterations','anderson_extra_iterations',
                 'seeded_residual_reuses','residual_evaluations','gmres_iterations',
                 'tangent_assemblies','preconditioner_applications','mass_solves','mass_iterations',
@@ -116,6 +130,8 @@ def benchmark(checkpoint, *, device='cuda', warmup=5, steps=20, intervals=(1, 5)
             sampled_histories = []
             worst_ratio = 0.
             synchronize()
+            if str(device).startswith('cuda'):
+                torch.cuda.reset_peak_memory_stats(device)
             start = perf_counter()
             for _ in range(steps):
                 state, info = driver.step(state, diagnostics=False)
@@ -131,6 +147,11 @@ def benchmark(checkpoint, *, device='cuda', warmup=5, steps=20, intervals=(1, 5)
             elapsed = perf_counter()-start
             result = dict(status='completed', solver=solver, check_every=interval,
                 anderson_policy=policy or 'saved',newton_preconditioner=cfg.newton_preconditioner,
+                linear_policy=linear_policy or 'saved',ib_response_backend=cfg.ib_response_backend,
+                linear_options=dict(check_policy=cfg.nonlinear.linear.check_policy,
+                    true_check_interval=cfg.nonlinear.linear.true_check_interval,
+                    forcing=cfg.nonlinear.linear_forcing,
+                    tolerance_fraction=cfg.nonlinear.linear_tolerance_fraction),
                 anderson_budget=cfg.anderson.max_iterations,anderson_extra_budget=cfg.anderson.extra_iterations,
                 anderson_stall_iterations=cfg.anderson.stall_iterations,
                 shared_execution=cfg.interaction_quadrature.shared_execution,
@@ -142,6 +163,9 @@ def benchmark(checkpoint, *, device='cuda', warmup=5, steps=20, intervals=(1, 5)
                 newton_fallback_fraction=fallback_count/steps,sampled_histories=sampled_histories,
                 max_accepted_residual_to_tolerance=worst_ratio,
                 start_time_s=initial.time+warmup*cfg.time.dt, end_time_s=state.time)
+            if str(device).startswith('cuda'):
+                result['peak_allocated_bytes'] = torch.cuda.max_memory_allocated(device)
+                result['peak_reserved_bytes'] = torch.cuda.max_memory_reserved(device)
             if reference is None:
                 reference = (state.x.clone(), state.pressure.clone(), tuple(v.clone() for v in state.velocity))
             else:
@@ -178,6 +202,7 @@ def benchmark(checkpoint, *, device='cuda', warmup=5, steps=20, intervals=(1, 5)
         except (ValueError, RuntimeError, FloatingPointError) as exc:
             variants.append(dict(status='failed', solver=solver, check_every=interval,
                 anderson_policy=policy,newton_preconditioner=preconditioner,
+                linear_policy=linear_policy,ib_response_backend=ib_backend,
                 shared_execution=shared, support_backend=support, helmholtz_backend=helmholtz,
                 last_accepted_time_s=state.time, failure_type=type(exc).__name__, failure=str(exc)))
             print(f'{solver}/check={interval}: failed: {exc}', flush=True)
@@ -197,7 +222,8 @@ def benchmark(checkpoint, *, device='cuda', warmup=5, steps=20, intervals=(1, 5)
     if successful:
         fastest = min(successful,key=lambda v:v['milliseconds_per_step'])
         report['fastest_variant'] = {k:fastest[k] for k in ('solver','anderson_policy',
-            'newton_preconditioner','milliseconds_per_step','shared_execution','support_backend','helmholtz_backend')}
+            'newton_preconditioner','milliseconds_per_step','shared_execution','support_backend','helmholtz_backend',
+            'linear_policy','ib_response_backend')}
     return report
 
 
@@ -214,6 +240,8 @@ def main():
     p.add_argument('--helmholtz-backends', nargs='+', choices=('reference', 'workspace', 'graph'))
     p.add_argument('--anderson-policies', nargs='+', choices=('legacy','adaptive'))
     p.add_argument('--newton-preconditioners', nargs='+', choices=('none','solid-block'))
+    p.add_argument('--linear-policies', nargs='+', choices=('reference','estimated','inexact'))
+    p.add_argument('--ib-response-backends', nargs='+', choices=('quadrature','csr'))
     p.add_argument('--profile', action='store_true')
     p.add_argument('--profile-steps', type=int, default=3)
     p.add_argument('--output', default='results/paper_lv_performance/report.json')
@@ -225,6 +253,8 @@ def main():
         helmholtz_backends=tuple(args.helmholtz_backends or [None]),
         anderson_policies=tuple(args.anderson_policies or [None]),
         newton_preconditioners=tuple(args.newton_preconditioners or [None]),
+        linear_policies=tuple(args.linear_policies or [None]),
+        ib_response_backends=tuple(args.ib_response_backends or [None]),
         profile=args.profile, profile_steps=args.profile_steps)
     atomic_json(args.output, report)
     print(f'report={args.output}', flush=True)

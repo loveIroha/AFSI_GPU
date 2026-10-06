@@ -116,6 +116,9 @@ class PaperLVConfig:
         coupling_backend='optimized', warm_start=True))
     nonlinear_solver: str = 'jfnk'
     newton_preconditioner: str = 'none'
+    ib_response_backend: str = 'quadrature'
+    ib_csr_chunk_entries: int = 1048576
+    ib_csr_max_entries: int = 32000000
     support_backend: str = 'vertices'
     nonlinear: NewtonOptions = field(default_factory=lambda: NewtonOptions(rtol=1e-6, atol=1e-9,
         max_iterations=15, linear=GMRESOptions(rtol=1e-3, atol=1e-11, max_iterations=240),
@@ -141,8 +144,18 @@ class PaperLVConfig:
             raise ValueError('invalid basal coefficient or quadrature degree')
         if self.nonlinear_solver not in ('jfnk', 'newton', 'anderson-newton'):
             raise ValueError('nonlinear solver must be jfnk, newton or anderson-newton')
+        if self.nonlinear_solver=='jfnk' and (self.nonlinear.linear.check_policy!='periodic'
+                or self.nonlinear.linear_forcing!='fixed'):
+            raise ValueError('estimated/inexact linear policies require Newton or Anderson-Newton')
         if self.newton_preconditioner not in ('none','solid-block'):
             raise ValueError('newton_preconditioner must be none or solid-block')
+        if self.ib_response_backend not in ('quadrature','csr'):
+            raise ValueError('ib_response_backend must be quadrature or csr')
+        if self.ib_response_backend=='csr' and self.interaction_quadrature.mode!='adaptive':
+            raise ValueError('assembled IB response currently requires adaptive P1 quadrature')
+        if (type(self.ib_csr_chunk_entries) is not int or self.ib_csr_chunk_entries<4
+                or type(self.ib_csr_max_entries) is not int or self.ib_csr_max_entries<1):
+            raise ValueError('invalid assembled IB entry budgets')
         if self.support_backend not in ('points', 'vertices'):
             raise ValueError('support backend must be points or vertices')
         if not isfinite(self.max_courant) or self.max_courant <= 0:
