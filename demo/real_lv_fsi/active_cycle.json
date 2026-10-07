@@ -18,6 +18,6 @@
   "nonlinear_solver": "anderson-newton",
   "support_backend": "vertices",
   "flow": {"helmholtz_backend": "graph"},
-  "interaction_quadrature": {"shared_execution": "reference"},
+  "interaction_quadrature": {"shared_execution": "reference", "max_order": 22},
   "output": {"log_every": 100, "output_every": 1000, "checkpoint_every": 1000}
 }

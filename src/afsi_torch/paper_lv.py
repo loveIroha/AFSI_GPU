@@ -194,9 +194,17 @@ class PaperLVSolid(RealLVSolid):
 
     def diagnostics(self, x):
         from .mechanics import determinant3
-        J = determinant3(self.element_gradient(x))
+        F = self.element_gradient(x)
+        J = determinant3(F)
+        stretch = torch.linalg.vector_norm(torch.einsum('eij,ej->ei',F,self.mesh.fiber),dim=-1)
+        multiplier = 1+self.parameters.active_stretch_slope*(stretch-1)
+        volume = (J*self.volumes).sum()
         return dict(cavity_volume_ml=p1.cavity_volume(x, self.endo_faces, self.rim).item(),
-            wall_volume_cm3=(J*self.volumes).sum().item(), minimum_detF=J.min().item(), maximum_detF=J.max().item(),
+            wall_volume_cm3=volume.item(),wall_volume_ratio=(volume/self.volumes.sum()).item(),
+            minimum_detF=J.min().item(), maximum_detF=J.max().item(),
+            minimum_fiber_stretch=stretch.min().item(),maximum_fiber_stretch=stretch.max().item(),
+            minimum_active_stretch_multiplier=multiplier.min().item(),
+            negative_active_multiplier_cell_count=int((multiplier<0).sum().item()),
             max_basal_constraint_cm=torch.linalg.vector_norm(self.basal_constraint(x), dim=-1).max().item(),
             max_total_displacement_cm=torch.linalg.vector_norm(x-self.mesh.X, dim=-1).max().item())
 

@@ -61,11 +61,17 @@ def run(*, case_config=None, device='cuda', output=None, resume=None, end_time=N
         ib_csr_assembly_backend=ib_csr_assembly_backend,
         ib_csr_contraction_backend=ib_csr_contraction_backend).items() if v is not None})
     from ..mac.adaptive_transfer import increase_quadrature_budget
+    auto_active_budget = (resume and config.load_protocol=='active-cycle'
+        and config.interaction_quadrature.mode=='adaptive' and ib_max_order is None
+        and config.interaction_quadrature.max_order<22)
+    if auto_active_budget:
+        ib_max_order = 22
     quadrature = increase_quadrature_budget(config.interaction_quadrature,
         max_order=ib_max_order,max_points=ib_max_points)
     if quadrature!=config.interaction_quadrature:
         progress.setdefault('quadrature_budget_changes',[]).append(dict(
             accepted_step=state.step if resume else 0,
+            reason='active-resume-supported-order-ceiling' if auto_active_budget else 'explicit-resource-override',
             previous=asdict(config.interaction_quadrature),updated=asdict(quadrature)))
         config = replace(config,interaction_quadrature=quadrature)
     driver = BEIBStepper(model, config, device)
@@ -89,12 +95,18 @@ def run(*, case_config=None, device='cuda', output=None, resume=None, end_time=N
     def row():
         nonlinear = info.get('nonlinear', {})
         pressure, tension = model.loads.at(state.time)
+        quadrature = (driver.transfer.prepared_quadrature_statistics()
+            if hasattr(driver.transfer,'prepared_quadrature_statistics') else {})
         return dict(step=state.step, time_s=state.time,
             endocardial_pressure_mmhg=pressure/1333.22387415,
             endocardial_pressure_dyn_per_cm2=pressure,
             active_tension_dyn_per_cm2=tension, **model.diagnostics(state.x),
             divergence_l2=info.get('divergence_l2', 0.), power_error=info.get('power_error', 0.),
             nonlinear_iterations=nonlinear.get('iterations', 0), nonlinear_residual=nonlinear.get('residual_norm', 0.),
+            nonlinear_tolerance=nonlinear.get('tolerance', 0.),
+            ib_prepared_point_count=quadrature.get('point_count', 0),
+            ib_prepared_maximum_order=quadrature.get('maximum_order', 0),
+            ib_prepared_high_order_cells=quadrature.get('high_order_cells', 0),
             fluid_solves=nonlinear.get('fluid_solves', 0), courant=info.get('courant', 0.),
             anderson_iterations=nonlinear.get('anderson_iterations', 0),
             newton_iterations=nonlinear.get('newton_iterations', nonlinear.get('iterations',0) if config.nonlinear_solver=='newton' else 0),
@@ -181,13 +193,17 @@ def run(*, case_config=None, device='cuda', output=None, resume=None, end_time=N
             if sample:
                 history.append(row()); last = history[-1]
                 active_text = f'T={last["active_tension_dyn_per_cm2"]/10000:.4g} kPa, ' if active_cycle else ''
+                if active_cycle:
+                    active_text += (f'lambda_f_min={last["minimum_fiber_stretch"]:.4g}, '
+                        f'negative multiplier cells={last["negative_active_multiplier_cell_count"]}, ')
                 solver_text = (f'AA={last["anderson_iterations"]}, Newton={last["newton_iterations"]}, '
                                f'GMRES={last["gmres_iterations"]}, ' if config.nonlinear_solver!='jfnk' else '')
                 print(f'step {state.step}/{steps}, t={state.time:.6f}, V={last["cavity_volume_ml"]:.8g} mL, '
                     f'p_endo={last["endocardial_pressure_mmhg"]:.4g} mmHg, {active_text}minJ={last["minimum_detF"]:.6g}, '
                     f'div={last["divergence_l2"]:.3g}, iterations={last["nonlinear_iterations"]}, '
                     f'{solver_text}fluid solves={last["fluid_solves"]}, '
-                    f'mass solves={last["mass_solves"]}, residual={last["nonlinear_residual"]:.3g}', flush=True)
+                    f'mass solves={last["mass_solves"]}, residual={last["nonlinear_residual"]:.3g}, '
+                    f'IB points={last["ib_prepared_point_count"]}, max order={last["ib_prepared_maximum_order"]}', flush=True)
             if state.step % config.output.checkpoint_every == 0:
                 save('running')
         return save('completed')

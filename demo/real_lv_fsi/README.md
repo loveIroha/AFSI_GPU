@@ -638,8 +638,12 @@ volume falls. The interaction rule follows
 `order=max(2,ceil(point_density*deformed_hmax/dx_min))`; the order is not the
 solid FE degree. An `exceeds max_order=8` error is a resource ceiling, not a
 Newton or time-step failure. New paper-demo configurations allow orders through
-22, while keeping the 12,000,000-point total budget. Saved configurations retain
-their old limits unless explicitly overridden.
+22, while keeping the 12,000,000-point total budget. Active-cycle resumes also
+upgrade a saved lower order ceiling to 22 when `--ib-max-order` is omitted;
+the report records the old/new budgets and reason. Passive resumes preserve
+their saved ceiling. An explicit supported order ceiling takes precedence and
+may only increase the saved value. The point-count ceiling is never raised
+automatically.
 
 Resume from the checkpoint in the failed active run's `simulation` directory:
 
@@ -664,8 +668,38 @@ rejected endpoint is recomputed. Passing the budget regression tests does not
 by itself validate a complete patient-specific contraction cycle.
 
 ```bash
-python -m pytest -q tests/test_paper_quadrature_budget.py
+python -m pytest -q tests/test_paper_quadrature_budget.py tests/test_paper_active_completion.py
 ```
+
+At the existing sample interval the history also records the actual nonlinear
+tolerance, wall-volume ratio, minimum/maximum fiber stretch, and cells with a
+negative active stretch multiplier. The multiplier is **not** clipped and no
+new constitutive rejection criterion is introduced. Prepared IB point count,
+maximum order and number of cells above order 8 refer to the frozen old-geometry
+stencil used for that step. Their statistics use group metadata without another
+device reduction or quadrature selection. The new geometry diagnostics run only
+on history samples/checkpoint saves, not in every nonlinear residual.
+
+To continue the two-cycle active case in the background (the checkpoint must
+belong to the active run, and its directory is reused):
+
+```bash
+checkpoint="/absolute/path/to/active/simulation/checkpoint.npz"
+run_dir="$(dirname "$checkpoint")"
+stamp="$(date +%Y%m%d_%H%M%S)"
+CUDA_VISIBLE_DEVICES=0 nohup /usr/bin/time \
+  -f 'elapsed_seconds=%e exit_code=%x' -o "$run_dir/resume_${stamp}_runtime.txt" \
+  python -u demo/real_lv_fsi/run_mac.py \
+  --device cuda --resume "$checkpoint" --end-time 1.6 \
+  > "$run_dir/resume_${stamp}.log" 2>&1 < /dev/null &
+echo "PID=$! log=$run_dir/resume_${stamp}.log"
+```
+
+Confirm `status=completed`, `accepted_steps=16000`, `reached_time_s=1.6`, and
+`completed_active_cycles=2` in the final report. `elapsed_seconds` in the report
+includes prior saved run time; the new runtime file measures only this resume.
+Regression tests exercise isolated contraction and cycle-boundary steps; a
+complete two-cycle patient-mesh run remains required for full-horizon validation.
 
 The demo exposes `--anderson-max-iterations` for new runs and checkpoint resumes.
 Use `--anderson-policy legacy` to make the selected budget a hard limit; `adaptive`

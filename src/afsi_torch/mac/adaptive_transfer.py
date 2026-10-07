@@ -371,6 +371,14 @@ class AdaptiveP1Transfer(CompactFETransfer):
             self._velocity_coefficient = result
         return result,info
 
+    def prepared_quadrature_statistics(self):
+        """Host metadata only; no device reductions or new quadrature builds."""
+        rule = self._last_prepared_rule
+        if rule is None:
+            return dict(point_count=0,maximum_order=0,high_order_cells=0)
+        return dict(point_count=rule.point_count,maximum_order=max(g.order for g in rule.groups),
+            high_order_cells=sum(len(g.cells) for g in rule.groups if g.order>8))
+
     def quadrature_summary(self):
         rule = self._last_prepared_rule or self._last_rule
         return dict(mode='adaptive',point_density=self.quadrature_options.point_density,
