@@ -23,17 +23,21 @@ python demo/run.py demo/ideal_lv_fsi/configs/fem.json
 | 流体盒 | 原点 (0,0,0)，5×5×5 cm |
 | 密度、动力黏度 | 1 g/cm³、1 g/(cm·s) |
 | Guccione C、bf、bt、bfs、kappa | 20000 dyn/cm²、8、2、4、500000 dyn/cm² |
-| 基底约束、beta | `basal_constraint="radial"`；5000000 dyn/cm³；允许径向运动，惩罚轴向和切向位移 |
+| 基底约束、beta | `basal_constraint="spring"`；500000 dyn/cm³；三个方向均施加位移恢复力 |
 | 压力/主动张力 | 同时从 0 线性升至 150000 / 600000 dyn/cm²；1.5 s 后保持 |
 | 时间范围 | dt=5e-5 s，0→2 s，40000 步 |
 
 纤维由 Laplace 跨壁坐标与椭球螺旋角程序生成，内外膜角度为 +90°/−90°。心内膜承受随形压力，外膜自由；外部流体盒无滑移。生成的网格/纤维并不保证与 AFSI 外部文件逐项相同。
 
-**基底现在与真实 LV 的径向约束一致。** 理想 LV 长轴为 x，基底平面 x=4 cm，横截面中心为 (y,z)=(2.5,2.5) cm。在参考边界积分点构造 `rhat=(0,Y-2.5,Z-2.5)/|R|`，以 `u=x-X` 计算 `c=(u·rhat)rhat-u`，边界力为 `∫N beta c dA0`。这保留径向膨缩，惩罚 x 方向和 yz 平面切向运动；有限惩罚系数意味着约束误差不严格为零。与真实 LV 的 z 长轴/xy 基底条件相比，只作坐标旋转。
+**基底采用 AFSI demo_337 的原三方向弹簧。** 在参考边界积分点计算位移 `u=x-X`，边界节点力为 `-∫N beta u dA0`，弹簧能为 `beta/2 ∫|u|² dA0`。三个方向均产生恢复力；有限刚度不等于强制固定位移，所以不能据此保证基底完全不动。
 
-两份 GPU JSON 以及两个入口的 `CONFIG` 均选择 radial、beta=5e6。这是相对 AFSI `demo_337` 原三方向弹簧 beta=5e5 的**明确边界条件差异**。需要原边界时在 JSON 设置 `basal_constraint="spring"`、`beta=500000`。约束中心自动取 `geometry.center`，长轴取 `geometry.long_axis`，避免为新几何写死坐标。
+两份 GPU JSON 以及两个入口的 `CONFIG` 均选择 spring、beta=5e5。真实 LV 的径向约束保持独立设置。如需另作径向试验，可在理想 LV 的 JSON 设置 `basal_constraint="radial"`、相应 `beta`；径向模式的参考方向取 `geometry.center` 与 `geometry.long_axis`，允许径向位移而惩罚轴向和切向位移。
 
-参考、fused 和 pointwise 固体力路径均调用同一个基底力实现。`history.csv` 的 `max_basal_constraint_cm` 记录轴向/切向约束误差，`basal_constraint_energy_erg` 记录惩罚能；兼容字段 `spring_energy_erg` 在 radial 模式下也表示该惩罚能。
+参考、fused 和 pointwise 固体力路径均调用同一个基底力实现。`history.csv` 的 `spring_energy_erg` 记录弹簧能；可选 radial 模式另外记录 `max_basal_constraint_cm`（轴向/切向约束误差）与 `basal_constraint_energy_erg`。
+
+### ParaView 朝向与基底位移
+
+几何先在局部 z 方向构造长轴，再作 `(x_local,y_local,z_local) -> (z_local,x_local,y_local)` 的正旋转和平移，得到世界坐标长轴 x。中心为 (3.5,2.5,2.5) cm，基底位于 x=4 cm，心尖朝负 x。网格、纤维及基底力使用同一坐标系；VTK 直接输出当前世界坐标。因此横向显示是配置的朝向，不能把画面向下直接等同于长轴位移。查看坐标轴和 displacement_cm 的 x/y/z 分量再判断运动方向。仅希望竖直显示时调整相机，或对所有显示数据统一使用 ParaView Transform 旋转；不要因此单独修改受力方向。配套纤维生成当前要求 long_axis='x'，直接改为 z 不能作为此 demo 的完整旋转方案。
 
 ## 离散与求解
 
@@ -100,7 +104,7 @@ echo "$run_dir"
 
 `--dt`、`--mesh-size`、`--fluid-shape NX NY NZ`、`--fluid-lengths LX LY LZ`、`--rho`、`--mu` 可覆盖配置。`--fluid-cells N` 表示三个方向均为 N；勿与 `--fluid-shape` 同用。改本构/加载数值可编辑 JSON 的 `material`、`loads`。细化显式 MAC 网格时通常需要更小 dt。
 
-基底模式和 beta 会写入有效配置及检查点。旧检查点缺少该字段时恢复原三方向弹簧，续算不会把已有轨迹改成 radial；采用新边界需要使用新的结果目录从初态启动。
+基底模式和 beta 会写入有效配置及检查点。旧检查点缺少该字段时恢复原三方向弹簧；已保存的 radial 检查点仍按 radial 续算。要切回 spring、beta=5e5，使用当前 JSON 和新的结果目录从初态启动，不传 `--resume`。
 
 ```bash
 # 检查点尚未到达 2 s 时；FEM 换成 run_fem.py

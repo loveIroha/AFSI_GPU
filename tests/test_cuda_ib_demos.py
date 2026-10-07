@@ -152,7 +152,7 @@ def test_loaded_ideal_lv_native_coupling_and_checkpoint(tmp_path,fluid):
     from afsi_torch.afsi337 import generated_model
     from afsi_torch.mac.checkpoint import save_mac,load_mac
     from afsi_torch.cycle_checkpoint import save_cycle,load_cycle
-    model=generated_model(mesh_size=.4,device='cuda',basal_constraint='radial',beta=5e6)
+    model=generated_model(mesh_size=.4,device='cuda',basal_constraint='spring',beta=5e5)
     states=[]
     for backend in ('reference','cuda'):
         if fluid=='mac':

@@ -57,7 +57,7 @@ from afsi_torch.config import (
 from afsi_torch.simulation.lv_mac import run
 
 config = LVSimulationConfig(
-    basal_constraint='radial', beta=5e6,
+    basal_constraint='spring', beta=5e5,
     time=TimeConfig(dt=5e-5, end_time=2.0),
     fluid=FluidConfig(
         shape=(64,64,64), lengths=(5.,5.,5.), origin=(0.,0.,0.),
@@ -76,7 +76,7 @@ Python API 配置类型为 `LVSimulationConfig`、`LVFEMSimulationConfig`、
 `ValveSimulationConfig`；对应 runner 为 `simulation.lv_mac.run`、
 `simulation.lv_fem.run`、`simulation.valve_mac.run`。
 
-理想左心室的 `basal_constraint` 可取 `radial` 或 `spring`：前者允许基底径向运动，以 `beta` 惩罚轴向/切向位移；后者在三个方向施加位移弹簧。正式 MAC/FEM demo 默认 radial、beta=5e6；库配置的兼容默认仍为 spring、beta=5e5。约束平面随 `geometry.long_axis` 转动，横截面中心取 `geometry.center`。这两个字段记录在模型检查点中，续算不会依据新 demo 默认改写旧边界。beta 单位为 dyn/cm³。
+理想左心室的 `basal_constraint` 可取 `spring` 或 `radial`：前者在三个方向施加位移弹簧，与 AFSI demo_337 一致；后者允许基底径向运动，以 `beta` 惩罚轴向/切向位移。正式 MAC/FEM demo 及库配置均默认 spring、beta=5e5。可选径向模式的约束平面随 `geometry.long_axis` 转动，横截面中心取 `geometry.center`；三方向弹簧无需投影。这两个字段记录在模型检查点中，续算不会依据新 demo 默认改写旧边界。beta 单位为 dyn/cm³。当前生成纤维的配套例程要求 long_axis='x'，改变计算几何朝向还需同步适配纤维生成，不能只改这个字段。
 
 | 字段 | 内容 |
 | --- | --- |

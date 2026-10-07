@@ -1,6 +1,6 @@
 # AFSI demo_337 对齐算例（0.27.0）
 
-当前 `demo/ideal_lv_fsi` 的两个正式入口及 GPU JSON 应用户要求改为与真实 LV 相同的径向基底惩罚：允许径向运动，惩罚轴向和切向运动，beta=5e6。理想 LV 长轴为 x，参考横截面中心为 y=z=2.5 cm。下文表格记录原始 AFSI demo_337 对齐设置；旧检查点及兼容示例继续保持其原三方向弹簧 beta=5e5。当前边界细节及恢复旧模式的方法见 [运行指南](../demo/ideal_lv_fsi/RUN_GUIDE.md)。
+当前 `demo/ideal_lv_fsi` 的两个正式入口及 GPU JSON 均采用原始 AFSI demo_337 的三方向位移弹簧，beta=5e5，与下表一致。理想 LV 长轴为 x，基底平面 x=4 cm；横向显示并非坐标输出错误。径向模式仍为可选配置，已有检查点保持保存的边界而不受新默认影响。当前边界细节及 ParaView 显示说明见 [运行指南](../demo/ideal_lv_fsi/RUN_GUIDE.md)。
 
 基准是 [fsi_paralell_fibers_contraction.py](https://github.com/loveIroha/afsi/blob/main/afsic/demo/demo_337/fsi_paralell_fibers_contraction.py)，核对的文件 blob 为 `283b23f5155dbc57043edd2aa7280d61c3c8e985`。以实际执行语句为准；不采用被注释的周期函数，也不混用目录内其他试验脚本或静力 Pulse 基准的边界条件。
 

@@ -1,4 +1,4 @@
-"""Radial-only P2 base: UFL projector, GPU execution and restart physics."""
+"""AFSI three-direction spring defaults, optional radial base and restart physics."""
 from dataclasses import replace
 import json
 from pathlib import Path
@@ -98,14 +98,40 @@ def test_checkpoint_preserves_radial_and_legacy_checkpoint_keeps_full_spring(mod
     np.savez_compressed(legacy_path,metadata=json.dumps(metadata),**arrays)
     restored,*_=load(legacy_path)
     assert restored.basal_constraint_mode=='spring' and restored.beta==5e5
-    torch.testing.assert_close(restored.basal_force(x),bd.spring_force(x,restored.base,5e5),rtol=0,atol=0)
+    # Independent CUDA scatter reductions need not have identical summation order.
+    torch.testing.assert_close(restored.basal_force(x),bd.spring_force(x,restored.base,5e5),
+                               rtol=2e-13,atol=2e-14)
 
 @pytest.mark.parametrize('name',['mac_gpu.json','fem.json'])
-def test_public_ideal_lv_presets_select_radial_base(name):
+def test_public_ideal_lv_presets_and_entry_defaults_select_afsi_full_spring(name):
     from afsi_torch.config import load_config,LVSimulationConfig,LVFEMSimulationConfig
     path=Path(__file__).resolve().parents[1]/'demo/ideal_lv_fsi/configs'/name
     cfg=load_config(path,LVFEMSimulationConfig if name=='fem.json' else LVSimulationConfig)
-    assert cfg.basal_constraint=='radial' and cfg.beta==5e6
+    from demo.ideal_lv_fsi.run_mac import CONFIG as mac_default
+    from demo.ideal_lv_fsi.run_fem import CONFIG as fem_default
+    default=fem_default if name=='fem.json' else mac_default
+    assert cfg.basal_constraint==default.basal_constraint=='spring'
+    assert cfg.beta==default.beta==5e5
+    assert cfg.geometry.long_axis==default.geometry.long_axis=='x'
+
+
+def test_original_spring_resists_all_axes_and_base_is_world_x_plane(model):
+    X=model.mesh.X
+    spring=LVSolid(model.mesh,beta=5e5,surface_quadrature=model.surface_quadrature)
+    assert spring.basal_constraint_mode=='spring'
+    # Local z is rotated to world x; the base height follows the same rotation.
+    base_x=model.mesh.config.center[0]+model.mesh.config.base_height
+    torch.testing.assert_close(spring.base.reference_positions[...,0],
+        X.new_full(spring.base.reference_positions.shape[:-1],base_x),rtol=0,atol=2e-13)
+    for axis in range(3):
+        u=X.new_zeros(3)
+        u[axis]=.01
+        x=X+u
+        force=spring.basal_force(x)
+        expected=-spring.beta*spring.base.reference_weights.sum()*u
+        torch.testing.assert_close(force.sum(0),expected,rtol=2e-12,atol=2e-8)
+        torch.testing.assert_close(force,-torch.func.grad(spring.basal_energy)(x),
+                                   rtol=2e-11,atol=2e-8)
 
 @pytest.mark.parametrize('kind',['mac','fem'])
 def test_radial_demo_run_and_resume_retain_configuration(tmp_path,kind):
