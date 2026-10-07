@@ -631,6 +631,42 @@ speedup relative to the first completed variant. Earlier switching may need more
 Newton/Krylov work, so fewer Anderson trials alone do not establish a speedup.
 Validate the selected policy during active contraction as well as inflation.
 
+### Recovering an adaptive interaction quadrature budget stop
+
+Contraction can stretch individual tetrahedral edges even when the cavity
+volume falls. The interaction rule follows
+`order=max(2,ceil(point_density*deformed_hmax/dx_min))`; the order is not the
+solid FE degree. An `exceeds max_order=8` error is a resource ceiling, not a
+Newton or time-step failure. New paper-demo configurations allow orders through
+22, while keeping the 12,000,000-point total budget. Saved configurations retain
+their old limits unless explicitly overridden.
+
+Resume from the checkpoint in the failed active run's `simulation` directory:
+
+```bash
+CUDA_VISIBLE_DEVICES=0 python -u demo/real_lv_fsi/run_mac.py \
+  --device cuda --resume "$checkpoint" --end-time 1.6 --ib-max-order 22
+```
+
+This increases an allocation ceiling; it does not request order 22 everywhere.
+Density, selected order, weights, consistent mass, material, loads, time step
+and nonlinear tolerances are unchanged. Compact Xiao--Gimbutas rules cover
+orders 2--8; higher orders use the existing positive conical rule at the full
+requested degree (order 9 uses 729 points per affected cell). The total point
+cap remains enforced **before** allocating grouped weights and stencils. If it
+is reached, the error and report give the required count; `--ib-max-points`
+can increase that separate budget after considering available GPU memory.
+Neither override may reduce a saved budget. No density clipping is performed.
+
+The runner saves the last accepted state on failure, records structured budget
+details for new failures, and archives the previous failure on resume. The
+rejected endpoint is recomputed. Passing the budget regression tests does not
+by itself validate a complete patient-specific contraction cycle.
+
+```bash
+python -m pytest -q tests/test_paper_quadrature_budget.py
+```
+
 The demo exposes `--anderson-max-iterations` for new runs and checkpoint resumes.
 Use `--anderson-policy legacy` to make the selected budget a hard limit; `adaptive`
 can add its separately recorded extension allowance. Default and saved budgets

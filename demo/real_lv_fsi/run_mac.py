@@ -44,6 +44,8 @@ def main(argv=None):
     p.add_argument('--support-backend', choices=('points', 'vertices'))
     p.add_argument('--helmholtz-backend', choices=('reference', 'workspace', 'graph'))
     p.add_argument('--ib-point-density', type=float)
+    p.add_argument('--ib-max-order', type=int, help='adaptive order ceiling (2..22); may increase on resume')
+    p.add_argument('--ib-max-points', type=int, help='adaptive point-count ceiling; may increase on resume')
     p.add_argument('--ib-rule-family', choices=('conical', 'xiao-gimbutas'))
     p.add_argument('--ib-transfer-backend', choices=('reference', 'fused', 'cell'))
     p.add_argument('--ib-stencil-backend', choices=('component', 'shared'))
@@ -77,7 +79,8 @@ def main(argv=None):
                      ib_csr_assembly_backend=args.ib_csr_assembly_backend,
                      ib_csr_contraction_backend=args.ib_csr_contraction_backend,
                      anderson_max_iterations=args.anderson_max_iterations,
-                     nonlinear_solver=args.nonlinear_solver)
+                     nonlinear_solver=args.nonlinear_solver,
+                     ib_max_order=args.ib_max_order,ib_max_points=args.ib_max_points)
     else:
         config = load_config(args.config, CONFIG) if args.config else CONFIG
         protocol = config.load_protocol if args.load_protocol is None else args.load_protocol
@@ -97,9 +100,12 @@ def main(argv=None):
         else:
             quadrature = replace(quadrature, **{k:v for k,v in dict(
                 mode=args.interaction_quadrature, point_density=args.ib_point_density,
+                max_order=args.ib_max_order,max_points=args.ib_max_points,
                 rule_family=args.ib_rule_family, transfer_backend=args.ib_transfer_backend,
                 stencil_backend=args.ib_stencil_backend, prepare_backend=args.ib_prepare_backend,
                 shared_execution=args.ib_shared_execution, reuse_stencil_buffers=args.reuse_ib_buffers).items() if v is not None})
+        if quadrature.mode!='adaptive' and (args.ib_max_order is not None or args.ib_max_points is not None):
+            p.error('IB budget overrides require adaptive quadrature')
         config = replace(config,
             source_dir=config.source_dir if args.mesh_dir is None else args.mesh_dir,
             load_protocol=protocol,

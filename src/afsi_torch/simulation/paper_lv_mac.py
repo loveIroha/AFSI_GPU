@@ -16,7 +16,7 @@ from ..mac.memory import allocator_sample
 def run(*, case_config=None, device='cuda', output=None, resume=None, end_time=None,
         anderson_policy=None, newton_preconditioner=None,linear_policy=None,ib_response_backend=None,
         ib_csr_assembly_backend=None,ib_csr_contraction_backend=None,
-        anderson_max_iterations=None,nonlinear_solver=None):
+        anderson_max_iterations=None,nonlinear_solver=None,ib_max_order=None,ib_max_points=None):
     if anderson_max_iterations is not None and (type(anderson_max_iterations) is not int or anderson_max_iterations<1):
         raise ValueError('positive integer anderson_max_iterations required')
     if nonlinear_solver is not None and nonlinear_solver not in ('jfnk','newton','anderson-newton'):
@@ -60,9 +60,19 @@ def run(*, case_config=None, device='cuda', output=None, resume=None, end_time=N
     config = replace(config,**{k:v for k,v in dict(ib_response_backend=ib_response_backend,
         ib_csr_assembly_backend=ib_csr_assembly_backend,
         ib_csr_contraction_backend=ib_csr_contraction_backend).items() if v is not None})
+    from ..mac.adaptive_transfer import increase_quadrature_budget
+    quadrature = increase_quadrature_budget(config.interaction_quadrature,
+        max_order=ib_max_order,max_points=ib_max_points)
+    if quadrature!=config.interaction_quadrature:
+        progress.setdefault('quadrature_budget_changes',[]).append(dict(
+            accepted_step=state.step if resume else 0,
+            previous=asdict(config.interaction_quadrature),updated=asdict(quadrature)))
+        config = replace(config,interaction_quadrature=quadrature)
     driver = BEIBStepper(model, config, device)
     if not resume:
         state = driver.initialize(model.mesh.X)
+    if resume and 'failure' in progress:
+        progress.setdefault('previous_failures',[]).append(progress.pop('failure'))
     folder.mkdir(parents=True, exist_ok=True)
     previous_elapsed = progress.get('elapsed_seconds', 0.)
     history = []
@@ -154,6 +164,11 @@ def run(*, case_config=None, device='cuda', output=None, resume=None, end_time=N
               f'IB shared={config.interaction_quadrature.shared_execution}, response={config.ib_response_backend}, '
               f'CSR assembly={config.ib_csr_assembly_backend}, contraction={config.ib_csr_contraction_backend}; '
               f'GMRES checks={config.nonlinear.linear.check_policy}, forcing={config.nonlinear.linear_forcing}', flush=True)
+        if config.interaction_quadrature.mode=='adaptive':
+            q = config.interaction_quadrature
+            print(f'IB quadrature: density={q.point_density:g}, max order={q.max_order}, '
+                  f'max points={q.max_points}; orders above 8 use positive conical rules '
+                  'when compact tables are unavailable',flush=True)
         if config.nonlinear_solver != 'jfnk':
             print(f'Anderson budget={config.anderson.max_iterations}+{config.anderson.extra_iterations}, '
                   f'stagnation window={config.anderson.stall_iterations}; '
@@ -178,6 +193,8 @@ def run(*, case_config=None, device='cuda', output=None, resume=None, end_time=N
         return save('completed')
     except (Exception, KeyboardInterrupt) as exc:
         progress['failure'] = dict(type=type(exc).__name__, message=str(exc), last_accepted_step=state.step)
+        if hasattr(exc, 'diagnosis'):
+            progress['failure']['diagnosis'] = exc.diagnosis
         if hasattr(exc, 'result'):
             progress['failure']['nonlinear'] = dict(iterations=exc.result.iterations,
                 residual_norm=exc.result.residual_norm, tolerance=exc.result.tolerance, history=exc.result.history)

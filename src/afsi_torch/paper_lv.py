@@ -109,7 +109,7 @@ class PaperLVConfig:
     pressure_solver: MGOptions = field(default_factory=MGOptions)
     mass_solver: SolverOptions = field(default_factory=mass_options)
     interaction_quadrature: InteractionQuadratureOptions = field(default_factory=lambda:
-        InteractionQuadratureOptions(mode='adaptive', rule_family='xiao-gimbutas',
+        InteractionQuadratureOptions(mode='adaptive', rule_family='xiao-gimbutas', max_order=22,
             transfer_backend='fused', stencil_backend='shared', prepare_backend='triton', reuse_stencil_buffers=True))
     execution: LVExecutionConfig = field(default_factory=lambda: LVExecutionConfig(
         execution_backend='fused', pressure_backend='graph', mass_backend='graph',

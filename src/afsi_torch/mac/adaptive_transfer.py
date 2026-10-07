@@ -6,7 +6,7 @@ selection, FE evaluation/assembly and IB kernels use the tensor device.
 Each stencil owns its quadrature: later prepares cannot change an existing
 linear/nonlinear action. The reference consistent CSR mass remains fixed.
 """
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from math import isfinite
 import numpy as np
 import torch
@@ -58,6 +58,36 @@ class InteractionQuadratureOptions:
             raise ValueError('interaction max_order must be an integer in [2,22]')
         if type(self.max_points) is not int or self.max_points < 8:
             raise ValueError('interaction max_points must be an integer >=8')
+
+
+def increase_quadrature_budget(options, *, max_order=None, max_points=None):
+    """Resume-only resource changes: never reduce accuracy or saved ceilings."""
+    updates = {k:v for k,v in dict(max_order=max_order,max_points=max_points).items() if v is not None}
+    if not updates:
+        return options
+    if options.mode!='adaptive':
+        raise ValueError('IB budget overrides require adaptive quadrature')
+    result = replace(options,**updates)  # Validate types and supported bounds first.
+    if any(getattr(result,k)<getattr(options,k) for k in updates):
+        raise ValueError('resume may only increase IB quadrature budgets')
+    return result
+
+
+class QuadratureBudgetError(ValueError):
+    """Allocation ceiling reached, distinct from nonlinear/geometry failure."""
+    def __init__(self, kind, required, options, orders):
+        limit = getattr(options,'max_'+kind)
+        quantity = f'Gaussian order {required}' if kind=='order' else f'{required} points'
+        self.diagnosis = dict(kind='interaction-quadrature-budget',resource=kind,
+            required=int(required),limit=limit,max_order=options.max_order,max_points=options.max_points,
+            point_density=options.point_density,rule_family=options.rule_family,
+            gaussian_order_cell_counts=torch.bincount(orders).cpu().tolist(),
+            maximum_order=int(orders.max().item()),density_clipped=False)
+        recovery = (f'Resume the last accepted checkpoint with --ib-max-{kind} {required} or a larger '
+            'supported resource budget; this does not change the density or time step.')
+        if kind=='order' and required>22:
+            recovery = 'The required order exceeds the supported ceiling 22; inspect the deformed mesh before continuing.'
+        super().__init__(f'adaptive IB needs {quantity}, exceeds max_{kind}={limit}; no density clipping. '+recovery)
 
 
 def _gauss_jacobi_unit(n, alpha):
@@ -213,7 +243,7 @@ class AdaptiveP1Transfer(CompactFETransfer):
             return self._last_rule
         maximum = int(orders.max().item())
         if maximum>opt.max_order:
-            raise ValueError(f'adaptive IB needs Gaussian order {maximum}, exceeds max_order={opt.max_order}; no density clipping')
+            raise QuadratureBudgetError('order',maximum,opt,orders)
         histogram = torch.bincount(orders,minlength=maximum+1).cpu().tolist()
         tables,total = {},0
         for n,count in enumerate(histogram):
@@ -225,7 +255,7 @@ class AdaptiveP1Transfer(CompactFETransfer):
             tables[n] = self._rules[n]
             total += count*len(tables[n][1])
         if total>opt.max_points:
-            raise ValueError(f'adaptive IB needs {total} points, exceeds max_points={opt.max_points}; no density clipping')
+            raise QuadratureBudgetError('points',total,opt,orders)
         groups = []
         for n,(N,w) in tables.items():
             ids = torch.where(orders==n)[0]
@@ -344,6 +374,7 @@ class AdaptiveP1Transfer(CompactFETransfer):
     def quadrature_summary(self):
         rule = self._last_prepared_rule or self._last_rule
         return dict(mode='adaptive',point_density=self.quadrature_options.point_density,
+                    max_order=self.quadrature_options.max_order,max_points=self.quadrature_options.max_points,
                     transfer_backend=self.quadrature_options.transfer_backend,
                     shared_execution=self.quadrature_options.shared_execution,
                     shared_execution_device='cuda' if self.geometry.weights.is_cuda else 'cpu-oracle',
