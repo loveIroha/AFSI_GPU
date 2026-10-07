@@ -36,7 +36,7 @@ def save_mac(path, model, state, settings, progress):
             data[name+'_points'],data[name+'_weights']=map(array,rule)
     metadata=dict(producer='afsi-torch-mac',schema=1,units='cm-g-s',
         geometry=asdict(mesh.config),vertex_count=mesh.vertex_count,gmsh=mesh.gmsh_version,
-        material=asdict(model.parameters),beta=model.beta,loads=asdict(model.loads),
+        material=asdict(model.parameters),beta=model.beta,basal_constraint=model.basal_constraint_mode,loads=asdict(model.loads),
         fiber_metadata=model.fiber_metadata,step=state.step,time=state.time,force_time=state.force_time,
         settings=settings,progress=progress)
     metadata['sha256']=digest(metadata,data)
@@ -68,6 +68,7 @@ def load_mac(path, device='cpu'):
         if name+'_points' in data:
             rules[name]=(tensor(name+'_points'),tensor(name+'_weights'))
     model=LVSolid(mesh,loads=AFSI337Loads(**metadata['loads']),beta=metadata['beta'],
+        basal_constraint=metadata.get('basal_constraint','spring'),
         parameters=GuccioneParameters(**metadata['material']),fibers=fields,
         fiber_metadata=metadata['fiber_metadata'],**rules)
     state=MACState(metadata['step'],metadata['time'],tensor('x'),

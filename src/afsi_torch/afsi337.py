@@ -59,13 +59,14 @@ def default_quadrature(device='cpu'):
     return (cast(q), cast(w)), (cast(s), cast(sw))
 
 
-def generated_model(*, mesh_size=.1, device='cpu', geometry=None, parameters=None, loads=None, beta=5e5):
+def generated_model(*, mesh_size=.1, device='cpu', geometry=None, parameters=None, loads=None, beta=5e5,
+                    basal_constraint='spring'):
     from .geometry.ellipsoid_fibers import laplace_ellipsoid_fibers
     mesh = generate_lv(geometry_config(mesh_size) if geometry is None else geometry, device=device)
     fibers, info = laplace_ellipsoid_fibers(mesh)
     vq, sq = default_quadrature(device)
     return LVSolid(mesh, loads=AFSI337Loads() if loads is None else loads, parameters=parameters,
-                   beta=beta, fibers=fibers, volume_quadrature=vq,
+                   beta=beta, basal_constraint=basal_constraint, fibers=fibers, volume_quadrature=vq,
                    surface_quadrature=sq, fiber_metadata=dict(
                        mode='generated', recipe='P1 Laplace -> nodal P2 ellipsoidal helix',
                        endo_angle_degrees=90., epi_angle_degrees=-90., laplace=info,
@@ -85,8 +86,10 @@ def alignment(model, settings):
         solid_mesh_and_fibers_matched=native,
         fiber_details=model.fiber_metadata,
         quadrature_points=dict(tetrahedron=len(model.geometry.weights[0]), triangle=len(model.endo.quadrature_weights)),
-        boundary_conditions='outer fluid no-slip; pressure gauge origin; BASE reference-area spring beta=500000; EPI free',
-        differences=([] if native else [
+        boundary_conditions=f'outer fluid no-slip; pressure gauge origin; BASE {model.basal_constraint_mode} penalty beta={model.beta:g}; EPI free',
+        basal_constraint_matched=(model.basal_constraint_mode=='spring' and model.beta==5e5),
+        differences=([] if model.basal_constraint_mode=='spring' and model.beta==5e5 else [
+            'BASE constraint differs from native AFSI demo_337 three-direction spring beta=500000.'])+([] if native else [
             'Original XDMF/f0/s0/cdm are external; generated solid connectivity/size not verified identical.',
             'Generated fibers evaluate Laplace-based ellipsoid recipe at P2 nodes; external projected coefficients may differ.']),
         solver_difference='PyTorch CSR Jacobi-PCG replaces native PETSc linear solvers',

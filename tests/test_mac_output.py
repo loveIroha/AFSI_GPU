@@ -125,8 +125,11 @@ def test_demo_output_resume_disable_and_numerical_equivalence(tmp_path,device):
     from examples.lv_mac import run
     from afsi_torch.mac.checkpoint import load_mac
     from test_mac_demo_backends import assert_states
+    config=tmp_path/'legacy_base.json'
+    config.write_text('{"basal_constraint":"spring","beta":500000}')
     folder=tmp_path/'series'
     report=main(['--device',device,'--mesh-size','.4','--fluid-cells','16',
+                 '--config',str(config),
                  '--ib-backend','reference','--execution-backend','torch','--pressure-backend','torch',
                  '--solid-backend','reference','--mass-backend','pcg','--coupling-backend','reference','--no-warm-start',
                  '--end-time','.00015','--output',str(folder),'--output-every','2'])

@@ -90,7 +90,7 @@ def run(*,device='cuda',output=None,end_time=None,dt=None,fluid_cells=None,mesh_
             geometry=replace(config.geometry,mesh_size=config.geometry.mesh_size if mesh_size is None else mesh_size),
             interaction_degree=config.interaction_degree if interaction_degree is None else interaction_degree)
         model=generated_model(geometry=config.geometry,parameters=config.material,loads=config.loads,
-                              beta=config.beta,device=device)
+                              beta=config.beta,basal_constraint=config.basal_constraint,device=device)
         settings=dict(dt=config.time.dt,fluid_cells=fluid.shape[0],box_length=fluid.lengths[0],
                       fluid_shape=fluid.shape,fluid_lengths=fluid.lengths,fluid_origin=fluid.origin,
                       rho=fluid.rho,mu=fluid.mu,interaction_degree=config.interaction_degree,
@@ -117,6 +117,8 @@ def run(*,device='cuda',output=None,end_time=None,dt=None,fluid_cells=None,mesh_
     from afsi_torch.mac.execution import build_driver
     driver=build_driver(model,settings,device)
     flow,transfer=driver.flow,driver.transfer
+    print(f'BASE: {model.basal_constraint_mode}, beta={model.beta:g}; '
+          f'long axis={model.mesh.config.long_axis}, center={model.mesh.config.center}',flush=True)
     geometry=transfer.geometry
     if resume:
         if state.step>steps:
@@ -168,6 +170,7 @@ def run(*,device='cuda',output=None,end_time=None,dt=None,fluid_cells=None,mesh_
         configuration=asdict(LVSimulationConfig(time=TimeConfig(dt,end_time),
             fluid=FluidConfig(grid.shape,grid.lengths,grid.origin,settings['rho'],settings['mu']),
             geometry=model.mesh.config,material=model.parameters,loads=model.loads,beta=model.beta,
+            basal_constraint=model.basal_constraint_mode,
             interaction_degree=degree,execution=LVExecutionConfig(**{k:settings[k] for k in asdict(LVExecutionConfig())}),
             pressure_solver=MGOptions(**settings.get('pressure_solver',{})),
             mass_solver=SolverOptions(**settings['mass_solver']) if 'mass_solver' in settings else mass_options(),

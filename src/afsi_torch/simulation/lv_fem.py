@@ -180,7 +180,7 @@ def run(*, device='cuda', output=None, end_time=None, dt=None, mesh_size=None,
             else:
                 if case_config:
                     model=generated_model(geometry=case_config.geometry,parameters=case_config.material,
-                        loads=case_config.loads,beta=case_config.beta,device=device)
+                        loads=case_config.loads,beta=case_config.beta,basal_constraint=case_config.basal_constraint,device=device)
                 else:
                     model = generated_model(mesh_size=.1 if mesh_size is None else mesh_size, device=device)
             x_start = model.mesh.X.clone()
@@ -242,6 +242,8 @@ def run(*, device='cuda', output=None, end_time=None, dt=None, mesh_size=None,
     flow = ChorinSolver(operators, dt=dt, rho=settings['rho'], mu=settings['mu'],
                         options=SolverOptions(**settings['solver']))
     from functools import partial
+    print(f'BASE: {model.basal_constraint_mode}, beta={model.beta:g}; '
+          f'long axis={model.mesh.config.long_axis}, center={model.mesh.config.center}',flush=True)
     driver = ExplicitIBStepper(flow, model.force, model.validate,
         stencil_factory=partial(ib.prepare_stencil,backend=settings['ib_backend']))
     timer = StepTimingRecorder(device, progress.get('timing')) if timing else None
@@ -299,6 +301,7 @@ def run(*, device='cuda', output=None, end_time=None, dt=None, mesh_size=None,
             cuda_peak_allocated_bytes=torch.cuda.max_memory_allocated(device) if str(device).startswith('cuda') else None,
             units=CGS_UNITS, settings=settings, solid_config=asdict(model.mesh.config),
             loads=asdict(model.loads), material=asdict(model.parameters), beta=model.beta,
+            basal_constraint=model.basal_constraint_mode,
             solid_nodes=len(state.x), solid_cells=len(model.mesh.cells),
             fluid_velocity_nodes=len(state.velocity), fluid_pressure_nodes=len(state.pressure),
             fluid_element_size_cm=settings['box_length']/settings['fluid_cells'],
@@ -333,6 +336,7 @@ def run(*, device='cuda', output=None, end_time=None, dt=None, mesh_size=None,
                     tuple(settings.get('fluid_lengths',(settings['box_length'],)*3)),
                     tuple(settings['origin']),settings['rho'],settings['mu']),
                 geometry=model.mesh.config,material=model.parameters,loads=model.loads,beta=model.beta,
+                basal_constraint=model.basal_constraint_mode,
                 solver=SolverOptions(**settings['solver']),backend=backend,history_every=history_every,ib_backend=settings['ib_backend'],
                 output=OutputConfig(log_every,checkpoint_every,output_every,write_vtk)))
             report['configuration']=configuration

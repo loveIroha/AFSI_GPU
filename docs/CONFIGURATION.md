@@ -57,6 +57,7 @@ from afsi_torch.config import (
 from afsi_torch.simulation.lv_mac import run
 
 config = LVSimulationConfig(
+    basal_constraint='radial', beta=5e6,
     time=TimeConfig(dt=5e-5, end_time=2.0),
     fluid=FluidConfig(
         shape=(64,64,64), lengths=(5.,5.,5.), origin=(0.,0.,0.),
@@ -75,12 +76,15 @@ Python API 配置类型为 `LVSimulationConfig`、`LVFEMSimulationConfig`、
 `ValveSimulationConfig`；对应 runner 为 `simulation.lv_mac.run`、
 `simulation.lv_fem.run`、`simulation.valve_mac.run`。
 
+理想左心室的 `basal_constraint` 可取 `radial` 或 `spring`：前者允许基底径向运动，以 `beta` 惩罚轴向/切向位移；后者在三个方向施加位移弹簧。正式 MAC/FEM demo 默认 radial、beta=5e6；库配置的兼容默认仍为 spring、beta=5e5。约束平面随 `geometry.long_axis` 转动，横截面中心取 `geometry.center`。这两个字段记录在模型检查点中，续算不会依据新 demo 默认改写旧边界。beta 单位为 dyn/cm³。
+
 | 字段 | 内容 |
 | --- | --- |
 | `time` | `dt`、`end_time` |
 | `fluid` | `shape`、`lengths`、`origin`、`rho`、`mu` |
 | 左室 `geometry` | 内外半轴、基底高度、中心、固体 `mesh_size` |
 | 左室 `material`、`loads`、`beta` | Guccione 参数、内膜压力、主动张力、加载斜坡时间、基底弹簧 |
+| 左室 `basal_constraint` | radial 径向约束或 spring 三方向弹簧 |
 | 瓣膜 `solid` | 几何、FRH 参数、根部弹簧 |
 | 瓣膜 `inlet` | 周期入口的 `amplitude`、`period`、`offset` |
 | MAC `pressure_solver` | MG 容差、平滑次数、最大循环次数、检查间隔 |

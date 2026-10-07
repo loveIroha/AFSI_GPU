@@ -80,7 +80,7 @@ class SolidExecution:
         surface=m.endo
         traction=-loads[0]*endo_area
         pressure=bd._scatter(torch.einsum('q,qa,bqi->bai',surface.quadrature_weights,surface.values,traction),surface)
-        return internal+pressure+bd.spring_force(x,m.base,m.beta)
+        return internal+pressure+m.basal_force(x)
 
     def _force(self,x,F,endo_area,loads):
         return self._assemble(x,self._stress(F,loads),endo_area,loads)

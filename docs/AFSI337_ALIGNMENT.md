@@ -1,5 +1,7 @@
 # AFSI demo_337 对齐算例（0.27.0）
 
+当前 `demo/ideal_lv_fsi` 的两个正式入口及 GPU JSON 应用户要求改为与真实 LV 相同的径向基底惩罚：允许径向运动，惩罚轴向和切向运动，beta=5e6。理想 LV 长轴为 x，参考横截面中心为 y=z=2.5 cm。下文表格记录原始 AFSI demo_337 对齐设置；旧检查点及兼容示例继续保持其原三方向弹簧 beta=5e5。当前边界细节及恢复旧模式的方法见 [运行指南](../demo/ideal_lv_fsi/RUN_GUIDE.md)。
+
 基准是 [fsi_paralell_fibers_contraction.py](https://github.com/loveIroha/afsi/blob/main/afsic/demo/demo_337/fsi_paralell_fibers_contraction.py)，核对的文件 blob 为 `283b23f5155dbc57043edd2aa7280d61c3c8e985`。以实际执行语句为准；不采用被注释的周期函数，也不混用目录内其他试验脚本或静力 Pulse 基准的边界条件。
 
 ## 实际启用的物理与离散设置
@@ -94,9 +96,50 @@ CUDA_VISIBLE_DEVICES=0 python examples/lv_afsi337.py \
 
 报告保留来源文件 SHA256 和导出包 SHA256，续算保存完整纤维与积分点。导入时 `solid_config` 是配套 CAD 的参考参数；真实网格以包内 X/cells 为准，不会依据 `mesh_size` 重新划分。
 
+## 在没有原始外部文件时运行 AFSI 原版
+
+目录中的 `plot/bench-ilv-contraction.py` 会程序生成椭球几何和纤维，但它用于另一个 Pulse 静力基准，输出 `lv_ellipsoid-problem3` 与 `Quadrature_6` 字段；FSI 主脚本读取的是 `~/afsi-data/337_ideal_left_ventricle` 的 XDMF + P2 纤维文本。因此它不能直接作为 FSI 的数据准备命令。
+
+本项目提供一个双阶段桥接：在 GPU 主机使用当前生成算例写数值包，在已有 DOLFINx 容器内写成 AFSI 期待的 `mesh.xdmf`、HDF5、`markers.json`、`f0.txt`、`s0.txt`、`cdm.txt`。这是一套**新生成的、两边可共享的理想左室数据**，不冒称是原来未公开的外部文件。默认 0.1 cm 网格有 17393 个四面体和 28840 个 P2 节点；AFSI 的弱坐标哈希在这个测试网格上无冲突，写出脚本也再次检查。
+
+在 **GPU 主机** 的 `AFSI_GPU` 目录：
+
+```bash
+git pull --ff-only
+conda activate afsi-torch
+python validation/generate_afsi337_source.py --output results/afsi337_input/source.npz
+docker start afsi_dev_ljy
+docker cp results/afsi337_input/source.npz afsi_dev_ljy:/tmp/afsi337_source.npz
+docker cp validation/write_afsi337_native_inputs.py afsi_dev_ljy:/tmp/write_afsi337_native_inputs.py
+docker exec afsi_dev_ljy python /tmp/write_afsi337_native_inputs.py \
+  --source /tmp/afsi337_source.npz \
+  --output /root/afsi-data/337_ideal_left_ventricle
+```
+
+生成器拒绝覆盖已有目录。若你已拥有真正的 `337_ideal_left_ventricle` 文件，保留它，使用上一节导入模式即可。容器写入脚本会用 DOLFINx 读回网格与标签并核对计数，确保交给原版主脚本的文件存在且可读。
+
+然后在 **容器内**：
+
+```bash
+cd /root/afsi/afsic/demo/demo_337
+mkdir -p /root/gjh/results/afsi337_cpu
+nohup bash -c '
+  start=$(date +%s)
+  python -u fsi_paralell_fibers_contraction.py
+  code=$?
+  end=$(date +%s)
+  printf "elapsed_seconds=%s exit_code=%s\n" "$((end-start))" "$code" > /root/gjh/results/afsi337_cpu/runtime.txt
+  exit "$code"
+' > /root/gjh/results/afsi337_cpu/run.log 2>&1 < /dev/null &
+echo $! > /root/gjh/results/afsi337_cpu/pid
+```
+
+若源码实际位置不同，替换 `cd` 行。`runtime.txt` 仅在进程退出后出现，`exit_code=0` 才表示正常完成。AFSI 源脚本还依赖 SwanLab/项目编号服务及其原有输出路径，相关启动问题应查看 `run.log`。原版每步计算额外全局积分和高频文件输出；计时包含这些开销。
+
+要使 PyTorch 计算使用**转换后的同一份 DOLFINx 固体网格及 P2 系数**，可按上一节运行 `export_afsi337_solid.py` 后，以 `--solid-input` 启动 GPU 算例；仅再次调用 Gmsh 不能保证两个程序跨环境逐节点相同。
+
 ## 验证边界
 
-本地验证涵盖加载关键时刻、Basix 积分点一致性、椭球解析方向、独立 P1 Laplace 残差、非零固体力、短程耦合及断点续算、原始系数保留和错误边界拒绝。CPU 环境无法验证 CUDA；需运行上面的 GPU 测试。没有原始外部文件和 DOLFINx 的本地环境，未执行真实 XDMF 导出；导入及坐标匹配逻辑用数值样本验证。尚未在此环境运行默认网格的完整 2 s 长程模拟。
+本地验证涵盖加载关键时刻、Basix 积分点一致性、椭球解析方向、独立 P1 Laplace 残差、非零固体力、短程耦合及断点续算、原始系数保留和错误边界拒绝。CPU 环境无法验证 CUDA；需运行上面的 GPU 测试。没有 DOLFINx 的本地环境，仍须在你的容器内验证 XDMF 和纤维文本的实际写出；此前只验证了桥接数值包、坐标映射和错误拒绝。尚未在此环境运行默认网格的完整 2 s 长程模拟。
 
-本地完整回归：**201 passed、109 skipped、2 warnings**。Gmsh 4.15.2 默认 0.1 cm 网格初始化得到 17393 个四面体、28840 个 P2 节点；初始腔体积约 2.48153 mL、壁体积约 3.23236 cm³。这是小尺寸理想几何基准，不是此前约百毫升的演示几何。单元数量可能随 Gmsh 平台/版本变化，实际以报告为准。
-
+本地完整回归：**203 passed、109 skipped、2 warnings**。Gmsh 4.15.2 默认 0.1 cm 网格初始化得到 17393 个四面体、28840 个 P2 节点；初始腔体积约 2.48153 mL、壁体积约 3.23236 cm³。这是小尺寸理想几何基准，不是此前约百毫升的演示几何。单元数量可能随 Gmsh 平台/版本变化，实际以报告为准。

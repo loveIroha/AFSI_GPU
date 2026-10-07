@@ -46,7 +46,7 @@ def save_cycle(path, model, state, x_start, settings, progress):
     metadata = dict(schema=2, producer='afsi-torch-lv-cycle', units=CGS_UNITS,
         load_type=type(model.loads).__name__, fiber_metadata=model.fiber_metadata,
         geometry=asdict(mesh.config), vertex_count=mesh.vertex_count, gmsh=mesh.gmsh_version,
-        material=asdict(model.parameters), beta=model.beta, loads=asdict(model.loads),
+        material=asdict(model.parameters), beta=model.beta, basal_constraint=model.basal_constraint_mode, loads=asdict(model.loads),
         step=state.step, time=state.time, force_time=state.force_time,
         settings=settings, progress=progress)
     digest = hashlib.sha256(json.dumps(metadata, sort_keys=True, allow_nan=False).encode())
@@ -98,6 +98,7 @@ def load_cycle(path, device='cpu'):
     if load_type not in load_types:
         raise ValueError('unsupported checkpoint load protocol')
     model = LVSolid(mesh, loads=load_types[load_type](**metadata['loads']), beta=metadata['beta'],
+                    basal_constraint=metadata.get('basal_constraint','spring'),
                     parameters=GuccioneParameters(**metadata['material']), **extra)
     for name in ('fiber', 'sheet'):
         expected = tensor(name)
@@ -121,4 +122,3 @@ def load_cycle(path, device='cpu'):
     if state.force.shape != X.shape or not torch.allclose(state.force, expected_force, rtol=1e-10, atol=1e-7):
         raise ValueError('stored force disagrees with its recorded geometry and load time')
     return model, state, tensor('x_start'), metadata['settings'], metadata['progress']
-

@@ -24,7 +24,8 @@ def save_checkpoint(path,model,x,fraction):
     pressure,tension=model.loads.at(fraction)
     from .units import MMHG_TO_DYN_PER_CM2
     metadata=dict(schema=1,config=asdict(model.mesh.config),material=asdict(model.parameters),
-        beta=model.beta,pressure_mmhg=pressure/MMHG_TO_DYN_PER_CM2,tension=tension,
+        beta=model.beta,basal_constraint=model.basal_constraint_mode,
+        pressure_mmhg=pressure/MMHG_TO_DYN_PER_CM2,tension=tension,
         gmsh=model.mesh.gmsh_version,vertex_count=model.mesh.vertex_count,units=CGS_UNITS)
     array=lambda v:v.detach().cpu().numpy()
     np.savez_compressed(path,X=array(model.mesh.X),cells=array(model.mesh.cells),x=array(x),
@@ -87,7 +88,8 @@ def load_preload(directory,device='cpu'):
             if not torch.equal(exterior,faces) or tags.shape!=(len(faces),) or set(tags.cpu().tolist())!={1,2,3}:
                 raise ValueError('invalid checkpoint exterior facets or tags')
             mesh=LVMesh(config,X,cells,faces,tags,int(metadata['vertex_count']),metadata['gmsh'])
-        model=LVSolid(mesh,loads=loads,beta=report['beta'],parameters=parameters)
+        model=LVSolid(mesh,loads=loads,beta=report['beta'],parameters=parameters,
+                      basal_constraint='spring' if legacy else metadata.get('basal_constraint','spring'))
         if not legacy:
             for name in ('fiber','sheet'):
                 expected=torch.as_tensor(saved[name],device=device,dtype=X.dtype)

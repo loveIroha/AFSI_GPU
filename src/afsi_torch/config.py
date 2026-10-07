@@ -176,8 +176,11 @@ class LVFEMSimulationConfig:
     history_every: int = 20
     output: OutputConfig = field(default_factory=lambda: OutputConfig(100,200,200,True))
     ib_backend: str = 'reference'
+    basal_constraint: str = 'spring'
 
     def __post_init__(self):
+        if self.basal_constraint not in ('spring','radial'):
+            raise ValueError('basal_constraint must be spring or radial')
         if self.ib_backend not in ('reference','cuda'):
             raise ValueError('IB backend must be reference or cuda')
         if not self.output.fluid_fields:
@@ -205,8 +208,11 @@ class LVSimulationConfig:
     mass_solver: SolverOptions = field(default_factory=mass_options)
     execution: LVExecutionConfig = field(default_factory=LVExecutionConfig)
     output: OutputConfig = field(default_factory=OutputConfig)
+    basal_constraint: str = 'spring'
 
     def __post_init__(self):
+        if self.basal_constraint not in ('spring','radial'):
+            raise ValueError('basal_constraint must be spring or radial')
         if not self.output.fluid_fields:
             raise ValueError('3D LV output contains both solid and fluid fields; fluid_fields must be True')
         if len(self.fluid.shape) != 3:
