@@ -155,11 +155,11 @@ class PaperLVConfig:
             raise ValueError('ib_response_backend must be quadrature or csr')
         if self.ib_csr_assembly_backend not in ('coalesce','hash','cached-hash'):
             raise ValueError('ib_csr_assembly_backend must be coalesce, hash or cached-hash')
-        if self.ib_csr_contraction_backend not in ('sites','cell'):
-            raise ValueError('ib_csr_contraction_backend must be sites or cell')
-        if self.ib_csr_contraction_backend=='cell' and (self.ib_response_backend!='csr'
+        if self.ib_csr_contraction_backend not in ('sites','cell','cuda'):
+            raise ValueError('ib_csr_contraction_backend must be sites, cell or cuda')
+        if self.ib_csr_contraction_backend in ('cell','cuda') and (self.ib_response_backend!='csr'
                 or self.ib_csr_assembly_backend=='coalesce'):
-            raise ValueError('cell contraction requires CSR hash or cached-hash assembly')
+            raise ValueError(f'{self.ib_csr_contraction_backend} contraction requires CSR hash or cached-hash assembly')
         if self.ib_response_backend=='csr' and self.interaction_quadrature.mode!='adaptive':
             raise ValueError('assembled IB response currently requires adaptive P1 quadrature')
         if (type(self.ib_csr_chunk_entries) is not int or self.ib_csr_chunk_entries<4

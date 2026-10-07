@@ -204,7 +204,10 @@ def update_cached_plans(stencil,c,plans,shape,workspace,cache,chunk_entries,*,co
     launches = peak = 0
     for group,offset,low,width,prefix,count in plans:
         if group.weights.is_cuda:
-            if contraction_backend=='cell':
+            if contraction_backend=='cuda':
+                from .cuda_ib import contract
+                contract(stencil,group,c,offset,low,width,prefix,count,shape,workspace,cache)
+            elif contraction_backend=='cell':
                 from ._triton_cell_transfer_assembly import cell_entries
                 cell_entries(stencil,group,c,offset,low,width,prefix,count,shape,workspace,cache)
             else:
@@ -220,12 +223,15 @@ def update_cached_plans(stencil,c,plans,shape,workspace,cache,chunk_entries,*,co
     return launches,peak
 
 
-def merge_missing(workspace,cache,count):
+def merge_missing(workspace,cache,count,*,contraction_backend='sites'):
     if count<1:
         return
     keys,values = cache.missing_keys[:count],cache.missing_values[:count]
     if values.is_cuda:
-        from ._triton_transfer_assembly import hash_accumulate
+        if contraction_backend=='cuda':
+            from .cuda_ib import hash_accumulate
+        else:
+            from ._triton_transfer_assembly import hash_accumulate
         hash_accumulate(keys,values,workspace)
     else:
         cpu_accumulate(keys,values,workspace)
@@ -253,7 +259,10 @@ def assemble_component_cached(stencil,c,grid,node_count,*,chunk_entries,max_entr
         if missing<=cache.missing_capacity:
             # No reader of the key table remains when mutable insertion starts.
             try:
-                merge_missing(workspace,cache,missing)
+                if contraction_backend=='cuda':
+                    merge_missing(workspace,cache,missing,contraction_backend='cuda')
+                else:
+                    merge_missing(workspace,cache,missing)
             except Exception:
                 cache.invalidate()
                 raise

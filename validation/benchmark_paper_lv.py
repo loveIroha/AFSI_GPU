@@ -86,7 +86,7 @@ def benchmark(checkpoint, *, device='cuda', warmup=5, steps=20, intervals=(1, 5)
             or not linear_policies or any(s not in (None,'reference','estimated','inexact') for s in linear_policies)
             or not ib_response_backends or any(s not in (None,'quadrature','csr') for s in ib_response_backends)
             or not csr_assembly_backends or any(s not in (None,'coalesce','hash','cached-hash') for s in csr_assembly_backends)
-            or not csr_contraction_backends or any(s not in (None,'sites','cell') for s in csr_contraction_backends)
+            or not csr_contraction_backends or any(s not in (None,'sites','cell','cuda') for s in csr_contraction_backends)
             or not anderson_budgets or any(n is not None and (type(n) is not int or n<1) for n in anderson_budgets)
             or profile_steps < 1):
         raise ValueError('invalid solver/execution selections or profile steps')
@@ -311,8 +311,8 @@ def main():
     p.add_argument('--linear-policies', nargs='+', choices=('reference','estimated','inexact'))
     p.add_argument('--ib-response-backends', nargs='+', choices=('quadrature','csr'))
     p.add_argument('--csr-assembly-backends', nargs='+', choices=('coalesce','hash','cached-hash'))
-    p.add_argument('--csr-contraction-backends', nargs='+', choices=('sites','cell'),
-                   help='cell-resident quadrature reuse vs original site contraction; requires hash/cached-hash')
+    p.add_argument('--csr-contraction-backends', nargs='+', choices=('sites','cell','cuda'),
+                   help='sites/cell Triton vs cuda C++/CUDA contraction; cell/cuda require hash/cached-hash')
     p.add_argument('--profile', action='store_true')
     p.add_argument('--profile-steps', type=int, default=3)
     p.add_argument('--output', default='results/paper_lv_performance/report.json')

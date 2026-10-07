@@ -17,6 +17,10 @@ reference = ["fenics-basix==0.10.0"]
 quadrature = ["fenics-basix==0.10.0"]
 geometry = ["gmsh==4.15.2", "meshio==5.3.5"]
 fused = ["triton>=3.0; sys_platform == 'linux'"]
+cuda-ib = ["ninja>=1.11"]
+
+[tool.setuptools.package-data]
+afsi_torch = ["mac/csrc/*.cpp", "mac/csrc/*.cu"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

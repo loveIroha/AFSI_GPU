@@ -49,6 +49,7 @@ Lengths, time, density, viscosity, and stress use **cm–g–s units**. The 2D c
 | Shared P1 IB vector gather and local atomic reduction | [Shared IB execution](docs/SHARED_IB_TILED.md) |
 | Adaptive FE/IB quadrature, compact positive rules, and alignment limits | [Gao/FE alignment](docs/GAO_FE_ALIGNMENT.md) |
 | Fused adaptive P1 FE/IB transfers, cell-local spread reduction and profiling | [Adaptive IB execution](docs/ADAPTIVE_IB_EXECUTION.md) |
+| Optional PyTorch C++/CUDA IB contraction, build, correctness and performance comparison | [CUDA IB extension](docs/CUDA_IB.md) |
 | Shared MAC face/center tables and same-step Stokes pressure guesses | [Shared stencil/pressure experiment](docs/MAC_SHARED_PRESSURE.md) |
 | Direct P1 coordinates/Peskin template preparation and phase profiling | [IB preparation experiment](docs/MAC_PREPARE.md) |
 | Shared-table FE/IB fusion, point-array traffic and checked geometry reuse | [FE/IB memory traffic](docs/SHARED_FE_FUSION.md) |

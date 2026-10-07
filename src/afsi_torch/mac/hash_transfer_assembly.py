@@ -82,7 +82,10 @@ def accumulate_plans(stencil,c,plans,shape,workspace,chunk_entries,*,contraction
     launches = peak_batch = 0
     for group,offset,low,width,prefix,count in plans:
         if group.weights.is_cuda:
-            if contraction_backend=='cell':
+            if contraction_backend=='cuda':
+                from .cuda_ib import contract
+                contract(stencil,group,c,offset,low,width,prefix,count,shape,workspace)
+            elif contraction_backend=='cell':
                 from ._triton_cell_transfer_assembly import cell_entries
                 cell_entries(stencil,group,c,offset,low,width,prefix,count,shape,workspace)
             else:

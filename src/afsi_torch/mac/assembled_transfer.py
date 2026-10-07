@@ -131,11 +131,13 @@ class AssembledP1Transfer(AdaptiveP1Transfer):
             raise ValueError('positive CSR entry budget and chunk_entries>=4 required')
         if assembly_backend not in ('coalesce','hash','cached-hash'):
             raise ValueError('CSR assembly_backend must be coalesce, hash or cached-hash')
-        if contraction_backend not in ('sites','cell'):
-            raise ValueError('CSR contraction_backend must be sites or cell')
-        if contraction_backend=='cell' and assembly_backend=='coalesce':
-            raise ValueError('cell contraction requires hash or cached-hash assembly')
+        if contraction_backend not in ('sites','cell','cuda'):
+            raise ValueError('CSR contraction_backend must be sites, cell or cuda')
+        if contraction_backend in ('cell','cuda') and assembly_backend=='coalesce':
+            raise ValueError(f'{contraction_backend} contraction requires hash or cached-hash assembly')
         super().__init__(*args,**kwargs)
+        if contraction_backend=='cuda' and not self.geometry.weights.is_cuda:
+            raise ValueError('cuda IB contraction requires CUDA tensors; no CPU fallback')
         self.chunk_entries,self.max_entries = chunk_entries,max_entries
         self.assembly_backend = assembly_backend
         self.contraction_backend = contraction_backend
@@ -173,11 +175,14 @@ class AssembledP1Transfer(AdaptiveP1Transfer):
                  chunk_entries=self.chunk_entries,max_entries=self.max_entries,
                  assembly_backend=self.assembly_backend,
                  contraction_backend=self.contraction_backend,
-                 contraction_execution=('triton-cell-resident' if self.contraction_backend=='cell'
+                 contraction_execution=('cpp-cuda-warp-sites' if self.contraction_backend=='cuda'
+                    else 'triton-cell-resident' if self.contraction_backend=='cell'
                     else 'triton-sites') if self.geometry.weights.is_cuda else 'torch-cpu-oracle',
                  hash_workspace_bytes=sum(w.storage_bytes for w in self.hash_workspaces),
                  symbolic_cache_bytes=sum(w.storage_bytes for w in self.symbolic_caches),
-                 builder=('triton-cell+cached-lookup+bounded-missing-merge' if self.assembly_backend=='cached-hash'
+                 builder=('cpp-cuda+cached-lookup+bounded-missing-merge' if self.contraction_backend=='cuda' and self.assembly_backend=='cached-hash'
+                          else 'cpp-cuda+device-hash+unique-sort' if self.contraction_backend=='cuda'
+                          else 'triton-cell+cached-lookup+bounded-missing-merge' if self.assembly_backend=='cached-hash'
                           else 'triton-cell+device-hash+unique-sort' if self.assembly_backend=='hash'
                           else 'triton-cell+torch-coalesce') if self.geometry.weights.is_cuda else 'torch-cpu-oracle'))
         self._last_assembly = dict(result.assembly,csr_storage_bytes=result.storage_bytes)

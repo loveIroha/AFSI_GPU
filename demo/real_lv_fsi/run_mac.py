@@ -40,7 +40,7 @@ def main(argv=None):
     p.add_argument('--linear-policy', choices=('reference','estimated','inexact'), help='solver-only option; allowed on resume')
     p.add_argument('--ib-response-backend', choices=('quadrature','csr'), help='equivalent frozen IB execution; allowed on resume')
     p.add_argument('--ib-csr-assembly-backend', choices=('coalesce','hash','cached-hash'), help='GPU CSR construction; allowed on resume')
-    p.add_argument('--ib-csr-contraction-backend', choices=('sites','cell'), help='GPU quadrature data reuse; cell requires hash/cached-hash; allowed on resume')
+    p.add_argument('--ib-csr-contraction-backend', choices=('sites','cell','cuda'), help='GPU quadrature contraction; cell/cuda require hash/cached-hash; cuda uses a C++/CUDA extension; allowed on resume')
     p.add_argument('--support-backend', choices=('points', 'vertices'))
     p.add_argument('--helmholtz-backend', choices=('reference', 'workspace', 'graph'))
     p.add_argument('--ib-point-density', type=float)
