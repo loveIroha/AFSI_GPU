@@ -20,7 +20,7 @@ from afsi_torch.config import (LVSimulationConfig, TimeConfig, lv_grid, FluidCon
 @torch.no_grad()
 def run(*,device='cuda',output=None,end_time=None,dt=None,fluid_cells=None,mesh_size=None,
         interaction_degree=None,log_every=None,checkpoint_every=None,resume=None,warm_start=None,
-        pressure_backend=None,execution_backend=None,solid_backend=None,mass_backend=None,coupling_backend=None,
+        pressure_backend=None,execution_backend=None,solid_backend=None,mass_backend=None,coupling_backend=None,ib_backend=None,
         write_vtk=None,output_every=None,case_config=None,fluid_shape=None,fluid_lengths=None,
         fluid_origin=None,rho=None,mu=None):
     if case_config is not None and not isinstance(case_config, LVSimulationConfig):
@@ -58,6 +58,7 @@ def run(*,device='cuda',output=None,end_time=None,dt=None,fluid_cells=None,mesh_
         if folder.resolve()!=Path(resume).resolve().parent:
             raise ValueError('resume in the checkpoint directory')
         model,state,settings,progress=load_mac(resume,device)
+        settings['ib_backend']=settings.get('ib_backend','reference') if ib_backend is None else ib_backend
         settings['warm_start']=(settings.get('warm_start',False) if warm_start is None else warm_start)
         settings['pressure_backend']=(settings.get('pressure_backend','torch')
                                       if pressure_backend is None else pressure_backend)
@@ -81,7 +82,7 @@ def run(*,device='cuda',output=None,end_time=None,dt=None,fluid_cells=None,mesh_
             lengths=config.fluid.lengths if fluid_lengths is None else tuple(fluid_lengths),
             origin=config.fluid.origin if fluid_origin is None else tuple(fluid_origin),
             rho=config.fluid.rho if rho is None else rho,mu=config.fluid.mu if mu is None else mu)
-        execution=replace(config.execution,**{k:v for k,v in dict(warm_start=warm_start,
+        execution=replace(config.execution,**{k:v for k,v in dict(warm_start=warm_start,ib_backend=ib_backend,
             pressure_backend=pressure_backend,execution_backend=execution_backend,solid_backend=solid_backend,
             mass_backend=mass_backend,coupling_backend=coupling_backend).items() if v is not None})
         config=replace(config,fluid=fluid,execution=execution,
@@ -208,7 +209,7 @@ def run(*,device='cuda',output=None,end_time=None,dt=None,fluid_cells=None,mesh_
               f'interaction points={geometry.weights.numel()}, dt={dt:g}; steps {state.step}->{steps}',flush=True)
         print(f'Execution: {settings["execution_backend"]}; solid={settings["solid_backend"]}, '
               f'mass={settings["mass_backend"]}, pressure={flow.pressure_solver.backend}, '
-              f'coupling={settings["coupling_backend"]}',flush=True)
+              f'coupling={settings["coupling_backend"]}; IB={settings.get("ib_backend","reference")}',flush=True)
         for _ in range(state.step,steps):
             sample=(state.step+1)%log_every==0 or state.step+1==steps
             state,info=driver.step(state,diagnostics=sample)

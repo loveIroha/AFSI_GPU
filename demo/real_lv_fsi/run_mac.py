@@ -9,7 +9,8 @@ from afsi_torch.config import TimeConfig, LVExecutionConfig, load_config, save_c
 from afsi_torch.mac.adaptive_transfer import InteractionQuadratureOptions
 from afsi_torch.simulation.paper_lv_mac import run
 
-CONFIG = PaperLVConfig()
+CONFIG = replace(PaperLVConfig(), nonlinear_solver='anderson-newton',
+    ib_response_backend='csr',ib_csr_assembly_backend='cached-hash',ib_csr_contraction_backend='cuda')
 
 
 def main(argv=None):
@@ -94,6 +95,7 @@ def main(argv=None):
             execution = replace(execution, pressure_backend=args.pressure_backend)
         quadrature = config.interaction_quadrature
         if args.reference:
+            config = replace(config,ib_response_backend='quadrature',ib_csr_assembly_backend='coalesce',ib_csr_contraction_backend='sites')
             quadrature = replace(quadrature, transfer_backend='reference', prepare_backend='torch', reuse_stencil_buffers=False)
         if args.interaction_quadrature == 'fixed':
             quadrature = InteractionQuadratureOptions(mode='fixed')

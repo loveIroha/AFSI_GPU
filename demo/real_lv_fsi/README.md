@@ -1,5 +1,7 @@
 # 真实左心室：Ma 等（2024）的被动充盈算例
 
+**运行入口：[当前完整指南](RUN_GUIDE.md)**，包含纯舒张与主动收缩、材料预设区别、BE–BE 离散、CUDA IB、两个周期后台命令、续算与输出。[CUDA 工具链与 export 说明](../../docs/CUDA_IB.md)。下文保留方法与历史实验细节，当前运行以完整指南为入口。
+
 本 demo 现以 *An unconditionally stable scheme for the immersed boundary
 method with application in cardiac mechanics* 的 V.F 节为复现目标。
 [论文信息及作者接受稿](https://eprints.gla.ac.uk/333577/)，DOI: 10.1063/5.0225605。

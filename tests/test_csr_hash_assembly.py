@@ -222,7 +222,8 @@ def test_hash_configuration_and_cli_roundtrip(tmp_path):
         replace(cfg,ib_csr_assembly_backend='invalid')
     path = tmp_path/'settings.json'
     main(['--nonlinear-solver','anderson-newton','--linear-policy','inexact',
-          '--ib-response-backend','csr','--ib-csr-assembly-backend','hash','--write-config',str(path)])
+          '--ib-response-backend','csr','--ib-csr-assembly-backend','hash',
+          '--ib-csr-contraction-backend','sites','--write-config',str(path)])
     restored = load_config(path,type(cfg))
     assert restored.ib_csr_assembly_backend=='hash' and restored.ib_response_backend=='csr'
     assert restored.time==cfg.time and restored.material==cfg.material

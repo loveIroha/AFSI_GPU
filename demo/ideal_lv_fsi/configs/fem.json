@@ -1,4 +1,5 @@
 {
+  "demo": "ideal-lv-fem",
   "time": {
     "dt": 5e-05,
     "end_time": 2.0
@@ -70,5 +71,6 @@
     "output_every": 200,
     "write_vtk": true,
     "fluid_fields": true
-  }
+  },
+  "ib_backend": "cuda"
 }

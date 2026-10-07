@@ -20,6 +20,7 @@ def build_driver(solid,settings,device):
         fused=settings['fused'],optimized=optimized,pressure_backend=None if pressure=='auto' else pressure,
         options=MGOptions(**settings.get('pressure_solver',{})),inlet_config=settings.get('inlet'))
     transfer=TriangleTransfer(grid,solid.geometry,mass_backend=settings['mass_backend'],
+        ib_backend=settings.get('ib_backend','reference'),
         warm_start=settings['warm_start'],fused=settings['fused'],optimized=optimized,
         options=SolverOptions(**settings['mass_solver']) if 'mass_solver' in settings else None)
     return ValveStepper(flow,transfer,solid,optimized=optimized,fused=settings['fused'])

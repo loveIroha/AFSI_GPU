@@ -179,7 +179,7 @@ def test_benchmark_cli_and_checkpoint_compatibility(real_case,tmp_path):
     f=tmp_path/'config.json'
     main(['--ib-transfer-backend','fused','--ib-stencil-backend','shared','--ib-prepare-backend','triton',
           '--write-config',str(f)])
-    data=json.loads(f.read_text());assert data['nonlinear_solver']=='jfnk'
+    data=json.loads(f.read_text());assert data['nonlinear_solver']=='anderson-newton'
     assert data['interaction_quadrature']['transfer_backend']=='fused'
     assert not _decode(MACCouplingOptions,{}).reuse_validation
     fast=replace(cfg,coupling=replace(cfg.coupling,reuse_validation=True))

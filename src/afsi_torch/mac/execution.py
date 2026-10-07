@@ -20,6 +20,11 @@ def build_driver(model, settings, device):
     solid_backend = settings.get('solid_backend', 'reference')
     mass_backend = settings.get('mass_backend', 'pcg')
     coupling_backend=settings.get('coupling_backend','reference')
+    ib_backend=settings.get('ib_backend','reference')
+    if ib_backend not in ('reference','cuda') or (ib_backend=='cuda' and backend!='fused'):
+        raise ValueError('native MAC IB requires fused execution; backend must be reference or cuda')
+    if ib_backend=='cuda' and torch.device(device).type!='cuda':
+        raise ValueError('ib_backend=cuda requires CUDA; choose reference explicitly on CPU')
     if backend not in ('torch', 'fused'):
         raise ValueError('execution backend must be torch or fused')
     if solid_backend not in ('reference','pointwise'):
@@ -66,7 +71,9 @@ def build_driver(model, settings, device):
     if backend == 'fused':
         from .compact_transfer import CompactFETransfer
         transfer_class = AdaptiveP1Transfer if adaptive else CompactFETransfer
-        transfer_options = dict(quadrature_options=quadrature,fused=True) if adaptive else {}
+        if adaptive and ib_backend=='cuda':
+            raise ValueError('adaptive native IB uses the paper CSR entry point')
+        transfer_options = dict(quadrature_options=quadrature,fused=True) if adaptive else dict(ib_backend=ib_backend)
         transfer = transfer_class(grid,geometry,warm_start=settings.get('warm_start',False),
                                      mass_backend=mass_backend,
                                      options=SolverOptions(**settings['mass_solver']) if 'mass_solver' in settings else None,**transfer_options)

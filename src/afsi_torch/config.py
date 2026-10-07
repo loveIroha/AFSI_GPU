@@ -90,16 +90,19 @@ class LVExecutionConfig:
     mass_backend: str = 'pcg'
     coupling_backend: str = 'reference'
     warm_start: bool = False
+    ib_backend: str = 'reference'
 
     def __post_init__(self):
         choices = dict(execution_backend=('torch', 'fused'), pressure_backend=('torch', 'fused', 'workspace', 'graph'),
                        solid_backend=('reference', 'pointwise'), mass_backend=('pcg', 'graph'),
-                       coupling_backend=('reference', 'optimized'))
+                       coupling_backend=('reference', 'optimized'), ib_backend=('reference','cuda'))
         for name, values in choices.items():
             if getattr(self, name) not in values:
                 raise ValueError(f'invalid {name}')
         if type(self.warm_start) is not bool:
             raise ValueError('warm_start must be bool')
+        if self.ib_backend=='cuda' and self.execution_backend!='fused':
+            raise ValueError('native MAC IB requires fused execution')
         if self.execution_backend != 'fused' and (self.solid_backend != 'reference' or
                 self.mass_backend != 'pcg' or self.coupling_backend != 'reference'):
             raise ValueError('pointwise/graph mass/optimized coupling require fused execution')
@@ -112,11 +115,12 @@ class ValveExecutionConfig:
     mass_backend: str = 'graph'
     fused: bool = True
     warm_start: bool = True
+    ib_backend: str = 'reference'
 
     def __post_init__(self):
         if (self.execution_backend not in ('reference', 'optimized') or
                 self.pressure_backend not in ('auto', 'reference', 'workspace', 'graph') or
-                self.mass_backend not in ('pcg', 'graph')):
+                self.mass_backend not in ('pcg', 'graph') or self.ib_backend not in ('reference','cuda')):
             raise ValueError('invalid valve execution backend')
         if type(self.fused) is not bool or type(self.warm_start) is not bool:
             raise ValueError('fused/warm_start must be bool')
@@ -171,8 +175,11 @@ class LVFEMSimulationConfig:
     backend: str = 'csr'
     history_every: int = 20
     output: OutputConfig = field(default_factory=lambda: OutputConfig(100,200,200,True))
+    ib_backend: str = 'reference'
 
     def __post_init__(self):
+        if self.ib_backend not in ('reference','cuda'):
+            raise ValueError('IB backend must be reference or cuda')
         if not self.output.fluid_fields:
             raise ValueError('3D LV output contains both solid and fluid fields; fluid_fields must be True')
         if self.geometry.long_axis!='x':
@@ -263,7 +270,14 @@ def _decode(cls, data, path='config'):
 def load_config(path, cls=LVSimulationConfig):
     """Read a partial JSON config, reject misspelled keys, fill documented defaults."""
     with Path(path).open(encoding='utf-8') as stream:
-        return _decode(cls, json.load(stream))
+        data=json.load(stream)
+    if isinstance(data,dict) and 'demo' in data:
+        names={'ideal-lv-mac':'LVSimulationConfig','ideal-lv-fem':'LVFEMSimulationConfig',
+               'ideal-valve-mac':'ValveSimulationConfig','real-lv':'PaperLVConfig'}
+        actual=cls.__name__ if isinstance(cls,type) else type(cls).__name__
+        if names.get(data.pop('demo'))!=actual:
+            raise ValueError('JSON demo does not match this entry point')
+    return _decode(cls,data)
 
 
 def save_config(path, config):

@@ -12,7 +12,7 @@ The project brings together three ideas: the cardiac and valve examples in [AFSI
 
 - **Nonlinear finite-element solids:** P1/P2 tetrahedra in 3D and quadratic triangles in 2D; anisotropic constitutive models, boundary tractions, and spring constraints.
 - **Two fluid discretizations:** MAC staggered finite differences with geometric multigrid, and a 3D Q2/Q1 finite-element Chorin solver with assembled CSR operators.
-- **GPU IB coupling:** quadrature-based force spreading and velocity interpolation for the MAC solvers, using an assembled consistent FE mass matrix and adjoint transfer operators.
+- **GPU IB coupling:** PyTorch C++/CUDA is the primary IB execution backend in all GPU demo presets: adaptive P1 CSR contraction, compact P2 MAC transfer, reflected 2D transfer and nodal FEM transfer. MAC FE coupling retains its consistent mass matrix and paired operators; tensor/Triton reference paths remain available.
 - **Execution optimizations:** compiled tensor kernels, Triton stencil and transfer kernels, reusable workspaces, CUDA Graph replay, and warm-started iterative solves.
 - **Reusable case configuration:** Python configuration objects, JSON files, command-line overrides, recorded effective parameters, and restartable simulations.
 - **Replaceable 3D solid adapters:** material-independent force, assembled CSR tangent and validity interfaces; a composable P1 material/boundary implementation and a small runnable extension example.
@@ -28,7 +28,7 @@ The project brings together three ideas: the cardiac and valve examples in [AFSI
 
 The generated ideal left-ventricle demos follow the **loading-and-holding protocol** of AFSI `demo_337`: pressure and active tension rise linearly over 1.5 s and remain constant until 2 s. The valve demo follows the geometry, material, and periodic inlet of AFSI `demo_340`. These cases generate geometry with Gmsh and do not require external patient meshes or fiber files.
 
-The [real-LV demo](demo/real_lv_fsi/README.md) now targets the **passive inflation benchmark** in section V.F of [Ma et al. (2024)](https://eprints.gla.ac.uk/333577/), DOI 10.1063/5.0225605. It imports a user-supplied P1 tetrahedral mesh and DG0 fiber/sheet directions, applies pressure rising to 8 mmHg over 0.8 s and then held, and uses the paper's raw-I1 H–O law with its printed stress correction. The fluid box is 13 cm cubed, with homogeneous Neumann velocity diffusion and zero Dirichlet pressure; density is 1 g/cm³ and viscosity is 4 cP. This replaces the previous active three-cycle demo preset. Patient data are not distributed.
+The [real-LV demo](demo/real_lv_fsi/README.md) now targets the **passive inflation benchmark** in section V.F of [Ma et al. (2024)](https://eprints.gla.ac.uk/333577/), DOI 10.1063/5.0225605. It imports a user-supplied P1 tetrahedral mesh and DG0 fiber/sheet directions, applies pressure rising to 8 mmHg over 0.8 s and then held, and uses the paper's raw-I1 H–O law with its printed stress correction. The fluid box is 13 cm cubed, with homogeneous Neumann velocity diffusion and zero Dirichlet pressure; density is 1 g/cm³ and viscosity is 4 cP. The active_cycle.json preset also provides the user-defined 0.8 s pressure/active-stress extension with separate material parameters; see the current real-LV run guide. Patient data are not distributed.
 
 The coupled **BE–BE** residual evaluates solid force at the new configuration while freezing both dual IB operators at the old configuration. Backward-Euler diffusion and a MAC projection are combined with semi-Lagrangian convection. The default nonlinear solver is finite-difference JFNK with unpreconditioned BiCGSTAB and line search. Optional Anderson acceleration with assembled-CSR Newton fallback solves the same BE–BE residual. Compiled P1 force and geometry kernels, fused shared IB transfers, consistent CSR mass, Graph PCG, and a separate Dirichlet pressure multigrid with graph replay retain the project's GPU finite-element workflow.
 
@@ -38,12 +38,20 @@ Lengths, time, density, viscosity, and stress use **cm–g–s units**. The 2D c
 
 ## Documentation
 
+**Start here:** [All demos: installation, commands and numerical methods](docs/DEMO_GUIDE.md).
+Each demo has a current run guide covering short/full/background runs, parameters,
+spatial and temporal discretization, IB coupling, restart and output:
+[ideal LV MAC/FEM](demo/ideal_lv_fsi/RUN_GUIDE.md),
+[2D valve](demo/ideal_valve_fsi/RUN_GUIDE.md),
+[real LV passive/active](demo/real_lv_fsi/RUN_GUIDE.md).
+For the optional native GPU kernel, see [CUDA IB installation and environment variables](docs/CUDA_IB.md).
+
 | Topic | Guide |
 | --- | --- |
 | Public configuration API, parameter units, and project structure | [Configuration guide](docs/CONFIGURATION.md) |
 | Solid interfaces, replaceable P1 materials/boundaries and migration limits | [Solid API](docs/SOLID_API.md) |
 | External XDMF/HDF5 meshes, DOLFIN boundary tags, and cellwise fibers | [Mesh input API](docs/MESH_INPUT.md) |
-| Paper real-LV passive inflation, BE–BE, input files, and background execution | [Real LV demo](demo/real_lv_fsi/README.md) |
+| Real-LV passive inflation and active cycles, BE–BE, inputs and background execution | [Real LV run guide](demo/real_lv_fsi/RUN_GUIDE.md) |
 | CN–AB2 fluid, midpoint FE/IB, wall Stokes residuals, startup and restart | [CN–AB2 method](docs/MAC_CNAB.md) |
 | CN velocity buffers, fused Jacobi stencils and fixed-sweep CUDA Graphs | [CN–Stokes execution](docs/CN_STOKES_EXECUTION.md) |
 | Shared P1 IB vector gather and local atomic reduction | [Shared IB execution](docs/SHARED_IB_TILED.md) |
@@ -55,8 +63,8 @@ Lengths, time, density, viscosity, and stress use **cm–g–s units**. The 2D c
 | Shared-table FE/IB fusion, point-array traffic and checked geometry reuse | [FE/IB memory traffic](docs/SHARED_FE_FUSION.md) |
 | Parallel support reduction and pointwise P1 geometry checks | [Validation execution](docs/VALIDATION_EXECUTION.md) |
 | Bounded IB buffers, allocator monitoring and CFL-controlled coupled substeps | [Workspace and time control](docs/MAC_WORKSPACE_SUBSTEPS.md) |
-| Left-ventricle MAC/FEM demos, restart, and VTK output | [Ideal LV demo](demo/ideal_lv_fsi/README.md) |
-| Two-dimensional valve demo and boundary conditions | [Ideal valve demo](demo/ideal_valve_fsi/README.md) |
+| Left-ventricle MAC/FEM demos, restart, and VTK output | [Ideal LV run guide](demo/ideal_lv_fsi/RUN_GUIDE.md) |
+| Two-dimensional valve demo and boundary conditions | [Ideal valve run guide](demo/ideal_valve_fsi/RUN_GUIDE.md) |
 | AFSI `demo_337` material, loading, geometry, and reference differences | [AFSI337 alignment](docs/AFSI337_ALIGNMENT.md) |
 | Finite-element constitutive formulation | [Guccione model](docs/GUCCIONE.md) |
 | Compact IB kernels and tensor execution | [MAC execution design](docs/MAC_EXECUTION_PERFORMANCE.md) |
@@ -113,12 +121,12 @@ Install the CUDA-enabled PyTorch wheel before installing the project. For exampl
 
 ```bash
 python -m pip install torch --index-url https://download.pytorch.org/whl/cu128
-python -m pip install -e ".[test,geometry,fused]"
+python -m pip install -e ".[test,geometry,fused,cuda-ib]"
 ```
 
 Choose a different official PyTorch wheel index when required by your driver or GPU. Let pip resolve the Triton version compatible with PyTorch; avoid replacing it independently. `torchvision` and `torchaudio` are not needed by these demos.
 
-The editable install makes changes to the Python source available immediately. The package is named `afsi-torch`, and its Python import name is `afsi_torch`.
+GPU demo presets use the native C++/CUDA IB extension. Install a CUDA Toolkit compatible with `torch.version.cuda`, configure it following the [CUDA IB guide](docs/CUDA_IB.md), then run `python -m afsi_torch.mac.cuda_ib`. The PyTorch wheel alone does not supply the required compiler. The editable install makes changes to the Python source available immediately. The package is named `afsi-torch`, and its Python import name is `afsi_torch`.
 
 | Dependency / extra | Purpose |
 | --- | --- |
@@ -130,10 +138,11 @@ The editable install makes changes to the Python source available immediately. T
 | `mesh` | h5py and meshio for external XDMF/HDF5 input and mesh inspection |
 | `quadrature` | Basix 0.10.0 for compact positive tetrahedral reference tables in the real-LV demo |
 | `reference` | Optional Basix dependency for reference checks |
+| `cuda-ib` | Ninja for the C++/CUDA IB extension used by GPU demo presets; matching CUDA Toolkit must be installed separately |
 
 The native PyTorch demos run without a FEniCSx, PETSc, AFSI, Docker, or Taichi installation. Separate native-AFSI comparison scripts require their own reference environment.
 
-For the imported real-LV demo, install `python -m pip install -e ".[test,mesh,fused,quadrature]"`. Its compact Xiao–Gimbutas rules preserve the selected polynomial degree while reducing interaction-point count. Basix constructs small reference tables during preparation; FE assembly, consistent-mass solves and IB transfer remain PyTorch/GPU computations. The endpoint coupled solver reuses an unchanged converged response while retaining final acceptance checks. Different quadrature rules can change IB kernel sampling; use the [same-checkpoint comparison](docs/GAO_FE_ALIGNMENT.md) to measure both numerical differences and speed.
+For the imported real-LV demo, install `python -m pip install -e ".[test,mesh,fused,quadrature,cuda-ib]"`. Its compact Xiao–Gimbutas rules preserve the selected polynomial degree while reducing interaction-point count. Basix constructs small reference tables during preparation; FE assembly, consistent-mass solves and IB transfer remain PyTorch/GPU computations. The endpoint coupled solver reuses an unchanged converged response while retaining final acceptance checks. Different quadrature rules can change IB kernel sampling; use the [same-checkpoint comparison](docs/GAO_FE_ALIGNMENT.md) to measure both numerical differences and speed.
 
 ### 5. Verify the environment
 
@@ -153,11 +162,11 @@ print("Triton:", triton.__version__)
 print("Gmsh:", gmsh.__version__, "meshio:", meshio.__version__)
 PY
 
-CUDA_VISIBLE_DEVICES=0 python -m pytest -q \
+python -m pytest -q \
   tests/test_simulation_config.py tests/test_mac_output.py
 ```
 
-For the full test suite, run `CUDA_VISIBLE_DEVICES=0 python -m pytest -q`. GPU tests are skipped when CUDA is unavailable, so an entirely CPU test run does not establish GPU correctness. First use of compiled kernels and CUDA Graphs can take longer than subsequent steps.
+For the full test suite, run `python -m pytest -q`. GPU tests are skipped when CUDA is unavailable, so an entirely CPU test run does not establish GPU correctness. First use of compiled kernels and CUDA Graphs can take longer than subsequent steps.
 
 If Python imports NumPy or other packages from a different FEniCSx/Spack environment, start a clean shell and activate `afsi-torch`; check `python -c "import sys, numpy; print(sys.executable); print(numpy.__file__)"`. A missing `libGLU.so.1` indicates a missing Gmsh system library.
 
@@ -171,10 +180,31 @@ python -m pip install -e ".[test,geometry]"
 
 python demo/ideal_lv_fsi/run_mac.py \
   --device cpu --fluid-cells 16 --mesh-size 0.4 \
+  --ib-backend reference --execution-backend torch --pressure-backend torch \
+  --solid-backend reference --mass-backend pcg --coupling-backend reference \
   --end-time 0.0001 --no-vtk --output results/lv_cpu_smoke
 ```
 
-This small run uses the reference execution defaults. GPU presets that explicitly request pressure CUDA Graphs require CUDA.
+This small run explicitly selects the reference execution backends. GPU demo defaults require CUDA and the native IB extension.
+
+## One JSON per demo
+
+```bash
+# In the activated CUDA/toolkit environment; commands inherit your GPU selection.
+python demo/run.py demo/ideal_lv_fsi/configs/mac_gpu.json
+python demo/run.py demo/ideal_lv_fsi/configs/fem.json
+python demo/run.py demo/ideal_valve_fsi/configs/mac_gpu.json
+python demo/run.py demo/real_lv_fsi/configs/diastole_cuda.json
+python demo/run.py demo/real_lv_fsi/configs/active_cuda.json
+```
+
+Choose one command. Each JSON declares its demo and all case parameters; the runner
+prints a fresh timestamped output directory. Add `--end-time 0.005` for a short run
+or `--output results/my_run` to choose the destination. Real-LV presets require your
+mesh/fiber/sheet files and use the user H–O coefficients, with passive inflation
+or two active 0.8 s cycles. Install/build the [CUDA IB extension](docs/CUDA_IB.md)
+first. Its new P2/2D/nodal kernels require target-GPU validation; the measured P1
+speedup does not establish performance of every demo.
 
 ## Quick start
 
@@ -185,7 +215,7 @@ Run commands from the repository root with `afsi-torch` activated. Use a new out
 The GPU preset enables fused execution, pointwise solid kernels, graph-based mass and pressure solves, optimized coupling, and warm starts:
 
 ```bash
-CUDA_VISIBLE_DEVICES=0 python -u demo/ideal_lv_fsi/run_mac.py \
+python -u demo/ideal_lv_fsi/run_mac.py \
   --config demo/ideal_lv_fsi/configs/mac_gpu.json \
   --end-time 0.005 --output results/lv_mac_smoke
 ```
@@ -193,14 +223,14 @@ CUDA_VISIBLE_DEVICES=0 python -u demo/ideal_lv_fsi/run_mac.py \
 This advances 100 steps. Continue the same trajectory to the full 2 s horizon:
 
 ```bash
-CUDA_VISIBLE_DEVICES=0 python -u demo/ideal_lv_fsi/run_mac.py \
+python -u demo/ideal_lv_fsi/run_mac.py \
   --resume results/lv_mac_smoke/checkpoint.npz --end-time 2.0
 ```
 
 A fresh full run uses the preset's 2 s end time:
 
 ```bash
-CUDA_VISIBLE_DEVICES=0 python -u demo/ideal_lv_fsi/run_mac.py \
+python -u demo/ideal_lv_fsi/run_mac.py \
   --config demo/ideal_lv_fsi/configs/mac_gpu.json \
   --output results/lv_mac_2s
 ```
@@ -208,11 +238,11 @@ CUDA_VISIBLE_DEVICES=0 python -u demo/ideal_lv_fsi/run_mac.py \
 ### Valve: optimized two-dimensional MAC fluid
 
 ```bash
-CUDA_VISIBLE_DEVICES=0 python -u demo/ideal_valve_fsi/run_mac.py \
+python -u demo/ideal_valve_fsi/run_mac.py \
   --config demo/ideal_valve_fsi/configs/mac_gpu.json \
   --end-time 0.005 --fluid-fields --output results/valve_mac_smoke
 
-CUDA_VISIBLE_DEVICES=0 python -u demo/ideal_valve_fsi/run_mac.py \
+python -u demo/ideal_valve_fsi/run_mac.py \
   --resume results/valve_mac_smoke/checkpoint.npz \
   --end-time 3.0 --fluid-fields
 ```
@@ -220,7 +250,7 @@ CUDA_VISIBLE_DEVICES=0 python -u demo/ideal_valve_fsi/run_mac.py \
 ### Left ventricle: finite-element fluid
 
 ```bash
-CUDA_VISIBLE_DEVICES=0 python -u demo/ideal_lv_fsi/run_fem.py \
+python -u demo/ideal_lv_fsi/run_fem.py \
   --config demo/ideal_lv_fsi/configs/fem.json \
   --end-time 0.005 --output results/lv_fem_smoke
 ```
@@ -233,7 +263,7 @@ This example starts a fresh 2 s MAC LV run. Create the output directory before r
 run_dir="results/lv_mac_$(date +%Y%m%d_%H%M%S)"
 mkdir -p "$run_dir"
 
-CUDA_VISIBLE_DEVICES=0 nohup /usr/bin/time \
+nohup /usr/bin/time \
   -f 'elapsed_seconds=%e exit_code=%x' -o "$run_dir/runtime.txt" \
   python -u demo/ideal_lv_fsi/run_mac.py \
   --config demo/ideal_lv_fsi/configs/mac_gpu.json \
@@ -345,7 +375,7 @@ The LV timing predates regular VTK time-series export; the current GPU preset en
 For a controlled comparison, replay an existing checkpoint using the supplied benchmark tools. For example:
 
 ```bash
-CUDA_VISIBLE_DEVICES=0 python -u validation/benchmark_lv_mac_graph.py \
+python -u validation/benchmark_lv_mac_graph.py \
   --checkpoint results/lv_mac_2s/checkpoint.npz \
   --device cuda --warmup 10 --steps 100 --profile \
   --output results/lv_mac_benchmark/report.json

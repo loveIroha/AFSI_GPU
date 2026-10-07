@@ -214,7 +214,7 @@ def test_demo_cli_records_options_and_rejects_unused_pressure_flag(tmp_path):
     main(['--ib-stencil-backend','shared','--write-config',str(path)])
     config = json.loads(path.read_text())
     assert config['interaction_quadrature']['stencil_backend']=='shared'
-    assert config['nonlinear_solver']=='jfnk'  # BE-BE; no midpoint Stokes option
+    assert config['nonlinear_solver']=='anderson-newton'  # BE-BE GPU demo; no midpoint Stokes option
     with pytest.raises(SystemExit) as error:
         main(['--coupling','cnab-midpoint','--stokes-warm-start','--write-config',str(path)])
     assert error.value.code==2

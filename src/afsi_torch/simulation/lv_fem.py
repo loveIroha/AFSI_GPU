@@ -107,7 +107,7 @@ def run(*, device='cuda', output=None, end_time=None, dt=None, mesh_size=None,
         fluid_cells=None, box_length=None, loads=None, preload=None, resume=None,
         output_every=None, checkpoint_every=None, log_every=None, history_every=None,
         write_vtk=None, backend=None, check_every=None, profile=None, solid_input=None,
-        timing=False,case_config=None):
+        timing=False,case_config=None,ib_backend=None):
     if case_config is not None:
         if not isinstance(case_config,LVFEMSimulationConfig):
             raise TypeError('case_config must be LVFEMSimulationConfig')
@@ -227,6 +227,9 @@ def run(*, device='cuda', output=None, end_time=None, dt=None, mesh_size=None,
     fluid_mesh = create_box(tuple(settings.get('fluid_shape',(settings['fluid_cells'],)*3)),
                             tuple(settings.get('fluid_lengths',(settings['box_length'],)*3)),
                             settings['origin'], device=device)
+    settings['ib_backend'] = (case_config.ib_backend if case_config else settings.get('ib_backend','reference')) if ib_backend is None else ib_backend
+    if settings['ib_backend'] not in ('reference','cuda'):
+        raise ValueError('invalid IB backend')
     settings['backend'] = backend
     settings['solver']['check_every'] = check_every
     progress.setdefault('execution_segments', []).append(dict(
@@ -238,7 +241,9 @@ def run(*, device='cuda', output=None, end_time=None, dt=None, mesh_size=None,
         operators = CSRFluidOperators(operators)
     flow = ChorinSolver(operators, dt=dt, rho=settings['rho'], mu=settings['mu'],
                         options=SolverOptions(**settings['solver']))
-    driver = ExplicitIBStepper(flow, model.force, model.validate)
+    from functools import partial
+    driver = ExplicitIBStepper(flow, model.force, model.validate,
+        stencil_factory=partial(ib.prepare_stencil,backend=settings['ib_backend']))
     timer = StepTimingRecorder(device, progress.get('timing')) if timing else None
     if not resume:
         state = (driver.initialize_equilibrium(x_start, force_tolerance=tolerance)
@@ -328,7 +333,7 @@ def run(*, device='cuda', output=None, end_time=None, dt=None, mesh_size=None,
                     tuple(settings.get('fluid_lengths',(settings['box_length'],)*3)),
                     tuple(settings['origin']),settings['rho'],settings['mu']),
                 geometry=model.mesh.config,material=model.parameters,loads=model.loads,beta=model.beta,
-                solver=SolverOptions(**settings['solver']),backend=backend,history_every=history_every,
+                solver=SolverOptions(**settings['solver']),backend=backend,history_every=history_every,ib_backend=settings['ib_backend'],
                 output=OutputConfig(log_every,checkpoint_every,output_every,write_vtk)))
             report['configuration']=configuration
             atomic_json(folder/'configuration.json',configuration)

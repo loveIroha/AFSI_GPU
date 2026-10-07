@@ -19,7 +19,13 @@ class Stencil:
 
 
 class TriangleTransfer:
-    def __init__(self,grid,geometry,*,mass_backend='graph',warm_start=True,fused=True,optimized=False,options=None):
+    def __init__(self,grid,geometry,*,mass_backend='graph',warm_start=True,fused=True,optimized=False,options=None,ib_backend='reference'):
+        if ib_backend not in ('reference','cuda'):
+            raise ValueError('IB backend must be reference or cuda')
+        self.ib_backend=ib_backend
+        if ib_backend=='cuda':
+            from ..mac.cuda_ib import require_cuda
+            require_cuda(geometry.weights)
         if mass_backend not in ('pcg','graph'):
             raise ValueError('mass backend must be pcg or graph')
         self.grid,self.geometry=grid,geometry
@@ -40,7 +46,8 @@ class TriangleTransfer:
         self.templates=grid.zeros(device=g.weights.device,dtype=g.weights.dtype)
         self.offsets=torch.cartesian_prod(torch.arange(4,device=g.weights.device),torch.arange(4,device=g.weights.device))
         if fused:
-            for name in ('evaluate','_prepare','_spread','_gather','_assemble'):
+            names=('evaluate','_prepare','_assemble') if ib_backend=='cuda' else ('evaluate','_prepare','_spread','_gather','_assemble')
+            for name in names:
                 setattr(self,name,tensor_kernel(getattr(self,name),g.weights.device))
             if optimized:
                 self.support_valid=tensor_kernel(self.support_valid,g.weights.device)
@@ -100,6 +107,10 @@ class TriangleTransfer:
 
     def _spread(self,coefficient,indices,weights):
         force_q=(self.evaluate(coefficient)*self.geometry.weights[...,None]).reshape(-1,2)
+        if self.ib_backend=='cuda':
+            from ..mac.cuda_ib import indexed_spread
+            return tuple(indexed_spread(force_q[:,c:c+1],indices[c],weights[c],self.templates[c].numel(),
+                         self.grid.volume).reshape_as(self.templates[c]) for c in range(2))
         return tuple(torch.zeros_like(self.templates[c]).reshape(-1).index_add(0,indices[c].reshape(-1),
             (force_q[:,c,None]*weights[c]/self.grid.volume).reshape(-1)).reshape_as(self.templates[c]) for c in range(2))
 
@@ -110,6 +121,9 @@ class TriangleTransfer:
         return self._spread(coefficient,stencil.indices,stencil.weights),info
 
     def _gather(self,velocity,indices,weights):
+        if self.ib_backend=='cuda':
+            from ..mac.cuda_ib import indexed_gather
+            return torch.cat([indexed_gather(u.reshape(-1,1),ids,w) for u,ids,w in zip(velocity,indices,weights)],-1)
         return torch.stack([(u.reshape(-1)[ids]*w).sum(-1) for u,ids,w in zip(velocity,indices,weights)],-1)
 
     def _assemble(self,value):

@@ -6,6 +6,7 @@ from ..config import LVSimulationConfig, ValveSimulationConfig, LVFEMSimulationC
 
 def _common(parser, *, mac=True):
     parser.add_argument('--device', default='cuda')
+    parser.add_argument('--ib-backend',choices=('reference','cuda'),help='IB transfer execution; cuda requires the native extension')
     parser.add_argument('--output')
     parser.add_argument('--resume', help='restore geometry, physical settings and dt from checkpoint')
     parser.add_argument('--config', help='partial JSON case configuration')

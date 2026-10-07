@@ -1,0 +1,160 @@
+{
+  "demo": "real-lv",
+  "source_dir": "/mnt/large2/gjh/realistic_left_ventricle",
+  "mesh_file": "mesh_scale.xdmf",
+  "boundary_file": "boundaries.xml",
+  "fiber_files": [
+    "fibers_0.xml",
+    "fibers_1.xml",
+    "fibers_2.xml"
+  ],
+  "sheet_files": [
+    "sheets_0.xml",
+    "sheets_1.xml",
+    "sheets_2.xml"
+  ],
+  "source_units": "cm",
+  "endo_tag": 2,
+  "epi_tag": 1,
+  "base_tag": 3,
+  "basal_center_cm": [
+    7.5,
+    7.5
+  ],
+  "beta": 5000000.0,
+  "solid_degree": 5,
+  "interaction_degree": 2,
+  "time": {
+    "dt": 0.0001,
+    "end_time": 1.6
+  },
+  "fluid": {
+    "shape": [
+      128,
+      128,
+      128
+    ],
+    "lengths": [
+      13.0,
+      13.0,
+      13.0
+    ],
+    "origin": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "rho": 1.0,
+    "mu": 0.04
+  },
+  "material": {
+    "a": 2400.0,
+    "b": 5.08,
+    "a_f": 14600.0,
+    "b_f": 4.15,
+    "a_s": 8700.0,
+    "b_s": 1.6,
+    "a_fs": 3000.0,
+    "b_fs": 1.3,
+    "kappa": 5000000.0,
+    "active_stretch_slope": 4.9
+  },
+  "loads": {
+    "target_mmhg": 8.0,
+    "ramp_seconds": 0.8
+  },
+  "load_protocol": "active-cycle",
+  "cyclic_loads": {
+    "period": 0.8,
+    "pressure_kpa": 1.067,
+    "pressure_increment_kpa": 13.46,
+    "tension_kpa": 84.26
+  },
+  "flow": {
+    "convection": true,
+    "helmholtz_rtol": 1e-12,
+    "helmholtz_atol": 1e-13,
+    "max_sweeps": 500,
+    "check_every": 4,
+    "helmholtz_backend": "graph"
+  },
+  "pressure_solver": {
+    "rtol": 1e-10,
+    "atol": 1e-12,
+    "max_cycles": 100,
+    "smooth": 4,
+    "check_every": 2
+  },
+  "mass_solver": {
+    "rtol": 1e-12,
+    "atol": 1e-13,
+    "max_iterations": 500,
+    "recompute_every": 40,
+    "check_every": 4
+  },
+  "interaction_quadrature": {
+    "mode": "adaptive",
+    "point_density": 2.0,
+    "max_order": 22,
+    "max_points": 12000000,
+    "rule_family": "xiao-gimbutas",
+    "transfer_backend": "fused",
+    "stencil_backend": "shared",
+    "prepare_backend": "triton",
+    "reuse_stencil_buffers": true,
+    "shared_execution": "reference"
+  },
+  "execution": {
+    "execution_backend": "fused",
+    "pressure_backend": "graph",
+    "solid_backend": "reference",
+    "mass_backend": "graph",
+    "coupling_backend": "optimized",
+    "warm_start": true
+  },
+  "nonlinear_solver": "anderson-newton",
+  "newton_preconditioner": "none",
+  "ib_response_backend": "csr",
+  "ib_csr_assembly_backend": "cached-hash",
+  "ib_csr_contraction_backend": "cuda",
+  "ib_csr_chunk_entries": 1048576,
+  "ib_csr_max_entries": 32000000,
+  "support_backend": "vertices",
+  "nonlinear": {
+    "rtol": 1e-06,
+    "atol": 1e-09,
+    "max_iterations": 15,
+    "max_backtracks": 20,
+    "armijo": 0.0001,
+    "linear": {
+      "rtol": 0.001,
+      "atol": 1e-11,
+      "restart": 50,
+      "max_iterations": 240,
+      "check_every": 5,
+      "check_policy": "estimated",
+      "true_check_interval": 25
+    },
+    "linear_tolerance_fraction": 0.5,
+    "linear_forcing": "adaptive"
+  },
+  "anderson": {
+    "max_iterations": 6,
+    "history_size": 4,
+    "growth_limit": 4.0,
+    "regularization": 1e-12,
+    "extra_iterations": 0,
+    "extension_window": 3,
+    "extension_ratio": 0.8,
+    "stall_iterations": 0,
+    "stall_ratio": 0.95
+  },
+  "max_courant": 1.0,
+  "output": {
+    "log_every": 100,
+    "checkpoint_every": 1000,
+    "output_every": 1000,
+    "write_vtk": true,
+    "fluid_fields": true
+  }
+}

@@ -1,9 +1,9 @@
-"""Optional PyTorch C++/CUDA operators for frozen P1 IB contraction.
+"""PyTorch C++/CUDA operators for P1 contraction and P2/nodal IB transfer.
 
 Compilation is lazy; importing afsi_torch never requires a CUDA toolkit.
 Tensor data stay on the GPU, and kernels use PyTorch's current CUDA stream.
-The extension replaces numeric contraction/insertion only. CSR structure,
-consistent mass solves and paired interpolation/spreading remain unchanged.
+The extension accelerates numeric contraction/insertion or paired transfer.
+CSR structure, FE quadrature and consistent mass equations remain unchanged.
 """
 from pathlib import Path
 import os
@@ -52,11 +52,42 @@ def build(*, verbose=False):
             raise RuntimeError('IB cuda contraction requires the CUDA toolkit (nvcc); set CUDA_HOME')
         _validate_toolkit(CUDA_HOME, torch.version.cuda)
         source = Path(__file__).parent/'csrc'
-        load(name='afsi_ib_cuda', sources=[str(source/'ib.cpp'), str(source/'ib.cu')],
+        load(name='afsi_ib_cuda', sources=[str(source/name) for name in
+             ('ib.cpp','ib.cu','transfer.cpp','transfer.cu')],
              extra_cflags=['/O2'] if os.name=='nt' else ['-O3'],
              extra_cuda_cflags=['-O3', '--fmad=false', '-lineinfo'],
              is_python_module=False, verbose=verbose)
         _loaded = True
+
+
+def require_cuda(tensor):
+    if not tensor.is_cuda:
+        raise ValueError('ib_backend=cuda requires CUDA tensors; select reference explicitly on CPU')
+    build()
+
+
+def indexed_gather(field, indices, weights):
+    require_cuda(field)
+    return torch.ops.afsi_ib_cuda.indexed_gather(field.contiguous(),indices.contiguous(),weights.contiguous())
+
+
+def indexed_spread(field, indices, weights, size, volume=1.):
+    require_cuda(field)
+    return torch.ops.afsi_ib_cuda.indexed_spread(field.contiguous(),indices.contiguous(),weights.contiguous(),size,float(volume))
+
+
+def compact_gather(grid, velocity, stencil):
+    require_cuda(velocity[0])
+    return torch.stack([torch.ops.afsi_ib_cuda.compact_gather(
+        u.contiguous().view(-1),stencil.base[c].contiguous(),stencil.phi[c].contiguous(),*grid.face_shape(c))
+        for c,u in enumerate(velocity)],-1)
+
+
+def compact_spread(grid, force, stencil):
+    require_cuda(force)
+    return tuple(torch.ops.afsi_ib_cuda.compact_spread(
+        force[:,c].contiguous(),stencil.base[c].contiguous(),stencil.phi[c].contiguous(),
+        *grid.face_shape(c),float(grid.volume)).view(grid.face_shape(c)) for c in range(3))
 
 
 def contract(stencil, group, component, offset, low, width, prefix, count, face_shape,

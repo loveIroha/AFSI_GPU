@@ -166,7 +166,7 @@ def test_demo_paper_material_and_quadrature_cli(tmp_path):
     assert config['material']==asdict(run_mac.CONFIG.material)
     assert config['material']['b']==10.81 and config['loads']['target_mmhg']==8.
     assert config['interaction_quadrature']['mode']=='adaptive'
-    run_mac.main(['--interaction-quadrature','fixed','--write-config',str(path)])
+    run_mac.main(['--reference','--interaction-quadrature','fixed','--write-config',str(path)])
     assert json.loads(path.read_text())['interaction_quadrature']['mode']=='fixed'
     with pytest.raises(SystemExit):
         run_mac.main(['--resume','checkpoint.npz','--interaction-quadrature','adaptive'])

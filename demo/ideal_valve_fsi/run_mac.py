@@ -16,7 +16,7 @@ CONFIG = ValveSimulationConfig(
     inlet=InletConfig(amplitude=5., period=1., offset=1.1),
     pressure_solver=MGOptions(rtol=1e-10, atol=1e-12, max_cycles=100, smooth=4, check_every=2),
     mass_solver=mass_options(),
-    execution=ValveExecutionConfig(),
+    execution=ValveExecutionConfig(ib_backend='cuda'),
     output=OutputConfig(log_every=160, checkpoint_every=1600, output_every=160,
                         write_vtk=True, fluid_fields=False),
 )

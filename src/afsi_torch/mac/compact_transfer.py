@@ -56,13 +56,21 @@ def _vertex_support_tensor_kernel(device_type):
 
 
 class CompactFETransfer(FETransfer):
-    def __init__(self,*args,mass_backend='pcg',**kwargs):
+    def __init__(self,*args,mass_backend='pcg',ib_backend='reference',**kwargs):
+        if ib_backend not in ('reference','cuda'):
+            raise ValueError('IB backend must be reference or cuda')
         if mass_backend not in ('pcg','graph'):
             raise ValueError('mass backend must be pcg or graph')
         super().__init__(*args,**kwargs)
         self.mass_backend=mass_backend
         device=self.geometry.weights.device
+        self.ib_backend=ib_backend
+        if ib_backend=='cuda':
+            from .cuda_ib import require_cuda
+            require_cuda(self.geometry.weights)
         self.execution_backend='triton+compile' if device.type=='cuda' else 'buffered-cpu'
+        if ib_backend=='cuda':
+            self.execution_backend='cpp-cuda+torch-fe'
         self._prepare_kernel=tensor_kernel(_prepare,device)
         self._evaluate_kernel=tensor_kernel(_evaluate,device)
         self._weighted_kernel=tensor_kernel(_weighted,device)
@@ -162,6 +170,9 @@ class CompactFETransfer(FETransfer):
         return ids.reshape(-1,64),weights.reshape(-1,64)
 
     def spread_grid(self,force_q,stencil):
+        if self.ib_backend=='cuda':
+            from .cuda_ib import compact_spread
+            return compact_spread(self.grid,force_q,stencil)
         if force_q.is_cuda:
             from ._triton_ib import spread
             return spread(self.grid,force_q.contiguous(),stencil)
@@ -174,6 +185,9 @@ class CompactFETransfer(FETransfer):
         return fields
 
     def gather_grid(self,velocity,stencil):
+        if self.ib_backend=='cuda':
+            from .cuda_ib import compact_gather
+            return compact_gather(self.grid,velocity,stencil)
         if velocity[0].is_cuda:
             from ._triton_ib import gather
             return gather(self.grid,tuple(u.contiguous() for u in velocity),stencil)

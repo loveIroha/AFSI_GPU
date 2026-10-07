@@ -72,15 +72,21 @@ class IBStencil:
     grid: UniformGrid
     indices: Tensor   # Ns,64, int64
     weights: Tensor   # Ns,64, dimensionless product of three phi factors
+    backend: str = 'reference'
 
 
-def prepare_stencil(x: Tensor, grid: UniformGrid) -> IBStencil:
+def prepare_stencil(x: Tensor, grid: UniformGrid, *, backend='reference') -> IBStencil:
     """Build 64 neighbors per solid node on x.device; no dense Ns*Nf matrix.
 
     Require the entire four-node stencil in each axis inside the grid. No
     clipping, silent loss of weights, periodic wrapping or renormalization.
     Validation performs host synchronization; keep outside compiled kernels.
     """
+    if backend not in ('reference','cuda'):
+        raise ValueError('IB backend must be reference or cuda')
+    if backend=='cuda':
+        from .mac.cuda_ib import require_cuda
+        require_cuda(x)
     if (x.ndim != 2 or x.shape[1] != 3 or x.shape[0] == 0 or
             x.dtype not in (torch.float32, torch.float64) or not torch.isfinite(x).all()):
         raise ValueError("positions must be finite nonempty (N,3) float32/float64")
@@ -96,7 +102,7 @@ def prepare_stencil(x: Tensor, grid: UniformGrid) -> IBStencil:
     weights = peskin4(scaled[:, None, :]-nodes.to(x.dtype)).prod(-1)
     nx, ny, _ = grid.shape
     indices = nodes[..., 0]+nx*(nodes[..., 1]+ny*nodes[..., 2])
-    return IBStencil(grid, indices, weights)
+    return IBStencil(grid, indices, weights, backend)
 
 
 def _check_field(field, count, stencil):
@@ -108,6 +114,9 @@ def _check_field(field, count, stencil):
 def interpolate(velocity: Tensor, stencil: IBStencil) -> Tensor:
     """U_s=H u_f, a smoothed velocity interpolation, not P2 point evaluation."""
     _check_field(velocity, stencil.grid.node_count, stencil)
+    if stencil.backend=='cuda':
+        from .mac.cuda_ib import indexed_gather
+        return indexed_gather(velocity,stencil.indices,stencil.weights)
     return (velocity[stencil.indices]*stencil.weights[..., None]).sum(1)
 
 
@@ -118,6 +127,9 @@ def spread_load(nodal_force: Tensor, stencil: IBStencil) -> Tensor:
     it by a mass matrix. This is distinct from an interpolated force density.
     """
     _check_field(nodal_force, stencil.indices.shape[0], stencil)
+    if stencil.backend=='cuda':
+        from .mac.cuda_ib import indexed_spread
+        return indexed_spread(nodal_force,stencil.indices,stencil.weights,stencil.grid.node_count)
     local = stencil.weights[..., None]*nodal_force[:, None, :]
     return nodal_force.new_zeros((stencil.grid.node_count, 3)).index_add(
         0, stencil.indices.reshape(-1), local.reshape(-1, 3))

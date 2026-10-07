@@ -16,7 +16,7 @@ from afsi_torch.config import (ValveSimulationConfig, TimeConfig, FluidConfig, O
 
 @torch.no_grad()
 def run(*,device='cuda',output=None,resume=None,end_time=None,dt=None,nx=None,ny=None,
-        mesh_size=None,mass_backend=None,fused=None,warm_start=None,execution_backend=None,pressure_backend=None,
+        mesh_size=None,mass_backend=None,fused=None,warm_start=None,execution_backend=None,pressure_backend=None,ib_backend=None,
         log_every=None,checkpoint_every=None,field_every=None,fluid_fields=None,
         case_config=None,fluid_lengths=None,rho=None,mu=None):
     if case_config is not None and not isinstance(case_config,ValveSimulationConfig):
@@ -53,6 +53,7 @@ def run(*,device='cuda',output=None,resume=None,end_time=None,dt=None,nx=None,ny
         if any(v is not None for v in (dt,nx,ny,mesh_size,fluid_lengths,rho,mu)) or folder.resolve()!=Path(resume).resolve().parent:
             raise ValueError('resume restores geometry/grid/dt in its checkpoint directory')
         solid,state,settings,progress=checkpoint.load(resume,device)
+        settings.setdefault('ib_backend','reference')
         if inherit_field_every:
             field_every=settings.get('field_every',160)
         if inherit_fluid_fields:
@@ -60,7 +61,7 @@ def run(*,device='cuda',output=None,resume=None,end_time=None,dt=None,nx=None,ny
         if fused is not None and fused!=settings['fused']:
             solid=ValveSolid(solid.mesh,solid.config,fused=fused)
         for key,value in (('mass_backend',mass_backend),('fused',fused),('warm_start',warm_start),
-                          ('execution_backend',execution_backend),('pressure_backend',pressure_backend)):
+                          ('execution_backend',execution_backend),('pressure_backend',pressure_backend),('ib_backend',ib_backend)):
             if value is not None:
                 settings[key]=value
     else:
@@ -70,7 +71,7 @@ def run(*,device='cuda',output=None,resume=None,end_time=None,dt=None,nx=None,ny
         fluid=replace(config.fluid,shape=(config.fluid.shape[0] if nx is None else nx,config.fluid.shape[1] if ny is None else ny),
             lengths=config.fluid.lengths if fluid_lengths is None else tuple(fluid_lengths),
             rho=config.fluid.rho if rho is None else rho,mu=config.fluid.mu if mu is None else mu)
-        execution=replace(config.execution,**{k:v for k,v in dict(mass_backend=mass_backend,fused=fused,
+        execution=replace(config.execution,**{k:v for k,v in dict(mass_backend=mass_backend,fused=fused,ib_backend=ib_backend,
             warm_start=warm_start,execution_backend=execution_backend,pressure_backend=pressure_backend).items() if v is not None})
         config=replace(config,time=TimeConfig(config.time.dt if dt is None else dt,end_time),fluid=fluid,execution=execution,
             solid=replace(config.solid,mesh_size=config.solid.mesh_size if mesh_size is None else mesh_size))
@@ -182,7 +183,7 @@ def run(*,device='cuda',output=None,resume=None,end_time=None,dt=None,nx=None,ny
         save('running')
         print(f'Valve MAC: {device}, grid={grid.shape}, solid nodes={len(state.x)}, cells={len(solid.mesh.cells)}, '
               f'dt={flow.dt:g}; steps {state.step}->{steps}; mass={settings["mass_backend"]}; '
-              f'execution={settings["execution_backend"]}, pressure={flow.pressure_solver.backend}',flush=True)
+              f'execution={settings["execution_backend"]}, pressure={flow.pressure_solver.backend}; IB={settings["ib_backend"]}',flush=True)
         for _ in range(state.step,steps):
             sample=(state.step+1)%log_every==0 or state.step+1==steps
             state,info=driver.step(state,diagnostics=sample)

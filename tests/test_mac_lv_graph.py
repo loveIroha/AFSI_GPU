@@ -168,6 +168,7 @@ def test_lv_demo_graph_options_persist_and_allow_rollback(tmp_path,device):
     output=tmp_path/'demo'
     pressure='graph' if device=='cuda' else 'workspace'
     report=main(['--device',device,'--mesh-size','.4','--fluid-cells','16','--warm-start',
+        '--ib-backend','reference',
         '--execution-backend','fused','--solid-backend','pointwise','--mass-backend','graph',
         '--coupling-backend','optimized','--pressure-backend',pressure,'--end-time','.0002',
         '--output',str(output),'--log-every','2','--checkpoint-every','2'])

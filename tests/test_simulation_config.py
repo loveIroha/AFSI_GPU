@@ -129,7 +129,8 @@ def test_cli_json_priority_template_and_resume_guard(tmp_path):
     path=tmp_path/'config.json'
     path.write_text(json.dumps(dict(time=dict(dt=1e-5,end_time=2e-5),geometry=dict(mesh_size=.4),
         fluid=dict(shape=[16,16,16],mu=.9),output=dict(write_vtk=False,log_every=2))))
-    report=main(['--device','cpu','--config',str(path),'--mu','.8','--output',str(tmp_path/'cli')])
+    report=main(['--device','cpu','--ib-backend','reference','--pressure-backend','torch',
+                 '--config',str(path),'--mu','.8','--output',str(tmp_path/'cli')])
     assert report['settings']['dt']==1e-5 and report['settings']['mu']==.8
     assert report['visualization']['enabled'] is False
     template=tmp_path/'template.json'

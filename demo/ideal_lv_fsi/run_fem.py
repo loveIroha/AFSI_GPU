@@ -13,7 +13,7 @@ CONFIG=LVFEMSimulationConfig(
                       center=(3.5,2.5,2.5),long_axis='x',mesh_size=.1),
     material=GuccioneParameters(C=20000.,bf=8.,bt=2.,bfs=4.,kappa=500000.),
     loads=AFSI337Loads(pressure=150000.,tension=600000.,ramp_time=1.5),
-    beta=500000.,backend='csr',
+    beta=500000.,backend='csr',ib_backend='cuda',
     solver=SolverOptions(rtol=1e-10,atol=1e-12,max_iterations=4000,recompute_every=200,check_every=8),
     history_every=20,
     output=OutputConfig(log_every=100,checkpoint_every=200,output_every=200,write_vtk=True),

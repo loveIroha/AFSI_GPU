@@ -1,5 +1,7 @@
 # AFSI demo_340：二维理想双瓣叶 GPU 算例
 
+**运行入口：[当前完整指南](RUN_GUIDE.md)**，包含安装、3 s 后台运行、P2/FRH 固体、MAC 流体、显式 IB 耦合、参数、续算和结果说明。
+
 主程序顶部的 `CONFIG` 集中定义流体网格、时间步、流体性质、瓣叶几何/材料、
 入口波形、求解器和输出参数。可使用 `--config configs/mac_gpu.json` 或自己的
 JSON，命令行显式参数覆盖它；实际配置写入 `configuration.json`。

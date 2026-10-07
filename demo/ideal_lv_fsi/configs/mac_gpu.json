@@ -1,4 +1,5 @@
 {
+  "demo": "ideal-lv-mac",
   "time": {
     "dt": 5e-05,
     "end_time": 2.0
@@ -76,7 +77,8 @@
     "solid_backend": "pointwise",
     "mass_backend": "graph",
     "coupling_backend": "optimized",
-    "warm_start": true
+    "warm_start": true,
+    "ib_backend": "cuda"
   },
   "output": {
     "log_every": 200,

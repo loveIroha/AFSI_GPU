@@ -18,7 +18,8 @@ CONFIG = LVSimulationConfig(
     beta=500000.,
     pressure_solver=MGOptions(rtol=1e-10, atol=1e-12, max_cycles=100, smooth=4, check_every=2),
     mass_solver=mass_options(),  # rtol=1e-12, atol=1e-13, max_iterations=500
-    execution=LVExecutionConfig(),
+    execution=LVExecutionConfig(execution_backend='fused',pressure_backend='graph',
+        solid_backend='pointwise',mass_backend='graph',coupling_backend='optimized',warm_start=True,ib_backend='cuda'),
     output=OutputConfig(log_every=200, checkpoint_every=1000, output_every=400, write_vtk=True),
 )
 

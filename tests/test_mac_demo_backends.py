@@ -38,7 +38,7 @@ def test_demo_cli_resume_and_explicit_rollback(tmp_path,device):
     from demo.ideal_lv_fsi.run_mac import main
     from examples.lv_mac import run
     output=tmp_path/'demo'
-    report=main(['--device',device,'--mesh-size','.4','--fluid-cells','16',
+    report=main(['--device',device,'--ib-backend','reference','--mesh-size','.4','--fluid-cells','16',
         '--warm-start','--pressure-backend','fused','--execution-backend','fused',
         '--solid-backend','pointwise','--mass-backend','graph','--end-time','.0002',
         '--log-every','2','--checkpoint-every','2','--output',str(output)])

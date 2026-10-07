@@ -127,6 +127,8 @@ def test_demo_output_resume_disable_and_numerical_equivalence(tmp_path,device):
     from test_mac_demo_backends import assert_states
     folder=tmp_path/'series'
     report=main(['--device',device,'--mesh-size','.4','--fluid-cells','16',
+                 '--ib-backend','reference','--execution-backend','torch','--pressure-backend','torch',
+                 '--solid-backend','reference','--mass-backend','pcg','--coupling-backend','reference','--no-warm-start',
                  '--end-time','.00015','--output',str(folder),'--output-every','2'])
     assert report['visualization']['frames']==3  # step 0,2,3 final partial frame
     report=main(['--device',device,'--resume',str(folder/'checkpoint.npz'),'--end-time','.0003'])
