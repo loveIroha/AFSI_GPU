@@ -8,6 +8,7 @@ from afsi_torch.mac.cached_transfer_assembly import CSRPatternCache
 from afsi_torch.mac import cuda_ib
 from test_gpu_coupled_work import pair
 from test_csr_cell_contraction import cell_kernel_case
+from test_real_lv import real_case
 
 GPU = pytest.mark.skipif(not torch.cuda.is_available(), reason='CUDA GPU unavailable')
 
