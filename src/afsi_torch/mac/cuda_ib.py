@@ -7,11 +7,32 @@ consistent mass solves and paired interpolation/spreading remain unchanged.
 """
 from pathlib import Path
 import os
+import re
+import subprocess
 import threading
 import torch
 
 _lock = threading.Lock()
 _loaded = False
+
+
+def _validate_toolkit(cuda_home, torch_cuda_version):
+    """Fail before ninja if PATH/CUDA_HOME resolves to a different CUDA major."""
+    nvcc = Path(cuda_home)/'bin'/('nvcc.exe' if os.name=='nt' else 'nvcc')
+    try:
+        output = subprocess.check_output([str(nvcc), '--version'], text=True,
+                                         stderr=subprocess.STDOUT)
+    except (OSError, subprocess.CalledProcessError) as exc:
+        raise RuntimeError(f'cannot run CUDA compiler {nvcc}; set CUDA_HOME to the installed toolkit') from exc
+    release = re.search(r'release\s+(\d+)\.(\d+)', output)
+    if release is None:
+        raise RuntimeError(f'cannot determine CUDA toolkit version from {nvcc} --version')
+    toolkit = '.'.join(release.groups())
+    if int(release[1]) != int(torch_cuda_version.split('.')[0]):
+        raise RuntimeError(f'IB CUDA toolkit mismatch: {nvcc} is CUDA {toolkit}, '
+            f'but PyTorch uses CUDA {torch_cuda_version}. Install a compatible toolkit '
+            'and set CUDA_HOME/PATH before compiling; the NVIDIA driver version is not the toolkit version.')
+    return toolkit
 
 
 def build(*, verbose=False):
@@ -29,6 +50,7 @@ def build(*, verbose=False):
         from torch.utils.cpp_extension import CUDA_HOME, load
         if CUDA_HOME is None:
             raise RuntimeError('IB cuda contraction requires the CUDA toolkit (nvcc); set CUDA_HOME')
+        _validate_toolkit(CUDA_HOME, torch.version.cuda)
         source = Path(__file__).parent/'csrc'
         load(name='afsi_ib_cuda', sources=[str(source/'ib.cpp'), str(source/'ib.cu')],
              extra_cflags=['/O2'] if os.name=='nt' else ['-O3'],

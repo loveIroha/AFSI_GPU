@@ -43,6 +43,25 @@ The CUDA runtime packaged with a PyTorch wheel alone does not provide `nvcc`.
 Use a toolkit compatible with `torch.version.cuda`; the CUDA version displayed
 by `nvidia-smi` describes driver capability.
 
+For a PyTorch `+cu130` build, install the CUDA 13.0 development toolkit into the
+active environment rather than using a system CUDA 12 compiler. The existing
+Ubuntu 24.04 GCC 13 compiler is supported by CUDA 13.0. NVIDIA documents Conda
+toolkit installation in its [Linux installation guide](https://docs.nvidia.com/cuda/archive/13.0.0/cuda-installation-guide-linux/index.html#conda-installation).
+
+```bash
+conda activate afsi-torch
+conda install -c nvidia "cuda-toolkit=13.0" -y
+export CUDA_HOME="$CONDA_PREFIX"
+export PATH="$CUDA_HOME/bin:$PATH"
+hash -r
+"$CUDA_HOME/bin/nvcc" --version
+```
+
+The build now checks the selected compiler's actual version and rejects a CUDA
+major mismatch before invoking Ninja. This makes a stale `CUDA_HOME` or system
+compiler visible immediately. Minor-version compatibility still depends on the
+toolkit/PyTorch combination; matching the wheel's toolkit version is preferred.
+
 ```bash
 conda activate afsi-torch
 python -m pip install -e ".[test,cuda-ib]"

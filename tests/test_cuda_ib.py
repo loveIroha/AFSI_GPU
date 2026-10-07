@@ -12,6 +12,32 @@ from test_csr_cell_contraction import cell_kernel_case
 GPU = pytest.mark.skipif(not torch.cuda.is_available(), reason='CUDA GPU unavailable')
 
 
+def test_cuda_toolkit_major_mismatch_fails_before_compilation(monkeypatch,tmp_path):
+    calls=[]
+    def compiler(command,**kwargs):
+        calls.append(command)
+        return 'Cuda compilation tools, release 12.0, V12.0.140'
+    monkeypatch.setattr(cuda_ib.subprocess,'check_output',compiler)
+    with pytest.raises(RuntimeError,match='toolkit mismatch.*CUDA 12.0.*PyTorch uses CUDA 13.0'):
+        cuda_ib._validate_toolkit(tmp_path,'13.0')
+    assert calls[0][0].startswith(str(tmp_path))
+    assert calls[0][1]=='--version'
+
+
+@pytest.mark.parametrize('version',['13.0','13.1'])
+def test_cuda_toolkit_compatible_major(monkeypatch,tmp_path,version):
+    monkeypatch.setattr(cuda_ib.subprocess,'check_output',
+        lambda *a,**kw:f'Cuda compilation tools, release {version}, V{version}.0')
+    assert cuda_ib._validate_toolkit(tmp_path,'13.0')==version
+
+
+def test_cuda_toolkit_missing_compiler_has_actionable_error(monkeypatch,tmp_path):
+    def missing(*a,**kw): raise FileNotFoundError('nvcc missing')
+    monkeypatch.setattr(cuda_ib.subprocess,'check_output',missing)
+    with pytest.raises(RuntimeError,match='cannot run CUDA compiler.*set CUDA_HOME'):
+        cuda_ib._validate_toolkit(tmp_path,'13.0')
+
+
 def test_cuda_backend_config_roundtrip_and_incompatible_modes(tmp_path):
     from demo.real_lv_fsi.run_mac import main
     from afsi_torch.config import load_config

@@ -97,8 +97,8 @@ __global__ void contract_kernel(const int64_t* base,const T* phi,const T* shape,
             if (ix<0 || ix>=4 || iy<0 || iy>=4 || iz<0 || iz>=4) continue;
             T k=((phi[((lx*p+point)*3)*4+ix]*phi[((ly*p+point)*3+1)*4+iy])
                  *phi[((lz*p+point)*3+2)*4+iz])*weights[cell*q+i];
-            # --fmad=false preserves separate products/additions in FP64/FP32.
-            # Different parallel reduction orders still permit roundoff.
+            // --fmad=false preserves separate products/additions in FP64/FP32.
+            // Different parallel reduction orders still permit roundoff.
             #pragma unroll
             for (int a=0;a<4;++a) sums[a]+=k*shape[i*4+a];
         }
