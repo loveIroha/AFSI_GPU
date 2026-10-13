@@ -177,8 +177,11 @@ class LVFEMSimulationConfig:
     output: OutputConfig = field(default_factory=lambda: OutputConfig(100,200,200,True))
     ib_backend: str = 'reference'
     basal_constraint: str = 'spring'
+    solid_input: str | None = None
 
     def __post_init__(self):
+        if self.solid_input is not None and (not isinstance(self.solid_input,str) or not self.solid_input.strip()):
+            raise ValueError('solid_input must be a nonempty native-export path or null')
         if self.basal_constraint not in ('spring','radial'):
             raise ValueError('basal_constraint must be spring or radial')
         if self.ib_backend not in ('reference','cuda'):

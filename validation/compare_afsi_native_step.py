@@ -8,7 +8,7 @@ import numpy as np
 import torch
 
 from afsi_torch import ib
-from afsi_torch.fluid import ChorinSolver, create_box, prepare_operators
+from afsi_torch.fluid import ChorinSolver, create_box, prepare_operators, CSRFluidOperators
 from afsi_torch.fluid.solvers import SolverOptions
 
 if __package__:
@@ -32,11 +32,13 @@ def _metrics(actual, expected, *, rtol, atol):
                 passed=absolute <= atol * expected.numel()**.5 + rtol * reference)
 
 
-def compare(path, device='cpu', *, rtol=2e-7, atol=2e-9):
+def compare(path, device='cpu', *, rtol=2e-7, atol=2e-9, backend='quadrature', ib_backend='reference'):
     if str(device).startswith('cuda') and not torch.cuda.is_available():
         raise RuntimeError('CUDA requested but unavailable; no CPU fallback')
     if rtol <= 0 or atol <= 0:
         raise ValueError('positive comparison tolerances required')
+    if backend not in ('csr','quadrature') or ib_backend not in ('cuda','reference'):
+        raise ValueError('invalid FEM/IB backend')
     path = Path(path)
     with np.load(path, allow_pickle=False) as archive:
         data = {name: archive[name] for name in archive.files}
@@ -69,13 +71,19 @@ def compare(path, device='cpu', *, rtol=2e-7, atol=2e-9):
     tensor = lambda a: torch.as_tensor(a, dtype=torch.float64, device=device)
     x = tensor(data['solid_coordinates'])
     force = tensor(data['solid_force'])
-    stencil = ib.prepare_stencil(x, mesh.velocity_grid)
+    stencil = ib.prepare_stencil(x, mesh.velocity_grid,backend=ib_backend)
     density = ib.spread_density(force, stencil)
-    flow = ChorinSolver(prepare_operators(mesh), dt=meta['dt'], rho=meta['rho'],
+    operators=prepare_operators(mesh)
+    if backend=='csr':
+        operators=CSRFluidOperators(operators)
+    flow = ChorinSolver(operators, dt=meta['dt'], rho=meta['rho'],
         mu=meta['mu'], pressure_dof=gauge,
         options=SolverOptions(rtol=1e-12, atol=1e-13,
                               max_iterations=4000, recompute_every=200))
-    result = flow.step(torch.zeros_like(mesh.velocity_coordinates), density=density)
+    initial=data.get('initial_velocity',np.zeros_like(data['velocity_coordinates']))
+    if initial.shape!=(n_velocity,3) or initial.dtype!=np.float64 or not np.isfinite(initial).all():
+        raise ValueError('invalid initial velocity')
+    result = flow.step(tensor(initial[index_v]), density=density)
     vs = ib.interpolate(result.velocity, stencil)
     actual = dict(fluid_density=density,
                   fluid_weak_load=flow.op.density_load(density),
@@ -90,7 +98,7 @@ def compare(path, device='cpu', *, rtol=2e-7, atol=2e-9):
     first = next((name for name in STAGES if not metrics[name]['passed']), None)
     return dict(completed=True, passed=first is None, first_mismatch=first,
         reference_sha256=hashlib.sha256(path.read_bytes()).hexdigest(),
-        device=str(device), torch=torch.__version__, native=meta,
+        device=str(device), torch=torch.__version__, backend=backend,ib_backend=ib_backend,native=meta,
         comparison_rtol=rtol, comparison_atol=atol, stages=metrics,
         flow_diagnostics=result.diagnostics)
 
@@ -100,8 +108,10 @@ if __name__ == '__main__':
     parser.add_argument('--reference', default='results/afsi_native_step/reference.npz')
     parser.add_argument('--device', default='cpu')
     parser.add_argument('--output', default='results/afsi_native_step/report.json')
+    parser.add_argument('--backend',choices=('csr','quadrature'),default='csr')
+    parser.add_argument('--ib-backend',choices=('reference','cuda'),default='reference')
     args = parser.parse_args()
-    report = compare(args.reference, args.device)
+    report = compare(args.reference, args.device,backend=args.backend,ib_backend=args.ib_backend)
     target = Path(args.output)
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(json.dumps(report, indent=2, allow_nan=False)+'\n', encoding='utf-8')

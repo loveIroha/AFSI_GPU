@@ -49,7 +49,7 @@ def _staged_native_step(flow):
     return tentative, pressure, flow.u_.x.array.copy().reshape(-1, 3), solves
 
 
-def export(output):
+def export(output, *, initial_velocity_amplitude=0.):
     if MPI.COMM_WORLD.size != 1 or np.dtype(dolfinx.default_scalar_type) != np.dtype(np.float64):
         raise RuntimeError('serial real-float64 DOLFINx is required')
     counts = (4, 4, 4)
@@ -84,6 +84,17 @@ def export(output):
     g[:, 2] = 20. - 2.*x[:, 2]
 
     flow = ChorinSolver(V, Q, bcu, bcp, dt, rho, mu)
+    if not np.isfinite(initial_velocity_amplitude) or initial_velocity_amplitude < 0:
+        raise ValueError('finite nonnegative initial velocity amplitude required')
+    # Nonzero Q2 field exercises convection, mass and viscosity, not just a zero bootstrap.
+    def old_velocity(x):
+        s=np.sin(np.pi*x/np.array(lengths)[:,None])
+        bubble=np.prod(s,axis=0)*initial_velocity_amplitude
+        return np.array([bubble*np.cos(.7*x[1]),-.6*bubble*np.cos(.8*x[2]),.4*bubble*np.cos(.9*x[0])])
+    flow.u_n.interpolate(old_velocity)
+    flow.u_n.x.array.reshape(-1,3)[outer]=0.
+    flow.u_n.x.scatter_forward()
+    initial_velocity=flow.u_n.x.array.copy().reshape(-1,3)
     for solver in (flow.solver1, flow.solver2, flow.solver3):
         solver.setTolerances(rtol=1e-12, atol=1e-13, max_it=10000)
     ibmesh = IBMesh3D(*(origin[0], lengths[0], origin[1], lengths[1],
@@ -117,7 +128,7 @@ def export(output):
         afsi_chorin_source=inspect.getsourcefile(ChorinSolver),
         afsi_chorin_sha256=hashlib.sha256(inspect.getsource(ChorinSolver).encode()).hexdigest(),
         dolfinx=dolfinx.__version__, counts=counts, origin=origin, lengths=lengths,
-        dt=dt, rho=rho, mu=mu, pressure_gauge_coordinate=origin,
+        dt=dt, rho=rho, mu=mu, initial_velocity_amplitude=initial_velocity_amplitude, pressure_gauge_coordinate=origin,
         ib_kernel='Peskin four point, epsilon=velocity lattice spacing',
         solid_force='prescribed integrated nodal force',
         velocity_boundary='zero Dirichlet on all outer faces', native_solves=native_solves)
@@ -126,6 +137,7 @@ def export(output):
     np.savez_compressed(output, metadata=json.dumps(metadata),
         velocity_coordinates=V.tabulate_dof_coordinates().copy(),
         pressure_coordinates=Q.tabulate_dof_coordinates().copy(),
+        initial_velocity=initial_velocity,
         solid_coordinates=x.copy(), solid_force=g.copy(), fluid_density=density,
         fluid_weak_load=weak_load,
         tentative_velocity=tentative, pressure=pressure, velocity=corrected,
@@ -137,5 +149,6 @@ def export(output):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--output', default='results/afsi_native_step/reference.npz')
+    parser.add_argument('--initial-velocity-amplitude',type=float,default=0.)
     args = parser.parse_args()
-    print(json.dumps(export(args.output), indent=2))
+    print(json.dumps(export(args.output,initial_velocity_amplitude=args.initial_velocity_amplitude), indent=2))

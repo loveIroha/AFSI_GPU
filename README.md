@@ -17,12 +17,14 @@ The project brings together three ideas: the cardiac and valve examples in [AFSI
 - **Reusable case configuration:** Python configuration objects, JSON files, command-line overrides, recorded effective parameters, and restartable simulations.
 - **Replaceable 3D solid adapters:** material-independent force, assembled CSR tangent and validity interfaces; a composable P1 material/boundary implementation and a small runnable extension example.
 
+For numerical consistency checks against AFSI demo_337, use the **Q2/Q1 FEM route with the native mesh/fiber export**, implicit viscosity and nodal CUDA IB: [FEM alignment and validation](docs/AFSI337_FEM_ALIGNMENT.md). The MAC route remains a separate discretization.
+
 ### Included demos
 
 | Demo | Solid | Fluid | Default grid | Simulated time |
 | --- | --- | --- | --- | --- |
 | Ideal left ventricle, MAC | P2 tetrahedra; Guccione material, active tension, endocardial pressure | 3D MAC + geometric multigrid | 64 × 64 × 64 | 2 s; 40,000 steps |
-| Ideal left ventricle, FEM | Same generated LV model | Q2/Q1 FEM + Chorin projection | 32 × 32 × 32 elements | 2 s; 40,000 steps |
+| Ideal left ventricle, FEM | Generated or native-exported P2 LV mesh/fibers | Q2/Q1 FEM + Chorin projection | 32 × 32 × 32 elements | 2 s; 40,000 steps |
 | Ideal two-leaflet valve | P2 triangles; FRH material and root springs | 2D MAC + geometric multigrid | 256 × 64 | 3 s; 48,000 steps |
 | Imported real left ventricle (Ma et al. 2024) | P1 tetrahedra; paper H–O eq81/82, DG0 fiber/sheet | Open-box 3D MAC, BE–BE, semi-Lagrangian convection | 128 × 128 × 128 | 1.5 s; 15,000 steps |
 

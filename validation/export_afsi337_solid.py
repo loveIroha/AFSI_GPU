@@ -72,6 +72,7 @@ def export(root, output):
         dofs = space.dofmap.cell_dofs(cell)
         cells.append(dofs[match(physical,Xraw[dofs])])
     cells = np.asarray(cells,dtype=np.int64)
+    domain.topology.create_connectivity(0,3)
     domain.topology.create_connectivity(2,0)
     connectivity = domain.topology.connectivity(2,0)
     tagged_vertices, facet_tags = [], []

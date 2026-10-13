@@ -111,10 +111,11 @@ def run(*, device='cuda', output=None, end_time=None, dt=None, mesh_size=None,
     if case_config is not None:
         if not isinstance(case_config,LVFEMSimulationConfig):
             raise TypeError('case_config must be LVFEMSimulationConfig')
-        if resume or solid_input or preload or loads is not None or profile not in (None,'afsi337'):
-            raise ValueError('case_config requires a fresh generated afsi337 run')
+        if resume or preload or loads is not None or profile not in (None,'afsi337'):
+            raise ValueError('case_config requires a fresh afsi337 run')
         profile='afsi337'
-        case_config=replace(case_config,
+        solid_input=case_config.solid_input if solid_input is None else solid_input
+        case_config=replace(case_config,solid_input=solid_input,
             time=TimeConfig(case_config.time.dt if dt is None else dt,
                             case_config.time.end_time if end_time is None else end_time),
             fluid=replace(case_config.fluid,
@@ -177,6 +178,11 @@ def run(*, device='cuda', output=None, end_time=None, dt=None, mesh_size=None,
             if solid_input:
                 from afsi_torch.afsi337_io import load_native_solid
                 model = load_native_solid(solid_input, device=device)
+                if case_config:
+                    model = LVSolid(model.mesh,loads=case_config.loads,parameters=case_config.material,
+                        beta=case_config.beta,basal_constraint=case_config.basal_constraint,
+                        fibers=model.fibers,volume_quadrature=model.volume_quadrature,
+                        surface_quadrature=model.surface_quadrature,fiber_metadata=model.fiber_metadata)
             else:
                 if case_config:
                     model=generated_model(geometry=case_config.geometry,parameters=case_config.material,
@@ -309,6 +315,13 @@ def run(*, device='cuda', output=None, end_time=None, dt=None, mesh_size=None,
             velocity_lattice_spacing_cm=fluid_mesh.velocity_grid.spacing,
             ib_kernel='AFSI four-point Peskin, epsilon equals velocity lattice spacing',
             force_path='integrated solid force -> IB density -> Q2 consistent mass',
+            discretization=dict(fluid_velocity='Q2 hexahedron',fluid_pressure='Q1 hexahedron',
+                solid='P2 tetrahedron',convection='explicit advective form',viscosity='implicit backward Euler',
+                pressure='Chorin FE Laplace with origin gauge; consistent velocity mass correction',
+                ib='AFSI nodal Peskin4 density path; no solid mass inverse or interaction quadrature',
+                coupling='explicit lagged force; zero-force bootstrap',
+                linear_algebra='PyTorch device-resident CSR/Jacobi-PCG' if backend=='csr' else 'PyTorch quadrature/Jacobi-PCG',
+                afsi_linear_solver_difference='native PETSc BCGS/HYPRE and CG/SOR; compare converged fields, not iteration counts'),
             force_order='flow(g_n), interpolate at x_n, update x, force(x_new,t_n)',
             pressure_output='background Chorin pressure is distinct from prescribed endocardial traction',
             pressure_volume_curve='prescribed pressure at state time versus cavity volume',
@@ -331,7 +344,8 @@ def run(*, device='cuda', output=None, end_time=None, dt=None, mesh_size=None,
                     'larger fluid box contains this generated LV; report records actual mesh spacing']),
             **progress)
         if profile == 'afsi337':
-            configuration=asdict(LVFEMSimulationConfig(time=TimeConfig(dt,end_time),
+            configuration=asdict(LVFEMSimulationConfig(
+                solid_input=progress['provenance'].get('solid_input'),time=TimeConfig(dt,end_time),
                 fluid=FEMFluidConfig(tuple(settings.get('fluid_shape',(settings['fluid_cells'],)*3)),
                     tuple(settings.get('fluid_lengths',(settings['box_length'],)*3)),
                     tuple(settings['origin']),settings['rho'],settings['mu']),

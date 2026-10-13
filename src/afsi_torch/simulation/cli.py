@@ -91,6 +91,7 @@ def fem_main(argv=None, *, defaults=None, default_output='results/demo_ideal_lv/
     defaults=LVFEMSimulationConfig() if defaults is None else defaults
     p=argparse.ArgumentParser(description='Generated P2 left ventricle / Q2-Q1 FEM IB-FSI (cm-g-s)')
     _common(p,mac=False)
+    p.add_argument('--solid-input',help='AFSI native P2 mesh, tags, fiber/sheet and quadrature NPZ')
     p.add_argument('--fluid-cells',type=int)
     p.add_argument('--fluid-shape',type=int,nargs=3)
     p.add_argument('--fluid-origin',type=float,nargs=3)

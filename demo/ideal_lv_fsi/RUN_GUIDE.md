@@ -1,5 +1,7 @@
 # 理想左心室：MAC 与 FEM 完整运行指南
 
+**与原生 AFSI 比较时使用 FEM：** `python demo/run.py demo/ideal_lv_fsi/configs/afsi337_fem.json`。先按 [FEM 对齐指南](../../docs/AFSI337_FEM_ALIGNMENT.md) 导出原生输入。MAC 保留为另一种流体/IB 离散，不能作为同离散验证结果。
+
 [全部 demo](../../docs/DEMO_GUIDE.md) · [AFSI337 对齐范围](../../docs/AFSI337_ALIGNMENT.md)
 
 本目录两个入口共用生成的椭球壳 P2 固体、Guccione 本构和 AFSI `demo_337` 加载。Gmsh 在 CPU 生成几何，随后在 GPU 执行有限元力、IB 和流体计算。无需外部心脏网格。以下命令均在仓库根目录执行。
