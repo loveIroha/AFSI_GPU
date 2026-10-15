@@ -1,0 +1,42 @@
+{
+  "feature": "AFSI337_stable",
+  "date": "2026-10-15",
+  "implementation": "Implicit full grad-div in tentative Q2 velocity equation; Q1 Chorin pressure/correction and nodal CUDA IB",
+  "gamma": "alpha * dynamic viscosity",
+  "default_alpha": 1.0,
+  "tests": {
+    "initial_regressions": "43 passed, 5 deselected; CPU and CUDA",
+    "final_grad_div_tests": "15 passed; includes two added penalty-monotonicity cases",
+    "coverage": [
+      "CSR/quadrature equivalence",
+      "symmetry and nonnegative quadratic energy",
+      "full cross-component coupling",
+      "exact Jacobi diagonal",
+      "independent dense tentative solve with nonzero boundary lift",
+      "zero coefficient avoids assembly",
+      "fixed-load tentative divergence decreases with gamma",
+      "JSON/CLI/accepted coupled states/restart",
+      "legacy checkpoints retain alpha=0"
+    ]
+  },
+  "gpu_smoke": {
+    "device": "cuda",
+    "gpu": "NVIDIA GeForce RTX 4090",
+    "solid_nodes": 28840,
+    "solid_cells": 17393,
+    "fluid_shape": [
+      16,
+      16,
+      16
+    ],
+    "dt_s": 5e-05,
+    "accepted_steps": 5,
+    "reached_time_s": 0.00025,
+    "vtk_written": true,
+    "checkpoint_written": true,
+    "elapsed_seconds": 3.7162975715473294,
+    "note": "Both GPUs had other jobs; reduced fluid mesh for functional smoke only, not a performance benchmark"
+  },
+  "full_32_cubed_2s_trajectory_validated": false,
+  "scope": "A stable demo implementation and small-scale validation; no claim of unconditional FSI stability or verified optimal alpha"
+}

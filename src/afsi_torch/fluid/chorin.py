@@ -22,16 +22,24 @@ class StepResult:
 
 class ChorinSolver:
     def __init__(self, operators, *, dt, rho=1., mu=1., pressure_dof=0,
-                 pressure_value=0., options=None):
+                 pressure_value=0., options=None, grad_div_gamma=0.):
         for name, value in (('dt', dt), ('rho', rho), ('mu', mu)):
             if not isfinite(value) or (value < 0 if name == 'mu' else value <= 0):
                 raise ValueError(f'invalid {name}')
         if (not isinstance(pressure_dof, Integral) or isinstance(pressure_dof, bool) or
                 not 0 <= pressure_dof < len(operators.mesh.pressure_coordinates) or not isfinite(pressure_value)):
             raise ValueError('invalid pressure gauge')
+        if (isinstance(grad_div_gamma, bool) or not isinstance(grad_div_gamma, (int, float))
+                or not isfinite(grad_div_gamma) or grad_div_gamma < 0):
+            raise ValueError('grad_div_gamma must be finite and nonnegative')
+        self.grad_div_gamma = float(grad_div_gamma)
         self.op, self.dt, self.rho, self.mu = operators, float(dt), float(rho), float(mu)
         self.options = SolverOptions() if options is None else options
         self.diagonals = operator_diagonals(operators)
+        if self.grad_div_gamma:
+            if hasattr(operators, 'prepare_grad_div'):
+                operators.prepare_grad_div()
+            self.diagonals['grad_div'] = operators.grad_div_diagonal()
         self.velocity_fixed = operators.mesh.velocity_boundary[:, None].expand(-1, 3)
         P = operators.mesh.pressure_coordinates
         self.pressure_fixed = torch.zeros(len(P), dtype=torch.bool, device=P.device)
@@ -43,8 +51,12 @@ class ChorinSolver:
 
     def tentative_action(self, u):
         if self._tentative_matrix is not None:
-            return torch.sparse.mm(self._tentative_matrix, u)
-        return self.rho/self.dt*self.op.velocity_mass(u)+self.mu*self.op.velocity_stiffness(u)
+            result = torch.sparse.mm(self._tentative_matrix, u)
+        else:
+            result = self.rho/self.dt*self.op.velocity_mass(u)+self.mu*self.op.velocity_stiffness(u)
+        if self.grad_div_gamma:
+            result = result+self.grad_div_gamma*self.op.velocity_grad_div(u)
+        return result
 
     def divergence_l2(self, u):
         op = self.op
@@ -79,6 +91,8 @@ class ChorinSolver:
             load = nodal_load
         rhs1 = self.rho/self.dt*op.velocity_mass(velocity)-self.rho*op.convection(velocity)+load
         diag1 = self.rho/self.dt*self.diagonals['velocity_mass']+self.mu*self.diagonals['velocity_stiffness']
+        if self.grad_div_gamma:
+            diag1 = diag1+self.grad_div_gamma*self.diagonals['grad_div']
         star, info1 = pcg(self.tentative_action, rhs1, diag1, fixed=self.velocity_fixed,
                          values=boundary_values, initial=velocity, options=self.options)
         div_star = op.divergence(star)
@@ -103,5 +117,9 @@ class ChorinSolver:
                 corrected_divergence_dual_norm=torch.linalg.vector_norm(div_corrected).item(),
                 tentative_divergence_l2=self.divergence_l2(star), corrected_divergence_l2=self.divergence_l2(corrected),
                 kinetic_energy=.5*self.rho*(corrected*op.velocity_mass(corrected)).sum().item())
+            if self.grad_div_gamma:
+                diagnostic.update(grad_div_gamma=self.grad_div_gamma,
+                    grad_div_tentative_dissipation=self.grad_div_gamma*diagnostic['tentative_divergence_l2']**2,
+                    grad_div_corrected_measure=self.grad_div_gamma*diagnostic['corrected_divergence_l2']**2)
         return StepResult(corrected, pressure, star, diagnostic)
 

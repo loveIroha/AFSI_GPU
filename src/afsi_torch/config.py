@@ -147,10 +147,15 @@ def mass_options():
 class FEMFluidConfig(FluidConfig):
     """Q2/Q1 element counts; implicit viscosity has no MAC viscous-step guard."""
     shape: tuple = (32,32,32)
+    grad_div_alpha: float = 0.
 
     def __post_init__(self):
         for name in ('shape','lengths','origin'):
             object.__setattr__(self,name,tuple(getattr(self,name)))
+        if (isinstance(self.grad_div_alpha,bool) or not isinstance(self.grad_div_alpha,(int,float))
+                or not isfinite(self.grad_div_alpha) or self.grad_div_alpha<0
+                or not isfinite(self.grad_div_alpha*self.mu)):
+            raise ValueError('grad_div_alpha and alpha*mu must be finite and nonnegative')
         if len(self.shape)!=3 or any(type(n) is not int or n<2 for n in self.shape):
             raise ValueError('FEM requires three integer element counts >=2')
         if len(self.lengths)!=3 or len(self.origin)!=3:
@@ -282,6 +287,7 @@ def load_config(path, cls=LVSimulationConfig):
         data=json.load(stream)
     if isinstance(data,dict) and 'demo' in data:
         names={'ideal-lv-mac':'LVSimulationConfig','ideal-lv-fem':'LVFEMSimulationConfig',
+               'AFSI337_stable':'LVFEMSimulationConfig',
                'ideal-valve-mac':'ValveSimulationConfig','real-lv':'PaperLVConfig'}
         actual=cls.__name__ if isinstance(cls,type) else type(cls).__name__
         if names.get(data.pop('demo'))!=actual:

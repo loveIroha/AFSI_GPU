@@ -101,10 +101,11 @@ def fem_main(argv=None, *, defaults=None, default_output='results/demo_ideal_lv/
     p.add_argument('--vtk',dest='write_vtk',action=argparse.BooleanOptionalAction,default=None)
     p.add_argument('--backend',choices=('csr','quadrature'))
     p.add_argument('--check-every',type=int)
+    p.add_argument('--grad-div-alpha',type=float,help='dimensionless grad-div coefficient; gamma=alpha*mu')
     options=_options(p,argv,defaults,default_output)
     if options is None:
         return None
-    fluid_options={name:options.pop(name) for name in ('fluid_shape','fluid_lengths','fluid_origin','rho','mu')}
+    fluid_options={name:options.pop(name) for name in ('fluid_shape','fluid_lengths','fluid_origin','rho','mu','grad_div_alpha')}
     if options['resume']:
         if any(value is not None for value in fluid_options.values()):
             p.error('--resume restores fluid grid and physical settings')

@@ -107,7 +107,7 @@ def run(*, device='cuda', output=None, end_time=None, dt=None, mesh_size=None,
         fluid_cells=None, box_length=None, loads=None, preload=None, resume=None,
         output_every=None, checkpoint_every=None, log_every=None, history_every=None,
         write_vtk=None, backend=None, check_every=None, profile=None, solid_input=None,
-        timing=False,case_config=None,ib_backend=None):
+        timing=False,case_config=None,ib_backend=None,grad_div_alpha=None):
     if case_config is not None:
         if not isinstance(case_config,LVFEMSimulationConfig):
             raise TypeError('case_config must be LVFEMSimulationConfig')
@@ -119,6 +119,7 @@ def run(*, device='cuda', output=None, end_time=None, dt=None, mesh_size=None,
             time=TimeConfig(case_config.time.dt if dt is None else dt,
                             case_config.time.end_time if end_time is None else end_time),
             fluid=replace(case_config.fluid,
+                grad_div_alpha=case_config.fluid.grad_div_alpha if grad_div_alpha is None else grad_div_alpha,
                 shape=case_config.fluid.shape if fluid_cells is None else (fluid_cells,)*3,
                 lengths=case_config.fluid.lengths if box_length is None else (box_length,)*3),
             geometry=replace(case_config.geometry,mesh_size=case_config.geometry.mesh_size if mesh_size is None else mesh_size))
@@ -153,7 +154,7 @@ def run(*, device='cuda', output=None, end_time=None, dt=None, mesh_size=None,
     folder = Path(output) if output is not None else Path(resume).parent if resume else Path(
         'results/lv_afsi337' if profile == 'afsi337' else 'results/lv_cycle')
     if resume:
-        if any(v is not None for v in (dt, mesh_size, fluid_cells, box_length, loads, preload, solid_input)):
+        if any(v is not None for v in (dt, mesh_size, fluid_cells, box_length, loads, preload, solid_input, grad_div_alpha)):
             raise ValueError('resume restores physical settings; do not also specify mesh, dt, loads or preload')
         if folder.resolve() != Path(resume).resolve().parent:
             raise ValueError('resume in the checkpoint directory to preserve the output history')
@@ -214,10 +215,12 @@ def run(*, device='cuda', output=None, end_time=None, dt=None, mesh_size=None,
         center[2] += .5*(config.base_height-config.outer_axes[2])
         settings = dict(profile=profile, dt=dt, fluid_cells=fluid_cells, box_length=box_length,
             origin=[0.,0.,0.] if profile == 'afsi337' else [value-box_length/2 for value in center], rho=1., mu=1.,
-            solver=asdict(SolverOptions(max_iterations=4000, recompute_every=200)))
+            solver=asdict(SolverOptions(max_iterations=4000, recompute_every=200)),
+            grad_div_alpha=0. if grad_div_alpha is None else grad_div_alpha)
         if case_config:
             settings.update(fluid_shape=case_config.fluid.shape,fluid_lengths=case_config.fluid.lengths,
                 origin=case_config.fluid.origin,rho=case_config.fluid.rho,mu=case_config.fluid.mu,
+                grad_div_alpha=case_config.fluid.grad_div_alpha,
                 solver=asdict(case_config.solver))
         progress = dict(initial=model.diagnostics(x_start), summary={}, provenance=provenance,
                         elapsed_seconds=0., resumptions=0)
@@ -236,6 +239,10 @@ def run(*, device='cuda', output=None, end_time=None, dt=None, mesh_size=None,
     settings['ib_backend'] = (case_config.ib_backend if case_config else settings.get('ib_backend','reference')) if ib_backend is None else ib_backend
     if settings['ib_backend'] not in ('reference','cuda'):
         raise ValueError('invalid IB backend')
+    alpha = settings.setdefault('grad_div_alpha', 0.)  # Legacy checkpoints are unstabilized.
+    if (isinstance(alpha,bool) or not isinstance(alpha,(int,float)) or not isfinite(alpha) or alpha<0):
+        raise ValueError('grad_div_alpha must be finite and nonnegative')
+    settings['grad_div_gamma'] = alpha*settings['mu']
     settings['backend'] = backend
     settings['solver']['check_every'] = check_every
     progress.setdefault('execution_segments', []).append(dict(
@@ -246,7 +253,8 @@ def run(*, device='cuda', output=None, end_time=None, dt=None, mesh_size=None,
     if backend == 'csr':
         operators = CSRFluidOperators(operators)
     flow = ChorinSolver(operators, dt=dt, rho=settings['rho'], mu=settings['mu'],
-                        options=SolverOptions(**settings['solver']))
+                        options=SolverOptions(**settings['solver']), grad_div_gamma=settings['grad_div_gamma'])
+    print(f'NS grad-div: alpha={alpha:g}, gamma={flow.grad_div_gamma:g} g/(cm s); implicit tentative velocity',flush=True)
     from functools import partial
     print(f'BASE: {model.basal_constraint_mode}, beta={model.beta:g}; '
           f'long axis={model.mesh.config.long_axis}, center={model.mesh.config.center}',flush=True)
@@ -299,7 +307,7 @@ def run(*, device='cuda', output=None, end_time=None, dt=None, mesh_size=None,
         progress['elapsed_seconds'] = previous_elapsed + perf_counter()-started
         save_cycle(folder/'checkpoint.npz', model, state, x_start, settings, progress)
         period = getattr(model.loads, 'period', None)
-        report = dict(schema=1, demo='afsi337-ramp-hold' if profile == 'afsi337' else 'generated-ideal-lv-prescribed-cycle', status=status,
+        report = dict(schema=1, demo='AFSI337_stable' if alpha>0 else ('afsi337-ramp-hold' if profile == 'afsi337' else 'generated-ideal-lv-prescribed-cycle'), status=status,
             completed=state.step == steps, full_cycle_completed=period is not None and state.time+1e-12 >= period,
             requested_end_time_s=end_time, reached_time_s=state.time, accepted_steps=state.step,
             requested_steps=steps, period_s=period, device=str(device), torch=torch.__version__,
@@ -315,6 +323,12 @@ def run(*, device='cuda', output=None, end_time=None, dt=None, mesh_size=None,
             velocity_lattice_spacing_cm=fluid_mesh.velocity_grid.spacing,
             ib_kernel='AFSI four-point Peskin, epsilon equals velocity lattice spacing',
             force_path='integrated solid force -> IB density -> Q2 consistent mass',
+            stabilization=dict(type='grad-div' if alpha>0 else 'none',alpha=alpha,
+                gamma=flow.grad_div_gamma,gamma_units='g/(cm s)',placement='implicit tentative velocity',
+                form='gamma * integral(div(u_star) * div(v))',
+                assembled_once=backend=='csr' and alpha>0,
+                preconditioner='component Jacobi with exact grad-div diagonal',
+                unconditional_fsi_stability_established=False),
             discretization=dict(fluid_velocity='Q2 hexahedron',fluid_pressure='Q1 hexahedron',
                 solid='P2 tetrahedron',convection='explicit advective form',viscosity='implicit backward Euler',
                 pressure='Chorin FE Laplace with origin gauge; consistent velocity mass correction',
@@ -348,7 +362,7 @@ def run(*, device='cuda', output=None, end_time=None, dt=None, mesh_size=None,
                 solid_input=progress['provenance'].get('solid_input'),time=TimeConfig(dt,end_time),
                 fluid=FEMFluidConfig(tuple(settings.get('fluid_shape',(settings['fluid_cells'],)*3)),
                     tuple(settings.get('fluid_lengths',(settings['box_length'],)*3)),
-                    tuple(settings['origin']),settings['rho'],settings['mu']),
+                    tuple(settings['origin']),settings['rho'],settings['mu'],grad_div_alpha=alpha),
                 geometry=model.mesh.config,material=model.parameters,loads=model.loads,beta=model.beta,
                 basal_constraint=model.basal_constraint_mode,
                 solver=SolverOptions(**settings['solver']),backend=backend,history_every=history_every,ib_backend=settings['ib_backend'],
@@ -360,6 +374,9 @@ def run(*, device='cuda', output=None, end_time=None, dt=None, mesh_size=None,
                 load_protocol='ramp-and-hold', reference_load_completed=state.time+1e-12 >= 1.5,
                 reference_horizon_completed=state.time+1e-12 >= 2.,
                 static_equilibrium_established=False)
+        if alpha>0:
+            report['source_alignment'].setdefault('differences',[]).append(
+                'implicit grad-div stabilization added to tentative momentum; native demo_337 has no such term')
         atomic_json(folder/'report.json', report)
         return report
 

@@ -44,6 +44,16 @@ class FluidOperators:
         du = torch.einsum('qaj,eac->eqcj', self.dN, u[self.mesh.velocity_cells])
         return self._scatter(torch.einsum('qaj,eqcj,q->eac', self.dN, du, self.weights))
 
+    def velocity_grad_div(self, u):
+        """Integral div(u) div(v), with full cross-component coupling."""
+        self._field(u, vector=True)
+        div = torch.einsum('qaj,eaj->eq', self.dN, u[self.mesh.velocity_cells])
+        return self._scatter(torch.einsum('qai,eq,q->eai', self.dN, div, self.weights))
+
+    def grad_div_diagonal(self):
+        local = torch.einsum('qai,qai,q->ai', self.dN, self.dN, self.weights)
+        return self._scatter(local.expand(len(self.mesh.velocity_cells), -1, -1))
+
     def pressure_mass(self, p):
         self._field(p, pressure=True)
         pq = torch.einsum('qa,ea->eq', self.Q, p[self.mesh.pressure_cells])

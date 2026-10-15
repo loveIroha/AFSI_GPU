@@ -73,6 +73,34 @@ class CSRFluidOperators:
     def density_load(self, density):
         return self.velocity_mass(density)
 
+    def prepare_grad_div(self):
+        """Lazily assemble nine coupled CSR blocks, once per fixed mesh.
+
+        Each block shares the scalar velocity CSR pattern. Serial block assembly
+        bounds COO workspace size instead of constructing a 3N-by-3N COO tensor.
+        Explicit zeros are retained by _assemble, so all block patterns agree.
+        """
+        if '_grad_div_blocks' not in self.__dict__:
+            op, mesh = self.reference, self.mesh
+            template = self.matrices['velocity_mass']
+            blocks = []
+            for i in range(3):
+                for j in range(3):
+                    local = torch.einsum('qa,qb,q->ab', op.dN[:,:,i], op.dN[:,:,j], op.weights)
+                    assembled = _assemble(mesh.velocity_cells, mesh.velocity_cells, local, template.shape)
+                    blocks.append(torch.sparse_csr_tensor(template.crow_indices(), template.col_indices(),
+                        assembled.values().clone(), size=template.shape, device=op.N.device, dtype=op.N.dtype,
+                        check_invariants=True))
+                    del assembled
+            self._grad_div_blocks = tuple(blocks)
+
+    def velocity_grad_div(self, u):
+        self._field(u, vector=True)
+        self.prepare_grad_div()
+        components = [u[:,j:j+1].contiguous() for j in range(3)]
+        return torch.cat([sum(torch.sparse.mm(self._grad_div_blocks[3*i+j], components[j])
+                              for j in range(3)) for i in range(3)], dim=1)
+
     def tentative_matrix(self, mass_scale, stiffness_scale):
         M, K = (self.matrices['velocity_'+key] for key in ('mass', 'stiffness'))
         # Both assemblies retain the same full cell-pair sparsity, including zeros.
