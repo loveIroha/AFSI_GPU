@@ -1,0 +1,200 @@
+{
+  "base_commit": "4737b8e210ccd12df9bfc84daa6a94a4c882b287",
+  "device": "NVIDIA GeForce RTX 4090",
+  "torch": "2.14.0+cu130",
+  "warmup_steps": 5,
+  "measured_steps": 30,
+  "quadrature_points": 3882811,
+  "dtype": "float64",
+  "numerical_changes": false,
+  "method": "CN-AB2/xsPPM7, predicted midpoint quadrature IB/FE, reference consistent mass, FGMRES Stokes",
+  "variants": {
+    "reference": {
+      "ms_per_step": 132.4878270427386,
+      "peak_allocated_bytes": 2151816192,
+      "stokes_iterations_mean": 2.0,
+      "pressure_cycles_mean": 6.0,
+      "phase_timings_nested": {
+        "ib_prepare": {
+          "calls": 20,
+          "ms_per_call": 14.798015880584718,
+          "ms_per_step": 29.596031761169435
+        },
+        "mass_solves": {
+          "calls": 30,
+          "ms_per_call": 4.649875243504842,
+          "ms_per_step": 13.949625730514526
+        },
+        "ib_interpolate_with_mass": {
+          "calls": 20,
+          "ms_per_call": 20.943129539489746,
+          "ms_per_step": 41.88625907897949
+        },
+        "advection": {
+          "calls": 10,
+          "ms_per_call": 3.176035213470459,
+          "ms_per_step": 3.176035213470459
+        },
+        "solid_force_checks": {
+          "calls": 20,
+          "ms_per_call": 2.892351984977722,
+          "ms_per_step": 5.784703969955444
+        },
+        "ib_spread_with_mass": {
+          "calls": 10,
+          "ms_per_call": 31.85225887298584,
+          "ms_per_step": 31.85225887298584
+        },
+        "pressure_mg": {
+          "calls": 20,
+          "ms_per_call": 2.179347199201584,
+          "ms_per_step": 4.358694398403168
+        },
+        "fluid_advance": {
+          "calls": 10,
+          "ms_per_call": 20.081462097167968,
+          "ms_per_step": 20.081462097167968
+        }
+      }
+    },
+    "p2": {
+      "ms_per_step": 99.22995663558443,
+      "peak_allocated_bytes": 1699211264,
+      "stokes_iterations_mean": 2.0,
+      "pressure_cycles_mean": 6.0,
+      "phase_timings_nested": {
+        "ib_prepare": {
+          "calls": 20,
+          "ms_per_call": 4.064043188095093,
+          "ms_per_step": 8.128086376190186
+        },
+        "mass_solves": {
+          "calls": 30,
+          "ms_per_call": 4.651823997497559,
+          "ms_per_step": 13.955471992492676
+        },
+        "ib_interpolate_with_mass": {
+          "calls": 20,
+          "ms_per_call": 16.654540824890137,
+          "ms_per_step": 33.309081649780275
+        },
+        "advection": {
+          "calls": 10,
+          "ms_per_call": 3.171664023399353,
+          "ms_per_step": 3.171664023399353
+        },
+        "solid_force_checks": {
+          "calls": 20,
+          "ms_per_call": 2.8820511937141418,
+          "ms_per_step": 5.7641023874282835
+        },
+        "ib_spread_with_mass": {
+          "calls": 10,
+          "ms_per_call": 28.401123237609863,
+          "ms_per_step": 28.401123237609863
+        },
+        "pressure_mg": {
+          "calls": 20,
+          "ms_per_call": 2.1751216053962708,
+          "ms_per_step": 4.3502432107925415
+        },
+        "fluid_advance": {
+          "calls": 10,
+          "ms_per_call": 20.06368007659912,
+          "ms_per_step": 20.06368007659912
+        }
+      }
+    },
+    "optimized": {
+      "ms_per_step": 91.90767869974177,
+      "peak_allocated_bytes": 1666917888,
+      "stokes_iterations_mean": 2.0,
+      "pressure_cycles_mean": 6.0,
+      "phase_timings_nested": {
+        "ib_prepare": {
+          "calls": 20,
+          "ms_per_call": 4.060414373874664,
+          "ms_per_step": 8.120828747749329
+        },
+        "mass_solves": {
+          "calls": 30,
+          "ms_per_call": 4.637911494572958,
+          "ms_per_step": 13.913734483718873
+        },
+        "ib_interpolate_with_mass": {
+          "calls": 20,
+          "ms_per_call": 16.643275260925293,
+          "ms_per_step": 33.286550521850586
+        },
+        "advection": {
+          "calls": 10,
+          "ms_per_call": 3.170534443855286,
+          "ms_per_step": 3.170534443855286
+        },
+        "solid_force_checks": {
+          "calls": 20,
+          "ms_per_call": 2.8811280131340027,
+          "ms_per_step": 5.762256026268005
+        },
+        "ib_spread_with_mass": {
+          "calls": 10,
+          "ms_per_call": 28.3885347366333,
+          "ms_per_step": 28.3885347366333
+        },
+        "pressure_mg": {
+          "calls": 20,
+          "ms_per_call": 2.4701968014240263,
+          "ms_per_step": 4.940393602848053
+        },
+        "fluid_advance": {
+          "calls": 10,
+          "ms_per_call": 13.027014350891113,
+          "ms_per_step": 13.027014350891113
+        }
+      }
+    }
+  },
+  "equivalence": {
+    "p2": {
+      "x_max_abs": 4.440892098500626e-15,
+      "force_max_abs": 1.5278374121407978e-09,
+      "pressure_max_abs": 2.310844138264656e-08,
+      "velocity_0_max_abs": 1.8496142985269248e-11,
+      "velocity_1_max_abs": 1.8716823230180424e-11,
+      "velocity_2_max_abs": 1.4447717328058829e-11
+    },
+    "optimized": {
+      "x_max_abs": 3.9968028886505635e-15,
+      "force_max_abs": 1.7016645870171487e-09,
+      "pressure_max_abs": 1.1932570487260818e-08,
+      "velocity_0_max_abs": 2.2607055116807828e-11,
+      "velocity_1_max_abs": 2.2490120876739184e-11,
+      "velocity_2_max_abs": 1.814958947021772e-11
+    }
+  },
+  "passed": true,
+  "startup_400_step_comparison": {
+    "steps": 400,
+    "end_time_s": 0.02,
+    "completed": true,
+    "x_max_abs_cm": 1.2878587085651816e-14,
+    "displacement_max_abs_cm": 1.2878587085651816e-14,
+    "force_max_abs_dyn": 2.4776061202658184e-09,
+    "velocity_cm_per_s_max_abs_difference": 1.361755153084232e-11,
+    "pressure_dyn_per_cm2_max_abs_difference": 2.3768734536133707e-08,
+    "cavity_volume_ml": 2.4829035800006025,
+    "original_cavity_volume_ml": 2.4829035800006043,
+    "cavity_difference_ml": -1.7763568394002505e-15,
+    "passed": true
+  },
+  "tests": {
+    "verified_targeted_tests_passed": 66,
+    "verified_targeted_tests_skipped": 1,
+    "includes": "GPU/CPU, P2 raw operators, FP32/FP64, curved/high-order/cached and fallback paths, preserved old snapshots, midpoint startup, save/resume, CLI reference override, Stokes constraints and mass recurrence"
+  },
+  "limitations": [
+    "Thirty-step warmed hold-phase replay; not a full 2 s runtime.",
+    "400-step startup comparison uses the exact native solid from the original completed run.",
+    "End-to-end time estimate excludes uncontrolled changes in workload, compilation and machine contention."
+  ]
+}

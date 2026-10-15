@@ -53,7 +53,7 @@ def build(*, verbose=False):
         _validate_toolkit(CUDA_HOME, torch.version.cuda)
         source = Path(__file__).parent/'csrc'
         load(name='afsi_ib_cuda', sources=[str(source/name) for name in
-             ('ib.cpp','ib.cu','transfer.cpp','transfer.cu')],
+             ('ib.cpp','ib.cu','transfer.cpp','transfer.cu','p2_transfer.cpp','p2_transfer.cu')],
              extra_cflags=['/O2'] if os.name=='nt' else ['-O3'],
              extra_cuda_cflags=['-O3', '--fmad=false', '-lineinfo'],
              is_python_module=False, verbose=verbose)

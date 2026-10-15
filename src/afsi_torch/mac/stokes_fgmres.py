@@ -24,12 +24,20 @@ def solve(flow,b,initial=None):
     scale=flow.dt/flow.rho
     sizes=tuple(v.numel() for v in b)
     shapes=tuple(v.shape for v in b)
+    execution=None
+    if flow.execution_backend=='fused' and flow.cnab_options.stokes_vector_backend=='workspace':
+        if not hasattr(flow,'_fgmres_execution'):
+            from .stokes_execution import StokesExecution
+            flow._fgmres_execution=StokesExecution(flow)
+        execution=flow._fgmres_execution
     def pack(u,q):
         return torch.cat(tuple(v.reshape(-1) for v in u)+(q.reshape(-1),))
     def unpack(v):
         parts=v.split((*sizes,template.numel()))
         return tuple(z.reshape(s) for z,s in zip(parts,shapes)),parts[-1].reshape(template.shape)
     def action(v):
+        if execution is not None:
+            return execution.action(v,flow.alpha,h)
         u,q=unpack(v)
         gp=gradient(q,flow.grid.spacing)
         hu=tuple(a-flow.alpha*l+h*g for a,l,g in zip(u,flow._lap(u),gp))
@@ -39,10 +47,15 @@ def solve(flow,b,initial=None):
         nonlocal poisson_solves,cycles
         r,s=unpack(v)
         tentative=flow._solve_helmholtz(r)
-        rhs=-s/h-divergence(tentative,flow.grid.spacing)
-        rhs=rhs-rhs.mean()
+        if execution is None:
+            rhs=-s/h-divergence(tentative,flow.grid.spacing)
+            rhs=rhs-rhs.mean()
+        else:
+            rhs=execution.precondition_rhs(tentative,s,h)
         phi,info=flow.pressure_solver.solve(rhs,rtol=flow.cnab_options.stokes_preconditioner_rtol)
         poisson_solves+=1;cycles+=info['cycles']
+        if execution is not None:
+            return execution.precondition_result(tentative,phi,rhs,flow.alpha,h)
         grad=gradient(phi,flow.grid.spacing)
         u=tuple(a-g for a,g in zip(tentative,grad))
         q=(phi+flow.alpha*rhs)/h
@@ -66,7 +79,8 @@ def solve(flow,b,initial=None):
     tolerance=.5*min(momentum_tol,h*div_tol)
     controls=GMRESOptions(rtol=0.,atol=tolerance,restart=flow.cnab_options.stokes_restart,
         max_iterations=flow.cnab_options.max_stokes_iterations,check_policy='estimated',true_check_interval=5)
-    correction,info=gmres(action,rhs,precondition=precondition,options=controls)
+    correction,info=gmres(action,rhs,precondition=precondition,options=controls,
+        workspace=None if execution is None else execution.krylov)
     u,q=unpack(guess+correction)
     p=h/scale*(q-q.mean())
     momentum,div=flow._metrics(u,p,b).tolist()

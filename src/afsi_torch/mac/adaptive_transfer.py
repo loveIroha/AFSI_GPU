@@ -36,8 +36,8 @@ class InteractionQuadratureOptions:
             raise ValueError('vector/reduced shared execution requires adaptive/shared/fused transfer')
         if type(self.reuse_stencil_buffers) is not bool:
             raise ValueError('reuse_stencil_buffers must be a bool')
-        if self.reuse_stencil_buffers and (self.stencil_backend!='shared' or self.prepare_backend!='triton'):
-            raise ValueError('stencil buffer reuse requires shared/triton preparation')
+        if self.reuse_stencil_buffers and (self.stencil_backend!='shared' or self.prepare_backend not in ('triton','cuda')):
+            raise ValueError('stencil buffer reuse requires shared/triton or shared/cuda preparation')
         if self.mode not in ('fixed','adaptive'):
             raise ValueError('interaction quadrature mode must be fixed or adaptive')
         if self.rule_family not in ('conical','xiao-gimbutas'):
@@ -48,10 +48,12 @@ class InteractionQuadratureOptions:
             raise ValueError('stencil_backend must be component or shared')
         if self.stencil_backend=='shared' and (self.mode!='adaptive' or self.transfer_backend=='cell'):
             raise ValueError('shared stencil requires adaptive quadrature and reference/fused transfer execution')
-        if self.prepare_backend not in ('torch','triton'):
-            raise ValueError('prepare_backend must be torch or triton')
-        if self.prepare_backend=='triton' and self.stencil_backend!='shared':
-            raise ValueError('triton preparation requires shared adaptive stencils')
+        if self.prepare_backend not in ('torch','triton','cuda'):
+            raise ValueError('prepare_backend must be torch, triton or cuda')
+        if self.prepare_backend in ('triton','cuda') and self.stencil_backend!='shared':
+            raise ValueError('native preparation requires shared adaptive stencils')
+        if self.prepare_backend=='cuda' and self.transfer_backend!='fused':
+            raise ValueError('CUDA P2 preparation requires fused transfer')
         if isinstance(self.point_density,bool) or not isfinite(self.point_density) or self.point_density < 2:
             raise ValueError('interaction point_density must be finite and >=2')
         if type(self.max_order) is not int or not 2 <= self.max_order <= 22:
@@ -210,10 +212,16 @@ class AdaptiveFETransfer(CompactFETransfer):
             raise ValueError('adaptive interaction requires P1/P2 tetrahedra')
         self.quadrature_options = quadrature_options or InteractionQuadratureOptions(mode='adaptive')
         self.is_p2=self.geometry.cells.shape[1]==10
+        opt=self.quadrature_options
+        self.p2_cuda=self.is_p2 and opt.prepare_backend=='cuda'
         if self.is_p2:
-            opt=self.quadrature_options
-            if opt.transfer_backend!='reference' or opt.stencil_backend!='component' or opt.prepare_backend!='torch' or opt.reuse_stencil_buffers:
+            if self.p2_cuda:
+                if not self.geometry.weights.is_cuda or self.ib_backend!='cuda' or opt.transfer_backend!='fused' or opt.stencil_backend!='shared':
+                    raise ValueError('P2 CUDA execution requires a CUDA device, native IB and fused/shared transfer')
+            elif opt.transfer_backend!='reference' or opt.stencil_backend!='component' or opt.prepare_backend!='torch' or opt.reuse_stencil_buffers:
                 raise ValueError('P2 adaptive transfer requires reference/component/torch preparation')
+        elif opt.prepare_backend=='cuda':
+            raise ValueError('CUDA P2 preparation requires ten-node tetrahedra')
         if self.quadrature_options.stencil_backend=='shared':
             # Use identical subtraction/division as the component-specific
             # origins, computing each face/center axis table only once.
@@ -334,7 +342,10 @@ class AdaptiveFETransfer(CompactFETransfer):
         slot = None
         if self.quadrature_options.reuse_stencil_buffers:
             base,phi,slot = self.stencil_workspace.acquire(x,rule.point_count)
-        if self.quadrature_options.prepare_backend=='triton' and x.is_cuda:
+        if self.p2_cuda:
+            from .p2_cuda_transfer import prepare
+            base,phi=prepare(self,x,rule,buffers=None if slot is None else (base,phi))
+        elif self.quadrature_options.prepare_backend=='triton' and x.is_cuda:
             base,phi = self._direct_prepare(x,rule,buffers=None if slot is None else (base,phi))
         else:
             points = self._points(x,rule)
@@ -370,6 +381,9 @@ class AdaptiveFETransfer(CompactFETransfer):
         coefficient,info = self.solve_mass(nodal_force,self._force_coefficient if self.warm_start else None)
         if self.warm_start:
             self._force_coefficient = coefficient
+        if self.p2_cuda:
+            from .p2_cuda_transfer import spread
+            return spread(self,coefficient,stencil),info
         if self.quadrature_options.transfer_backend!='reference':
             from .adaptive_cell import spread
             return spread(self,coefficient,stencil,reduced=self.quadrature_options.transfer_backend=='cell'),info
@@ -385,7 +399,10 @@ class AdaptiveFETransfer(CompactFETransfer):
             raise ValueError('invalid MAC interpolation field')
         if not isinstance(stencil,(AdaptiveStencil,SharedAdaptiveStencil)):
             raise ValueError('adaptive transfer requires a stencil with its paired quadrature')
-        if self.quadrature_options.transfer_backend!='reference':
+        if self.p2_cuda:
+            from .p2_cuda_transfer import assemble_velocity
+            rhs=assemble_velocity(self,velocity,stencil)
+        elif self.quadrature_options.transfer_backend!='reference':
             from .adaptive_cell import assemble_velocity
             rhs = assemble_velocity(self,velocity,stencil)
         else:
@@ -421,7 +438,7 @@ class AdaptiveFETransfer(CompactFETransfer):
                     shared_spread_tile_points=4 if self.quadrature_options.shared_execution=='reduced' else None,
                     stencil_backend=self.quadrature_options.stencil_backend,
                     prepare_backend=self.quadrature_options.prepare_backend,
-                    prepare_execution='triton' if self.quadrature_options.prepare_backend=='triton' and self.geometry.weights.is_cuda else 'torch',
+                    prepare_execution='cpp-cuda-p2' if self.p2_cuda else 'triton' if self.quadrature_options.prepare_backend=='triton' and self.geometry.weights.is_cuda else 'torch',
                     point_intermediates_materialized=(False if self.geometry.weights.is_cuda and self.quadrature_options.transfer_backend=='fused' and self.quadrature_options.stencil_backend=='shared'
                         else True if not self.geometry.weights.is_cuda or self.quadrature_options.transfer_backend=='reference' else None),
                     stencil_storage_bytes=self._last_stencil_bytes,

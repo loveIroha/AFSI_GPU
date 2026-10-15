@@ -77,7 +77,8 @@ def build_driver(model, settings, device):
     if backend == 'fused':
         from .compact_transfer import CompactFETransfer
         transfer_class = AdaptiveFETransfer if adaptive else CompactFETransfer
-        if adaptive and ib_backend=='cuda' and (quadrature.stencil_backend!='component' or quadrature.transfer_backend!='reference'):
+        p2_native = model.mesh.cells.shape[1]==10 and quadrature.prepare_backend=='cuda'
+        if adaptive and ib_backend=='cuda' and not p2_native and (quadrature.stencil_backend!='component' or quadrature.transfer_backend!='reference'):
             raise ValueError('native adaptive IB requires reference FE assembly and component stencils')
         transfer_options = dict(quadrature_options=quadrature,fused=True,ib_backend=ib_backend) if adaptive else dict(ib_backend=ib_backend)
         transfer = transfer_class(grid,geometry,warm_start=settings.get('warm_start',False),

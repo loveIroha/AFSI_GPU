@@ -77,9 +77,11 @@ class GraphMassSolver(MassSolver):
         finite=torch.isfinite(rhs).all()
         if initial is not None:
             finite=finite & torch.isfinite(initial).all()
-        if not finite:
+        # Keep the original two reductions and all acceptance checks, but
+        # read their scalar results together at this same control point.
+        finite_value,rhs_norm=torch.stack((finite.to(rhs.dtype),torch.linalg.vector_norm(rhs))).tolist()
+        if not finite_value:
             raise ValueError('finite mass RHS and initial guess required')
-        rhs_norm=torch.linalg.vector_norm(rhs).item()
         tolerance=max(opt.atol,opt.rtol*rhs_norm)
         self.tol.fill_(tolerance)
         self.x.zero_() if initial is None else self.x.copy_(initial)

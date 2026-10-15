@@ -112,8 +112,31 @@ def normalized_linear_action(action):
     return apply
 
 
+class GMRESWorkspace:
+    """Reuse Arnoldi storage; unused columns are never read or initialized.
+
+    A workspace belongs to one non-reentrant solve owner. Returned solutions
+    are independently owned, so later solves cannot mutate accepted states.
+    """
+    def __init__(self):
+        self.key=None
+        self.allocations=0
+
+    def vectors(self,rhs,width):
+        key=(rhs.numel(),width,rhs.dtype,rhs.device)
+        if key!=self.key:
+            # Each operator/preconditioner consumes one entire column. Store
+            # columns contiguously rather than reading every restart-th entry
+            # across hundreds of MiB. GEMV also accepts this column-major view.
+            self.V=rhs.new_empty((width+1,rhs.numel())).T
+            self.Z=rhs.new_empty((width,rhs.numel())).T
+            self.key=key
+            self.allocations+=1
+        return self.V,self.Z
+
+
 @torch.no_grad()
-def gmres(action,rhs,*,precondition=None,options=None):
+def gmres(action,rhs,*,precondition=None,options=None,workspace=None):
     """Restarted right-preconditioned GMRES; residuals use the original A.
 
     Two orthogonalization passes. The small Hessenberg least-squares problem
@@ -149,8 +172,11 @@ def gmres(action,rhs,*,precondition=None,options=None):
     while norm(residual) > tol and count < opt.max_iterations:
         beta = torch.linalg.vector_norm(residual)
         width = min(opt.restart,opt.max_iterations-count,b.numel())
-        V = b.new_zeros((b.numel(),width+1))
-        Z = b.new_zeros((b.numel(),width))
+        if workspace is None:
+            V = b.new_zeros((b.numel(),width+1))
+            Z = b.new_zeros((b.numel(),width))
+        else:
+            V,Z=workspace.vectors(b,width)
         H = b.new_zeros((width+1,width))
         # Givens rotations update only the small device-side Hessenberg system.
         # No coupled operator is called to obtain this residual estimate.

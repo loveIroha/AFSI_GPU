@@ -39,7 +39,7 @@ P2 最小阶数 3 保证参考一致质量矩阵的四次乘积精确积分。
 默认采用紧凑的正权 Xiao–Gimbutas Gaussian 表，所选多项式精确度不变但积分点更少，需要 quadrature 安装项；阶数超过 8 时使用同精度的正权 conical Gauss。也可显式选择 conical 全部使用该表。`max_order/max_points` 为资源上限，达到上限时失败并保存检查点，不截断密度。
 
 一份 stencil 拥有自己的积分点/权重分组，后续 prepare 不改变它；同次力和速度传递使用相同 stencil。
-参考质量矩阵保持不变。原生 C++/CUDA 执行散播/插值；PyTorch 执行 P2 基函数求值、积分组装和 CSR/Graph-PCG。
+参考质量矩阵保持不变。默认使用 PyTorch 注册的 P2 C++/CUDA 算子融合坐标/权重准备、散播/插值与有限元积分组装，CSR/Graph-PCG 仍在 PyTorch 中求解。参考执行路径仍可显式选择，见 [P2 CUDA 执行指南](P2_CUDA_EXECUTION.md)。
 `transfer_backend=reference` 表示通用 FE 积分组装，不意味着在 CPU 上运行；`execution.ib_backend=cuda` 仍调用原生 CUDA IB。
 
 ### xsPPM7 来源与边界
@@ -104,3 +104,5 @@ echo "PID=$! output=$run_dir"
 新方法增加了积分点与线性代数工作，旧 MAC 的约 20 min 完整耗时不能当作本配置的实测性能。
 
 积分表更换会改变非多项式 IB 核的采样，因此多项式精确度相同不代表耦合误差完全相同。验证记录：[2026-10-15](validation/griffith_luo2017_20261015.json)。
+
+执行优化、相同检查点性能对照、参考后端和续算切换说明：[P2 CUDA 执行指南](P2_CUDA_EXECUTION.md)。

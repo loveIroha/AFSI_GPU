@@ -77,6 +77,7 @@ For the optional native GPU kernel, see [CUDA IB installation and environment va
 | Solid force and consistent-mass optimization | [Solid/mass implementation](docs/MAC_SOLID_MASS_EXPERIMENT.md) |
 | Real-LV implicit coupling, CSR solid tangent and Newton equations | [Implicit MAC/FE coupling](docs/MAC_IMPLICIT.md) |
 | Real-LV explicit RK3 fluid, stability screen and warmed scheme benchmark | [RK3 MAC/FE coupling](docs/MAC_RK3.md) |
+| P2 adaptive CUDA transfer, unchanged equations and controlled performance comparison | [P2 CUDA execution](docs/P2_CUDA_EXECUTION.md) |
 | Three-dimensional pressure graphs and coupling caches | [LV execution design](docs/LV_MAC_GRAPH_EXECUTION.md) |
 | Two-dimensional GPU execution | [Valve execution design](docs/VALVE_GPU_EXECUTION.md) |
 
@@ -350,6 +351,8 @@ A MAC time step spreads the stored solid force, advances and projects the fluid 
 ## GPU performance
 
 The implementation addresses GPU launch overhead, temporary tensors, repeated global-memory access, and host/device synchronization alongside sparse arithmetic.
+
+The ideal-LV MAC preset fuses P2 adaptive coordinates/stencils and FE/IB transfer in registered C++/CUDA operators, with shared one-dimensional weights and owned reusable buffers. Its FGMRES path reuses contiguous-column Krylov storage. A controlled RTX 4090 replay with 3,882,811 interaction points measured **132.49 → 91.91 ms/step (1.44×)** at unchanged quadrature, equations and tolerances. This is a 30-step warmed replay, not a full-horizon runtime; see [configuration, verification and benchmark commands](docs/P2_CUDA_EXECUTION.md) and the [validation record](docs/validation/p2_cuda_execution_20261016.json).
 
 | Component | Implementation | Intended benefit |
 | --- | --- | --- |

@@ -95,7 +95,8 @@
       "stokes_solver": "fgmres",
       "stokes_restart": 20,
       "max_stokes_iterations": 100,
-      "stokes_preconditioner_rtol": 0.01
+      "stokes_preconditioner_rtol": 0.01,
+      "stokes_vector_backend": "workspace"
     }
   },
   "interaction_quadrature": {
@@ -104,9 +105,10 @@
     "max_order": 12,
     "max_points": 12000000,
     "rule_family": "xiao-gimbutas",
-    "transfer_backend": "reference",
-    "stencil_backend": "component",
-    "prepare_backend": "torch"
+    "transfer_backend": "fused",
+    "stencil_backend": "shared",
+    "prepare_backend": "cuda",
+    "reuse_stencil_buffers": true
   },
   "solid_input": null
 }

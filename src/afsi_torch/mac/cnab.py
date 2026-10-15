@@ -25,8 +25,11 @@ class CNABOptions:
     stokes_solver: str = 'schur'
     stokes_restart: int = 20
     stokes_preconditioner_rtol: float = .01
+    stokes_vector_backend: str = 'workspace'
 
     def __post_init__(self):
+        if self.stokes_vector_backend not in ('reference','workspace'):
+            raise ValueError('Stokes vector backend must be reference or workspace')
         if not isfinite(self.stokes_preconditioner_rtol) or not 0<self.stokes_preconditioner_rtol<1:
             raise ValueError('Stokes preconditioner tolerance must be in (0,1)')
         if self.stokes_solver not in ('schur','fgmres'):
@@ -383,6 +386,9 @@ class MidpointMACIBStepper(MACIBStepper):
             x_half = state.x+.5*dt*U_n
             half_adv = extrapolated_advection(current_adv,state.previous_advection,dt,state.previous_dt)
         half_force = self._force_geometry(x_half,half_time)
+        # Old interpolation (and the startup force spread) are complete. Its
+        # tables may now return to the owned pool; never reuse a live stencil.
+        del stencil_n
         stencil_half = self.transfer.prepare(x_half)
         density,spread_info = self.transfer.spread(half_force,stencil_half)
         flow = self.flow.advance(state.velocity,density,half_adv,state.pressure)

@@ -6,6 +6,8 @@
 
 本目录两个入口共用生成的椭球壳 P2 固体、Guccione 本构和 AFSI `demo_337` 加载。Gmsh 在 CPU 生成几何，随后在 GPU 执行有限元力、IB 和流体计算。无需外部心脏网格。以下命令均在仓库根目录执行。
 
+默认 MAC 使用相同数值格式下的 P2 CUDA 融合传递与 FGMRES 工作区复用；配置、性能对照和参考路径见 [P2 CUDA 执行指南](../../docs/P2_CUDA_EXECUTION.md)。
+
 ## 推荐：JSON 直接运行
 
 ```bash

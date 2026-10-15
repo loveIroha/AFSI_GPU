@@ -21,7 +21,8 @@ CONFIG = LVSimulationConfig(
     beta=500000.,basal_constraint='spring',
     coupling=MACCouplingOptions(scheme='cnab-midpoint',
         cnab=CNABOptions(advection='xsppm7',stokes_solver='fgmres',max_stokes_iterations=100)),
-    interaction_quadrature=InteractionQuadratureOptions(mode='adaptive',point_density=3.,max_order=12,rule_family='xiao-gimbutas'),
+    interaction_quadrature=InteractionQuadratureOptions(mode='adaptive',point_density=3.,max_order=12,rule_family='xiao-gimbutas',
+        transfer_backend='fused',stencil_backend='shared',prepare_backend='cuda',reuse_stencil_buffers=True),
     pressure_solver=MGOptions(rtol=1e-10, atol=1e-12, max_cycles=100, smooth=4, check_every=2),
     mass_solver=mass_options(),  # rtol=1e-12, atol=1e-13, max_iterations=500
     execution=LVExecutionConfig(execution_backend='fused',pressure_backend='graph',

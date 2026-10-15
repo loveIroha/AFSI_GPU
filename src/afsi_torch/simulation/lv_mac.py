@@ -25,7 +25,7 @@ def run(*,device='cuda',output=None,end_time=None,dt=None,fluid_cells=None,mesh_
         interaction_degree=None,log_every=None,checkpoint_every=None,resume=None,warm_start=None,
         pressure_backend=None,execution_backend=None,solid_backend=None,mass_backend=None,coupling_backend=None,ib_backend=None,
         write_vtk=None,output_every=None,case_config=None,fluid_shape=None,fluid_lengths=None,
-        fluid_origin=None,rho=None,mu=None,solid_input=None,ib_max_order=None,ib_max_points=None):
+        fluid_origin=None,rho=None,mu=None,solid_input=None,ib_max_order=None,ib_max_points=None,p2_execution=None):
     if case_config is not None and not isinstance(case_config, LVSimulationConfig):
         raise TypeError('case_config must be LVSimulationConfig')
     if resume and case_config is not None:
@@ -125,6 +125,12 @@ def run(*,device='cuda',output=None,end_time=None,dt=None,fluid_cells=None,mesh_
         q=_decode(InteractionQuadratureOptions,settings.get('interaction_quadrature',{}))
         settings['interaction_quadrature']=asdict(increase_quadrature_budget(q,
             max_order=ib_max_order,max_points=ib_max_points))
+    if (p2_execution is None and ib_backend=='reference' and
+            settings.get('interaction_quadrature',{}).get('prepare_backend')=='cuda'):
+        p2_execution='reference'
+    if p2_execution is not None:
+        from afsi_torch.mac.p2_cuda_transfer import execution_settings
+        settings=execution_settings(settings,p2_execution)
     dt=settings['dt']
     if not isfinite(end_time) or end_time<=0 or not isfinite(dt) or dt<=0:
         raise ValueError('positive finite dt/end time required')

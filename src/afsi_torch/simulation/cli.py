@@ -63,6 +63,7 @@ def lv_main(argv=None, *, defaults=None, default_output='results/demo_ideal_lv/m
     parser.add_argument('--ib-max-order',type=int,help='increase adaptive quadrature order budget')
     parser.add_argument('--ib-max-points',type=int,help='increase adaptive quadrature point budget')
     parser.add_argument('--solid-input',help='optional native AFSI337 solid export; preserve mesh and directions')
+    parser.add_argument('--p2-execution',choices=('reference','cuda'),help='P2 adaptive execution only; also accepted on resume')
     parser.add_argument('--vtk', dest='write_vtk', action=argparse.BooleanOptionalAction, default=None)
     parser.add_argument('--output-every', type=int)
     parser.add_argument('--execution-backend', choices=('torch','fused'))
