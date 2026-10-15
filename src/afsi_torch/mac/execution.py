@@ -63,24 +63,30 @@ def build_driver(model, settings, device):
     else:
         prepare_geometry = prepare_p2
     geometry = model.geometry if degree is None else prepare_geometry(model.mesh.X,model.mesh.cells,degree=degree)
-    from .adaptive_transfer import InteractionQuadratureOptions, AdaptiveP1Transfer
+    from .adaptive_transfer import InteractionQuadratureOptions, AdaptiveFETransfer
     quadrature = _decode(InteractionQuadratureOptions,settings.get('interaction_quadrature',{}))
     adaptive = quadrature.mode=='adaptive'
-    if adaptive and (not cnab or model.mesh.cells.shape[1]!=4):
-        raise ValueError('adaptive interaction requires P1 CNAB coupling')
+    if adaptive and (not cnab or model.mesh.cells.shape[1] not in (4,10)):
+        raise ValueError('adaptive interaction requires P1/P2 CNAB coupling')
+    if adaptive and model.mesh.cells.shape[1]==10:
+        from ..tetrahedron import EDGES
+        edges=torch.tensor(EDGES,device=model.mesh.X.device)
+        local=model.mesh.X[model.mesh.cells]
+        if not torch.allclose(local[:,4:],local[:,edges].mean(2),rtol=1e-12,atol=1e-12):
+            raise ValueError('P2 adaptive transfer currently requires affine reference tetrahedra')
     if backend == 'fused':
         from .compact_transfer import CompactFETransfer
-        transfer_class = AdaptiveP1Transfer if adaptive else CompactFETransfer
-        if adaptive and ib_backend=='cuda':
-            raise ValueError('adaptive native IB uses the paper CSR entry point')
-        transfer_options = dict(quadrature_options=quadrature,fused=True) if adaptive else dict(ib_backend=ib_backend)
+        transfer_class = AdaptiveFETransfer if adaptive else CompactFETransfer
+        if adaptive and ib_backend=='cuda' and (quadrature.stencil_backend!='component' or quadrature.transfer_backend!='reference'):
+            raise ValueError('native adaptive IB requires reference FE assembly and component stencils')
+        transfer_options = dict(quadrature_options=quadrature,fused=True,ib_backend=ib_backend) if adaptive else dict(ib_backend=ib_backend)
         transfer = transfer_class(grid,geometry,warm_start=settings.get('warm_start',False),
                                      mass_backend=mass_backend,
                                      options=SolverOptions(**settings['mass_solver']) if 'mass_solver' in settings else None,**transfer_options)
         from ..solids.contracts import make_execution
         solid = make_execution(model,solid_backend,optimized=coupling_backend=='optimized')
     else:
-        transfer_class = AdaptiveP1Transfer if adaptive else FETransfer
+        transfer_class = AdaptiveFETransfer if adaptive else FETransfer
         transfer_options = dict(quadrature_options=quadrature,fused=False,mass_backend='pcg') if adaptive else {}
         transfer = transfer_class(grid,geometry,warm_start=settings.get('warm_start',False),
                               options=SolverOptions(**settings['mass_solver']) if 'mass_solver' in settings else None,**transfer_options)

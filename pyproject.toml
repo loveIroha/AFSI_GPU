@@ -20,7 +20,7 @@ fused = ["triton>=3.0; sys_platform == 'linux'"]
 cuda-ib = ["ninja>=1.11"]
 
 [tool.setuptools.package-data]
-afsi_torch = ["mac/csrc/*.cpp", "mac/csrc/*.cu"]
+afsi_torch = ["mac/csrc/*.cpp", "mac/csrc/*.cu", "third_party/IBAMR_COPYRIGHT"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

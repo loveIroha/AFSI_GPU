@@ -13,6 +13,9 @@ from afsi_torch.afsi337 import generated_model
 from afsi_torch.cycle_checkpoint import atomic_json
 from afsi_torch.mac import divergence
 from afsi_torch.mac.checkpoint import save_mac,load_mac
+from afsi_torch.mac.implicit import MACCouplingOptions
+from afsi_torch.mac.adaptive_transfer import InteractionQuadratureOptions
+from afsi_torch.config import _decode
 from afsi_torch.config import (LVSimulationConfig, TimeConfig, lv_grid, FluidConfig,
     OutputConfig, LVExecutionConfig, MGOptions, SolverOptions, mass_options)
 
@@ -22,7 +25,7 @@ def run(*,device='cuda',output=None,end_time=None,dt=None,fluid_cells=None,mesh_
         interaction_degree=None,log_every=None,checkpoint_every=None,resume=None,warm_start=None,
         pressure_backend=None,execution_backend=None,solid_backend=None,mass_backend=None,coupling_backend=None,ib_backend=None,
         write_vtk=None,output_every=None,case_config=None,fluid_shape=None,fluid_lengths=None,
-        fluid_origin=None,rho=None,mu=None):
+        fluid_origin=None,rho=None,mu=None,solid_input=None,ib_max_order=None,ib_max_points=None):
     if case_config is not None and not isinstance(case_config, LVSimulationConfig):
         raise TypeError('case_config must be LVSimulationConfig')
     if resume and case_config is not None:
@@ -53,7 +56,7 @@ def run(*,device='cuda',output=None,end_time=None,dt=None,fluid_cells=None,mesh_
     started=perf_counter()
     folder=Path(output) if output else Path(resume).parent if resume else Path('results/lv_mac')
     if resume:
-        if any(v is not None for v in (dt,fluid_cells,mesh_size,interaction_degree,fluid_shape,fluid_lengths,fluid_origin,rho,mu)):
+        if any(v is not None for v in (dt,fluid_cells,mesh_size,interaction_degree,fluid_shape,fluid_lengths,fluid_origin,rho,mu,solid_input)):
             raise ValueError('resume restores mesh, dt and interaction quadrature')
         if folder.resolve()!=Path(resume).resolve().parent:
             raise ValueError('resume in the checkpoint directory')
@@ -89,13 +92,26 @@ def run(*,device='cuda',output=None,end_time=None,dt=None,fluid_cells=None,mesh_
             time=TimeConfig(config.time.dt if dt is None else dt,end_time),
             geometry=replace(config.geometry,mesh_size=config.geometry.mesh_size if mesh_size is None else mesh_size),
             interaction_degree=config.interaction_degree if interaction_degree is None else interaction_degree)
-        model=generated_model(geometry=config.geometry,parameters=config.material,loads=config.loads,
-                              beta=config.beta,basal_constraint=config.basal_constraint,device=device)
+        config=replace(config,solid_input=config.solid_input if solid_input is None else solid_input)
+        if config.solid_input:
+            if mesh_size is not None:
+                raise ValueError('solid_input preserves its mesh; omit mesh_size')
+            from afsi_torch.afsi337_io import load_native_solid
+            from afsi_torch.lv_model import LVSolid
+            native=load_native_solid(config.solid_input,device=device)
+            model=LVSolid(native.mesh,parameters=config.material,loads=config.loads,beta=config.beta,
+                basal_constraint=config.basal_constraint,fibers=native.fibers,
+                volume_quadrature=native.volume_quadrature,surface_quadrature=native.surface_quadrature,
+                fiber_metadata=native.fiber_metadata)
+        else:
+            model=generated_model(geometry=config.geometry,parameters=config.material,loads=config.loads,
+                beta=config.beta,basal_constraint=config.basal_constraint,device=device)
         settings=dict(dt=config.time.dt,fluid_cells=fluid.shape[0],box_length=fluid.lengths[0],
                       fluid_shape=fluid.shape,fluid_lengths=fluid.lengths,fluid_origin=fluid.origin,
                       rho=fluid.rho,mu=fluid.mu,interaction_degree=config.interaction_degree,
                       pressure_solver=asdict(config.pressure_solver),mass_solver=asdict(config.mass_solver),
-                      **asdict(execution))
+                      coupling=asdict(config.coupling),interaction_quadrature=asdict(config.interaction_quadrature),
+                      solid_input=config.solid_input,**asdict(execution))
         if case_config is not None:
             write_vtk=config.output.write_vtk if write_vtk is None else write_vtk
             output_every=config.output.output_every if output_every is None else output_every
@@ -104,6 +120,11 @@ def run(*,device='cuda',output=None,end_time=None,dt=None,fluid_cells=None,mesh_
     settings['output_every']=settings.get('output_every',400) if output_every is None else output_every
     if type(settings['output_every']) is not int or settings['output_every']<1:
         raise ValueError('positive integer output_every required')
+    if ib_max_order is not None or ib_max_points is not None:
+        from afsi_torch.mac.adaptive_transfer import increase_quadrature_budget
+        q=_decode(InteractionQuadratureOptions,settings.get('interaction_quadrature',{}))
+        settings['interaction_quadrature']=asdict(increase_quadrature_budget(q,
+            max_order=ib_max_order,max_points=ib_max_points))
     dt=settings['dt']
     if not isfinite(end_time) or end_time<=0 or not isfinite(dt) or dt<=0:
         raise ValueError('positive finite dt/end time required')
@@ -120,6 +141,7 @@ def run(*,device='cuda',output=None,end_time=None,dt=None,fluid_cells=None,mesh_
     print(f'BASE: {model.basal_constraint_mode}, beta={model.beta:g}; '
           f'long axis={model.mesh.config.long_axis}, center={model.mesh.config.center}',flush=True)
     geometry=transfer.geometry
+    midpoint=settings.get('coupling',{}).get('scheme','explicit-lagged')=='cnab-midpoint'
     if resume:
         if state.step>steps:
             raise ValueError('end time precedes checkpoint')
@@ -138,6 +160,9 @@ def run(*,device='cuda',output=None,end_time=None,dt=None,fluid_cells=None,mesh_
     if (folder/'history.csv').exists():
         with (folder/'history.csv').open(newline='',encoding='utf-8') as stream:
             history=[r for r in csv.DictReader(stream) if int(r['step'])<=state.step]
+    for previous_row in history:
+        previous_row.setdefault('stokes_iterations',0)
+        previous_row.setdefault('momentum_residual',0.)
     previous_elapsed=progress['elapsed_seconds']
     progress.pop('failure',None)
     progress['segments'].append(dict(start_step=state.step,device=str(device),log_every=log_every,
@@ -150,7 +175,10 @@ def run(*,device='cuda',output=None,end_time=None,dt=None,fluid_cells=None,mesh_
     info={}
 
     def row():
+        stokes=info.get('flow',{}).get('stokes',{})
         return dict(step=state.step,time_s=state.time,**model.diagnostics(state.x),
+            stokes_iterations=stokes.get('iterations',info.get('flow',{}).get('pressure',{}).get('schur_iterations',0)),
+            momentum_residual=stokes.get('momentum_residual',0.),
             max_fluid_component_cm_per_s=max(u.abs().max().item() for u in state.velocity),
             divergence_l2=(grid.volume*divergence(state.velocity,grid.spacing).square().sum()).sqrt().item(),
             pressure_cycles=info.get('flow',{}).get('pressure',{}).get('cycles',0),
@@ -171,11 +199,13 @@ def run(*,device='cuda',output=None,end_time=None,dt=None,fluid_cells=None,mesh_
             fluid=FluidConfig(grid.shape,grid.lengths,grid.origin,settings['rho'],settings['mu']),
             geometry=model.mesh.config,material=model.parameters,loads=model.loads,beta=model.beta,
             basal_constraint=model.basal_constraint_mode,
-            interaction_degree=degree,execution=LVExecutionConfig(**{k:settings[k] for k in asdict(LVExecutionConfig())}),
+            coupling=_decode(MACCouplingOptions,settings.get('coupling',{})),
+            interaction_quadrature=_decode(InteractionQuadratureOptions,settings.get('interaction_quadrature',{})),
+            solid_input=settings.get('solid_input'),interaction_degree=degree,execution=LVExecutionConfig(**{k:settings[k] for k in asdict(LVExecutionConfig())}),
             pressure_solver=MGOptions(**settings.get('pressure_solver',{})),
             mass_solver=SolverOptions(**settings['mass_solver']) if 'mass_solver' in settings else mass_options(),
             output=OutputConfig(log_every,checkpoint_every,settings['output_every'],settings['write_vtk'])))
-        report=dict(schema=1,demo='experimental-afsi337-mac',status=status,configuration=configuration,
+        report=dict(schema=1,demo='afsi337-griffith-luo2017' if midpoint else 'experimental-afsi337-mac',status=status,configuration=configuration,
             completed=state.step==steps,accepted_steps=state.step,reached_time_s=state.time,
             requested_end_time_s=end_time,device=str(device),torch=torch.__version__,
             gpu=torch.cuda.get_device_name(device) if str(device).startswith('cuda') else None,
@@ -185,15 +215,23 @@ def run(*,device='cuda',output=None,end_time=None,dt=None,fluid_cells=None,mesh_
             pressure_backend=flow.pressure_solver.backend,
             pressure_cuda_graphs=len(getattr(flow.pressure_solver.workspace,'graphs',{})),
             pressure_workspace_bytes=getattr(flow.pressure_solver.workspace,'allocated_bytes',0),
-            coupling_backend=settings['coupling_backend'],ib_stencil_builds=driver.stencil_builds,
-            ib_point_evaluations=driver.point_evaluations,
+            coupling_backend=settings['coupling_backend'],ib_stencil_builds=driver.stencil_builds if not midpoint else None,
+            ib_point_evaluations=driver.point_evaluations if not midpoint else None,
             execution_backend=settings['execution_backend'],
             solid_backend=settings['solid_backend'],mass_backend=settings['mass_backend'],
             mass_cuda_graphs=len(getattr(getattr(transfer,'mass_solver',None),'graphs',{})),
-            interaction_points=geometry.weights.numel(),interaction_rule='fixed; increase --interaction-degree for refinement',
+            interaction_points=(transfer.quadrature_summary().get('point_count') if hasattr(transfer,'quadrature_summary') else geometry.weights.numel()),
+            interaction_rule='adaptive Gaussian' if hasattr(transfer,'quadrature_summary') else 'fixed; increase --interaction-degree for refinement',
+            interaction_quadrature=transfer.quadrature_summary() if hasattr(transfer,'quadrature_summary') else dict(mode='fixed'),
             coupling='Griffith-Luo unified quadrature transfer with consistent FE mass solves',
-            pressure_gauge='zero mean, homogeneous Neumann, A=-D G',
-            time_scheme='first-order, centered conservative convection, explicit viscosity; AFSI lagged force order',
+            pressure_gauge='zero mean; coupled CN saddle point; -DG is a preconditioner' if midpoint else 'zero mean, homogeneous Neumann, A=-D G',
+            time_scheme='CN-AB2 / predicted-midpoint IB; Appendix A predictor-corrector startup' if midpoint else 'first-order, centered conservative convection, explicit viscosity; AFSI lagged force order',
+            method_alignment=dict(source='https://doi.org/10.1002/cnm.2888',
+                time_scheme='CN-AB2/midpoint' if midpoint else 'legacy first order',
+                advection=getattr(getattr(flow,'cnab_options',None),'advection','centered'),
+                stokes_solver=getattr(getattr(flow,'cnab_options',None),'stokes_solver','single projection'),
+                differences=['AFSI337 P2 tetrahedra, 5 cm box, basal springs and ramp loads retained; not a full reproduction of paper section 5.4.',
+                    'Adaptive Gaussian tables/order-selection are documented; not identical libMesh tables.']),
             loads=asdict(model.loads),material=asdict(model.parameters),last=history[-1],last_solver_info=info,
             visualization=writer.summary() if writer else dict(enabled=False),
             full_horizon_validated=False,mesh_convergence_established=False,
@@ -208,8 +246,12 @@ def run(*,device='cuda',output=None,end_time=None,dt=None,fluid_cells=None,mesh_
         if writer:
             writer.write(state)
         save('running')
+        point_count=transfer.quadrature_summary().get('point_count',0) if hasattr(transfer,'quadrature_summary') else geometry.weights.numel()
         print(f'MAC LV: {device}, grid={grid.shape}, solid nodes={len(state.x)}, '
-              f'interaction points={geometry.weights.numel()}, dt={dt:g}; steps {state.step}->{steps}',flush=True)
+              f'interaction points={point_count}, dt={dt:g}; steps {state.step}->{steps}',flush=True)
+        if midpoint:
+            print(f'Time: CN-AB2/midpoint; convection={flow.cnab_options.advection}; '
+                  f'Stokes={flow.cnab_options.stokes_solver}; quadrature={settings.get("interaction_quadrature",{}).get("mode","fixed")}',flush=True)
         print(f'Execution: {settings["execution_backend"]}; solid={settings["solid_backend"]}, '
               f'mass={settings["mass_backend"]}, pressure={flow.pressure_solver.backend}, '
               f'coupling={settings["coupling_backend"]}; IB={settings.get("ib_backend","reference")}',flush=True)

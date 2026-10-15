@@ -9,7 +9,7 @@
 ## 推荐：JSON 直接运行
 
 ```bash
-python demo/run.py demo/ideal_lv_fsi/configs/mac_gpu.json
+python demo/run.py demo/ideal_lv_fsi/configs/mac_gl2017.json
 python demo/run.py demo/ideal_lv_fsi/configs/fem.json
 ```
 
@@ -45,7 +45,7 @@ python demo/run.py demo/ideal_lv_fsi/configs/fem.json
 
 **固体共用部分：** P2 Lagrange 四面体，通过体积分点计算变形梯度、非线性第一 Piola 应力及内力，组装节点力；边界积分组装压力与基底力。这两个 demo 不在每步联合 Newton 求解流体与固体。
 
-**MAC 入口 `run_mac.py`：** 均匀交错网格，压力在单元中心、速度在面中心；中心差分对流和黏性项采用显式一阶预测，压力 Poisson 用几何多重网格，随后梯度修正速度。封闭盒压力为 Neumann 条件并处理常数零空间。IB 使用有限元积分点、四点 Peskin 核、参考一致质量矩阵 CSR 及 PCG。先传播已存固体力，推进流体，插值新速度，再作 `x_new=x_old+dt*U`，计算下一步固体力；外载取旧步时刻。首步存储力为零。这是滞后力的显式耦合。
+**MAC 入口 `run_mac.py`：** 默认采用 Griffith–Luo 2017 的统一 IB/FE 格式：P2 自适应积分点、参考一致质量矩阵投影、半步构型力与平均流速更新；流体 CN 黏性、AB2/xsPPM7 对流，FGMRES 联立压力与速度，以压力自由投影和几何多重网格作预条件。首步执行两步预测校正，重启保存对流历史。完整方法、残差验收及与论文算例条件的差异见 [2017 方法指南](../../docs/GRIFFITH_LUO_2017.md)。原先显式一阶滞后格式仅由 `configs/mac_legacy.json` 或旧检查点启用。
 
 **FEM 入口 `run_fem.py`：** 流体六面体采用 Q2 速度/Q1 压力。Chorin 分三步：解 `(rho/dt*M+mu*K)u*=rho/dt*M*u-rho*N(u)+Mf`；压力 Laplace 求解；一致质量矩阵速度修正。对流显式、黏性隐式，线性系统用对角预条件 PCG 和 CSR 算子。速度边界为 Dirichlet，压力 Neumann 加固定一个自由度定标。该压力 Laplace 分裂不等同于精确离散 Schur 投影。
 
@@ -57,7 +57,7 @@ FEM 入口通过规则速度节点上的 Peskin 核作节点插值/传播：已�
 
 ```bash
 conda activate afsi-torch
-python -m pip install -e ".[test,geometry,fused,cuda-ib]"
+python -m pip install -e ".[test,geometry,fused,cuda-ib,quadrature]"
 
 python -u demo/ideal_lv_fsi/run_mac.py \
   --config demo/ideal_lv_fsi/configs/mac_gpu.json \

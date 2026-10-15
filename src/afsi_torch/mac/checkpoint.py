@@ -34,10 +34,13 @@ def save_mac(path, model, state, settings, progress):
         rule=getattr(model,name)
         if rule is not None:
             data[name+'_points'],data[name+'_weights']=map(array,rule)
+    if state.previous_advection is not None:
+        data.update({f'previous_advection_{c}':array(a) for c,a in enumerate(state.previous_advection)})
     metadata=dict(producer='afsi-torch-mac',schema=1,units='cm-g-s',
         geometry=asdict(mesh.config),vertex_count=mesh.vertex_count,gmsh=mesh.gmsh_version,
         material=asdict(model.parameters),beta=model.beta,basal_constraint=model.basal_constraint_mode,loads=asdict(model.loads),
         fiber_metadata=model.fiber_metadata,step=state.step,time=state.time,force_time=state.force_time,
+        previous_dt=state.previous_dt,pressure_time=state.pressure_time,
         settings=settings,progress=progress)
     metadata['sha256']=digest(metadata,data)
     path=Path(path)
@@ -72,11 +75,22 @@ def load_mac(path, device='cpu'):
         parameters=GuccioneParameters(**metadata['material']),fibers=fields,
         fiber_metadata=metadata['fiber_metadata'],**rules)
     state=MACState(metadata['step'],metadata['time'],tensor('x'),
-        tuple(tensor(f'velocity_{c}') for c in range(3)),tensor('pressure'),tensor('force'),metadata['force_time'])
+        tuple(tensor(f'velocity_{c}') for c in range(3)),tensor('pressure'),tensor('force'),metadata['force_time'],
+        tuple(tensor(f'previous_advection_{c}') for c in range(3)) if 'previous_advection_0' in data else None,
+        metadata.get('previous_dt'),metadata.get('pressure_time'))
     dt=metadata['settings']['dt']
+    cnab=metadata['settings'].get('coupling',{}).get('scheme','explicit-lagged')=='cnab-midpoint'
+    if cnab and state.step>0:
+        if state.previous_advection is None or state.previous_dt is None or state.pressure_time is None:
+            raise ValueError('CNAB checkpoint is missing multistep history')
+        for c,a in enumerate(state.previous_advection):
+            if a.shape!=state.velocity[c].shape:
+                raise ValueError('invalid CNAB advection history shape')
+        if abs(state.previous_dt-dt)>1e-12 or abs(state.pressure_time-(state.time-.5*dt))>1e-12:
+            raise ValueError('invalid CNAB history clock')
     if (type(state.step) is not int or state.step<0 or abs(state.time-state.step*dt)>1e-12 or
             (state.step==0 and state.force_time is not None) or
-            (state.step>0 and (state.force_time is None or abs(state.force_time-(state.step-1)*dt)>1e-12))):
+            (state.step>0 and (state.force_time is None or abs(state.force_time-(state.time if cnab else (state.step-1)*dt))>1e-12))):
         raise ValueError('invalid MAC checkpoint clock')
     model.validate(state.x)
     expected=torch.zeros_like(state.x) if state.force_time is None else model.force(state.x,state.force_time)

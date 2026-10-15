@@ -87,5 +87,26 @@
     "write_vtk": true,
     "fluid_fields": true
   },
-  "basal_constraint": "spring"
+  "basal_constraint": "spring",
+  "coupling": {
+    "scheme": "cnab-midpoint",
+    "cnab": {
+      "advection": "xsppm7",
+      "stokes_solver": "fgmres",
+      "stokes_restart": 20,
+      "max_stokes_iterations": 100,
+      "stokes_preconditioner_rtol": 0.01
+    }
+  },
+  "interaction_quadrature": {
+    "mode": "adaptive",
+    "point_density": 3.0,
+    "max_order": 12,
+    "max_points": 12000000,
+    "rule_family": "xiao-gimbutas",
+    "transfer_backend": "reference",
+    "stencil_backend": "component",
+    "prepare_backend": "torch"
+  },
+  "solid_input": null
 }

@@ -1,0 +1,78 @@
+{
+  "base_commit": "a86b001a6f38f08acfb72027d494bce4431e9fc8",
+  "method": "Griffith-Luo unified IB/FE, CN-AB2/xsPPM7, midpoint, saddle-point FGMRES",
+  "tests": {
+    "distinct_passed": 49,
+    "skipped": 1,
+    "execution": "targeted CPU/CUDA checks across development runs",
+    "suites": [
+      "test_gl2017_alignment.py",
+      "test_mac_cnab.py",
+      "test_simulation_config.py"
+    ],
+    "coverage": [
+      "manufactured no-slip CN-Stokes at two dt values",
+      "native Fortran xsPPM7 scalar reconstruction",
+      "compiled GPU xsPPM7 vs torch",
+      "smooth advective spatial convergence",
+      "P2 adaptive consistent mass, force, torque and power",
+      "midpoint equations and checkpoint continuation",
+      "inexact MG override preserves true tolerances"
+    ]
+  },
+  "full_grid_short_run": {
+    "path": "results/lv_gl2017_validation_compact_20261015",
+    "solid_input": "results/afsi337_reference/solid.npz",
+    "device": "NVIDIA GeForce RTX 4090",
+    "fluid_shape": [
+      64,
+      64,
+      64
+    ],
+    "nodes": 28840,
+    "cells": 17393,
+    "dt": 5e-05,
+    "steps": 20,
+    "end_time": 0.001,
+    "last": {
+      "step": 20,
+      "time_s": 0.001,
+      "cavity_volume_ml": 2.481496672467013,
+      "wall_volume_cm3": 3.23235502112491,
+      "minimum_detF": 0.9989240050720701,
+      "maximum_detF": 1.0011740197320675,
+      "passive_energy_erg": 0.004692932419658374,
+      "spring_energy_erg": 0.0009221476660858747,
+      "max_total_displacement_cm": 0.00012892616047310263,
+      "stokes_iterations": 3,
+      "momentum_residual": 6.081956903015218e-12,
+      "max_fluid_component_cm_per_s": 0.5990678551775156,
+      "divergence_l2": 1.4448265748944257e-12,
+      "pressure_cycles": 12,
+      "power_error": 1.6981260841930634e-10
+    },
+    "last_stokes": {
+      "momentum_residual": 6.081956903015218e-12,
+      "momentum_tolerance": 8.71390754454311e-10,
+      "divergence_norm": 6.616535755862807e-11,
+      "divergence_tolerance": 2.3927106500770605e-09,
+      "solver": "fgmres",
+      "preconditioner": "pressure-free projection with geometric MG",
+      "iterations": 3,
+      "operator_actions": 5,
+      "preconditioner_rtol": 0.01,
+      "helmholtz_iterations": 9,
+      "helmholtz_backend": "torch"
+    },
+    "interaction_points": 2263897,
+    "rule_family": "xiao-gimbutas",
+    "peak_allocated_bytes": 2472701952,
+    "elapsed_seconds_including_setup": 16.52679261472076
+  },
+  "limits": [
+    "Full 2 s trajectory has not been rerun.",
+    "Method alignment retains AFSI337 material, springs, mesh and loading; not identical paper benchmark conditions.",
+    "No spatial/time/interaction convergence claim.",
+    "Short setup-included duration is not a full-run speed measurement."
+  ]
+}

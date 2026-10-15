@@ -17,13 +17,13 @@ The project brings together three ideas: the cardiac and valve examples in [AFSI
 - **Reusable case configuration:** Python configuration objects, JSON files, command-line overrides, recorded effective parameters, and restartable simulations.
 - **Replaceable 3D solid adapters:** material-independent force, assembled CSR tangent and validity interfaces; a composable P1 material/boundary implementation and a small runnable extension example.
 
-For numerical consistency checks against AFSI demo_337, use the **Q2/Q1 FEM route with the native mesh/fiber export**, implicit viscosity and nodal CUDA IB: [FEM alignment and validation](docs/AFSI337_FEM_ALIGNMENT.md). The MAC route remains a separate discretization.
+For numerical consistency checks against AFSI demo_337, use the **Q2/Q1 FEM route with the native mesh/fiber export**, implicit viscosity and nodal CUDA IB: [FEM alignment and validation](docs/AFSI337_FEM_ALIGNMENT.md). The MAC route uses Griffith–Luo unified quadrature FE coupling and midpoint/CN–AB2 time integration. Its new-run preset uses adaptive P2 interaction points, xsPPM7 advection and projection-preconditioned FGMRES for the coupled Stokes equations. See [method alignment, limits and commands](docs/GRIFFITH_LUO_2017.md). The AFSI337 material, basal springs, loading and box are retained; these case conditions differ from the paper benchmark.
 
 ### Included demos
 
 | Demo | Solid | Fluid | Default grid | Simulated time |
 | --- | --- | --- | --- | --- |
-| Ideal left ventricle, MAC | P2 tetrahedra; Guccione material, active tension, endocardial pressure | 3D MAC + geometric multigrid | 64 × 64 × 64 | 2 s; 40,000 steps |
+| [Ideal left ventricle, Griffith–Luo MAC](docs/GRIFFITH_LUO_2017.md) | P2 tetrahedra; Guccione material, active tension, endocardial pressure | 3D MAC, CN–AB2/xsPPM7, coupled FGMRES | 64 × 64 × 64 | 2 s; 40,000 steps |
 | Ideal left ventricle, FEM | Generated or native-exported P2 LV mesh/fibers | Q2/Q1 FEM + Chorin projection | 32 × 32 × 32 elements | 2 s; 40,000 steps |
 | [AFSI337_stable](demo/AFSI337_stable/README.md) | P2 LV, Guccione, basal spring | Q2/Q1 FEM + Chorin + implicit grad-div | 32 × 32 × 32 elements | 2 s; 40,000 steps |
 | Ideal two-leaflet valve | P2 triangles; FRH material and root springs | 2D MAC + geometric multigrid | 256 × 64 | 3 s; 48,000 steps |
@@ -126,7 +126,7 @@ Install the CUDA-enabled PyTorch wheel before installing the project. For exampl
 
 ```bash
 python -m pip install torch --index-url https://download.pytorch.org/whl/cu128
-python -m pip install -e ".[test,geometry,fused,cuda-ib]"
+python -m pip install -e ".[test,geometry,fused,cuda-ib,quadrature]"
 ```
 
 Choose a different official PyTorch wheel index when required by your driver or GPU. Let pip resolve the Triton version compatible with PyTorch; avoid replacing it independently. `torchvision` and `torchaudio` are not needed by these demos.

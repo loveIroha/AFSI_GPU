@@ -72,7 +72,7 @@ class GeometricMultigrid:
         return torch.stack((valid_rhs.to(rhs.dtype),valid_p.to(rhs.dtype),mean,absolute_mean,
             torch.linalg.vector_norm(rhs),torch.linalg.vector_norm(rhs-negative_laplacian(p,self.spacings[0]))))
 
-    def _solve_workspace(self,rhs,initial):
+    def _solve_workspace(self,rhs,initial,rtol):
         w=self.workspace
         w.rhs[0].copy_(rhs)
         w.p[0].zero_() if initial is None else w.p[0].copy_(initial)
@@ -85,7 +85,7 @@ class GeometricMultigrid:
             raise ValueError('invalid initial pressure')
         if not isfinite(rhs_norm) or not isfinite(residual):
             raise RuntimeError('nonfinite multigrid residual or RHS norm')
-        tolerance=max(self.options.atol,self.options.rtol*rhs_norm)
+        tolerance=max(self.options.atol,rtol*rhs_norm)
         cycle=0
         while residual>tolerance and cycle<self.options.max_cycles:
             count=min(self.options.check_every,self.options.max_cycles-cycle)
@@ -123,14 +123,17 @@ class GeometricMultigrid:
         return self._smooth(level, p, rhs)
 
     @torch.no_grad()
-    def solve(self, rhs, initial=None):
+    def solve(self, rhs, initial=None, *, rtol=None):
+        rtol=self.options.rtol if rtol is None else rtol
+        if not isfinite(rtol) or rtol<0:
+            raise ValueError('invalid multigrid solve tolerance')
         if (rhs.shape != self.shapes[0] or rhs.device != self.diagonals[0].device or
                 rhs.dtype != self.diagonals[0].dtype):
             raise ValueError('invalid pressure RHS')
         if initial is not None and (initial.shape!=rhs.shape or initial.device!=rhs.device or initial.dtype!=rhs.dtype):
             raise ValueError('invalid initial pressure')
         if self.workspace is not None and self.workspace.optimized:
-            return self._solve_workspace(rhs,initial)
+            return self._solve_workspace(rhs,initial,rtol)
         if self._rhs_metrics is None:
             if not torch.isfinite(rhs).all():
                 raise ValueError('invalid pressure RHS')
@@ -150,7 +153,7 @@ class GeometricMultigrid:
         residual = self._residual_norm(rhs,p).item()
         if not isfinite(rhs_norm) or not isfinite(residual):
             raise RuntimeError('nonfinite multigrid residual or RHS norm')
-        tolerance=max(self.options.atol,self.options.rtol*rhs_norm)
+        tolerance=max(self.options.atol,rtol*rhs_norm)
         if residual <= tolerance:
             return p, dict(cycles=0, residual_norm=residual, tolerance=tolerance, backend=self.backend)
         if self.workspace is not None:

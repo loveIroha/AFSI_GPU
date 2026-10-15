@@ -9,6 +9,8 @@ from .geometry import LVConfig
 from .materials import GuccioneParameters
 from .mac.multigrid import MGOptions
 from .fluid.solvers import SolverOptions
+from .mac.implicit import MACCouplingOptions
+from .mac.adaptive_transfer import InteractionQuadratureOptions
 
 
 def positive(value, name):
@@ -217,8 +219,13 @@ class LVSimulationConfig:
     execution: LVExecutionConfig = field(default_factory=LVExecutionConfig)
     output: OutputConfig = field(default_factory=OutputConfig)
     basal_constraint: str = 'spring'
+    coupling: MACCouplingOptions = field(default_factory=MACCouplingOptions)
+    interaction_quadrature: InteractionQuadratureOptions = field(default_factory=InteractionQuadratureOptions)
+    solid_input: str | None = None
 
     def __post_init__(self):
+        if self.solid_input is not None and (not isinstance(self.solid_input,str) or not self.solid_input.strip()):
+            raise ValueError('solid_input must be a nonempty path or null')
         if self.basal_constraint not in ('spring','radial'):
             raise ValueError('basal_constraint must be spring or radial')
         if not self.output.fluid_fields:
@@ -231,7 +238,10 @@ class LVSimulationConfig:
             raise ValueError('beta must be finite and nonnegative')
         if self.interaction_degree is not None and (type(self.interaction_degree) is not int or self.interaction_degree < 4):
             raise ValueError('interaction degree must be >=4')
-        self.fluid.validate_time(self.time)
+        if self.coupling.scheme in ('explicit-lagged','explicit-rk3'):
+            self.fluid.validate_time(self.time)
+        if self.interaction_quadrature.mode=='adaptive' and self.coupling.scheme!='cnab-midpoint':
+            raise ValueError('generated P2 adaptive LV requires cnab-midpoint')
         validate_graph_options(self)
 
 

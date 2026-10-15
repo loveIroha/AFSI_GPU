@@ -1,7 +1,7 @@
-"""Gao/IBTK-style adaptive Gaussian interaction quadrature for affine P1 FE.
+"""Adaptive Gaussian interaction quadrature for P1/P2 tetrahedral FE.
 
-Select n= max(2, ceil(point_density*deformed_hmax/dx_min)), degree=2*n-1
-per cell. Only small reference rule tables are generated on the CPU. Cell
+P1 selects n=max(2,ceil(point_density*hmax/dx_min)); P2 uses a Bernstein
+hull diameter and min n=3. The Gaussian degree is 2*n-1 per cell. Only small reference rule tables are generated on the CPU. Cell
 selection, FE evaluation/assembly and IB kernels use the tensor device.
 Each stencil owns its quadrature: later prepares cannot change an existing
 linear/nonlinear action. The reference consistent CSR mass remains fixed.
@@ -168,11 +168,28 @@ def _orders(x,cells,edges,dx,density):
     return torch.ceil(density*hmax/dx).clamp_min(2).to(torch.int64)
 
 
+def _p2_hull(x,cells):
+    from ..tetrahedron import EDGES
+    nodes=x[cells]
+    pairs=torch.tensor(EDGES,device=x.device)
+    # Quadratic Bernstein control points bound the ENTIRE curved P2 element.
+    controls=2*nodes[:,4:]-.5*(nodes[:,pairs[:,0]]+nodes[:,pairs[:,1]])
+    return torch.cat((nodes[:,:4],controls),dim=1)
+
+
+def _orders_p2(x,cells,edges,dx,density):
+    hull=_p2_hull(x,cells)
+    # Bernstein hull diameter bounds the complete curved P2 image.
+    pairs=torch.triu_indices(10,10,1,device=x.device)
+    diameter=torch.linalg.vector_norm(hull[:,pairs[0]]-hull[:,pairs[1]],dim=-1).amax(-1)
+    return torch.ceil(density*diameter/dx).clamp_min(3).to(torch.int64)
+
+
 @torch.no_grad()
 def interaction_quadrature_plan(x,cells,grid,options):
     """Inspect required adaptive rules without mass, stencils or fluid solves."""
     edges = torch.tensor([[0,1],[0,2],[0,3],[1,2],[1,3],[2,3]],device=x.device)
-    orders = _orders(x,cells,edges,min(grid.spacing),options.point_density)
+    orders = (_orders_p2 if cells.shape[1]==10 else _orders)(x,cells,edges,min(grid.spacing),options.point_density)
     distinct,counts = torch.unique(orders,return_counts=True)
     histogram = {int(n):int(c) for n,c in zip(distinct.cpu().tolist(),counts.cpu().tolist())}
     table_sizes = {n:len(gaussian_tetra_rule(n,x,options.rule_family)[1]) for n in histogram}
@@ -186,12 +203,17 @@ def interaction_quadrature_plan(x,cells,grid,options):
         meaning='initial geometry only; selection updates with deformation')
 
 
-class AdaptiveP1Transfer(CompactFETransfer):
+class AdaptiveFETransfer(CompactFETransfer):
     def __init__(self,*args,quadrature_options=None,fused=True,**kwargs):
         super().__init__(*args,**kwargs)
-        if self.geometry.cells.shape[1]!=4:
-            raise ValueError('adaptive interaction quadrature currently requires affine P1 tetrahedra')
+        if self.geometry.cells.shape[1] not in (4,10):
+            raise ValueError('adaptive interaction requires P1/P2 tetrahedra')
         self.quadrature_options = quadrature_options or InteractionQuadratureOptions(mode='adaptive')
+        self.is_p2=self.geometry.cells.shape[1]==10
+        if self.is_p2:
+            opt=self.quadrature_options
+            if opt.transfer_backend!='reference' or opt.stencil_backend!='component' or opt.prepare_backend!='torch' or opt.reuse_stencil_buffers:
+                raise ValueError('P2 adaptive transfer requires reference/component/torch preparation')
         if self.quadrature_options.stencil_backend=='shared':
             # Use identical subtraction/division as the component-specific
             # origins, computing each face/center axis table only once.
@@ -211,7 +233,7 @@ class AdaptiveP1Transfer(CompactFETransfer):
                 return torch.compile(function,fullgraph=True,dynamic=True,
                                      options={'triton.cudagraphs':False})
             return function
-        self._order_kernel = compile_kernel(_orders)
+        self._order_kernel = compile_kernel(_orders_p2 if self.is_p2 else _orders)
         self._prepare_kernel = compile_kernel(_prepare)
         self._evaluate_kernel = compile_kernel(_evaluate)
         self._weighted_kernel = compile_kernel(_weighted)
@@ -251,7 +273,12 @@ class AdaptiveP1Transfer(CompactFETransfer):
                 continue
             if n not in self._rules:
                 q,w = gaussian_tetra_rule(n,x,opt.rule_family)
-                self._rules[n] = torch.cat((1-q.sum(-1,keepdim=True),q),-1),w
+                if self.is_p2:
+                    from ..tetrahedron import tabulate
+                    N,_=tabulate(q)
+                else:
+                    N=torch.cat((1-q.sum(-1,keepdim=True),q),-1)
+                self._rules[n] = N,w
             tables[n] = self._rules[n]
             total += count*len(tables[n][1])
         if total>opt.max_points:
@@ -274,6 +301,8 @@ class AdaptiveP1Transfer(CompactFETransfer):
 
     def validation_points(self,x):
         # Every affine P1 quadrature point lies in this convex vertex hull.
+        if self.is_p2:
+            return _p2_hull(x,self.geometry.cells).reshape(-1,3)
         if self.validation_backend=='reference':
             return x[self.geometry.cells].reshape(-1,3)
         # Test exactly the same set of vertices, without duplicate cell-corner
@@ -290,7 +319,7 @@ class AdaptiveP1Transfer(CompactFETransfer):
         """
         self._nodal(x)
         rule = self._rule(x)
-        if self._vertex_support_kernel(self.validation_points(x)):
+        if not self.is_p2 and self._vertex_support_kernel(self.validation_points(x)):
             return
         self.check_support(self._points(x,rule))
 
@@ -381,7 +410,7 @@ class AdaptiveP1Transfer(CompactFETransfer):
 
     def quadrature_summary(self):
         rule = self._last_prepared_rule or self._last_rule
-        return dict(mode='adaptive',point_density=self.quadrature_options.point_density,
+        return dict(mode='adaptive',element='P2' if self.is_p2 else 'P1',point_density=self.quadrature_options.point_density,
                     max_order=self.quadrature_options.max_order,max_points=self.quadrature_options.max_points,
                     transfer_backend=self.quadrature_options.transfer_backend,
                     shared_execution=self.quadrature_options.shared_execution,
@@ -402,7 +431,13 @@ class AdaptiveP1Transfer(CompactFETransfer):
                     high_order_fallback='positive conical above order 8' if self.quadrature_options.rule_family=='xiao-gimbutas' else None,
                     point_count=rule.point_count if rule else None,
                     gaussian_order_cell_counts=torch.bincount(rule.orders).cpu().tolist() if rule else [],
-                    degree_selection='2*max(2,ceil(point_density*hmax/dx_min))-1',
+                    degree_selection=('2*max(3,ceil(point_density*Bernstein_hull_diameter/dx_min))-1' if self.is_p2
+                        else '2*max(2,ceil(point_density*hmax/dx_min))-1'),
+                    ib_execution=self.ib_backend,
                     sample='last prepared stencil, or initialization before the first prepare',
                     weights='reference volume',consistent_mass='fixed reference CSR',
                     quadrature_builds=self.quadrature_builds)
+
+
+# Backwards-compatible name used by existing P1 case adapters.
+AdaptiveP1Transfer = AdaptiveFETransfer

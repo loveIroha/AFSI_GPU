@@ -22,10 +22,19 @@ class CNABOptions:
     max_helmholtz_iterations: int = 512
     max_stokes_iterations: int = 40
     helmholtz_backend: str = 'auto'
+    stokes_solver: str = 'schur'
+    stokes_restart: int = 20
+    stokes_preconditioner_rtol: float = .01
 
     def __post_init__(self):
-        if self.advection not in ('ppm','centered'):
-            raise ValueError('CNAB advection must be ppm or centered')
+        if not isfinite(self.stokes_preconditioner_rtol) or not 0<self.stokes_preconditioner_rtol<1:
+            raise ValueError('Stokes preconditioner tolerance must be in (0,1)')
+        if self.stokes_solver not in ('schur','fgmres'):
+            raise ValueError('CN Stokes solver must be schur or fgmres')
+        if type(self.stokes_restart) is not int or self.stokes_restart<1:
+            raise ValueError('positive Stokes restart required')
+        if self.advection not in ('ppm','centered','xsppm7'):
+            raise ValueError('CNAB advection must be xsppm7, ppm or centered')
         if self.helmholtz_backend not in ('auto','torch','triton','graph'):
             raise ValueError('CN Helmholtz backend must be auto, torch, triton or graph')
         if not isfinite(self.helmholtz_rtol) or not 0 < self.helmholtz_rtol < 1e-8:
@@ -64,7 +73,9 @@ class MACCNABFlow(MACFlow):
         self.cnab_options = CNABOptions() if cnab_options is None else cnab_options
         self.stokes_calls = 0
         self.alpha = self.dt*self.mu/(2*self.rho)
-        self._adv = convection_ppm if self.cnab_options.advection=='ppm' else convection
+        from .xsppm7 import convection_xsppm7
+        self._adv = (convection_xsppm7 if self.cnab_options.advection=='xsppm7' else
+                     convection_ppm if self.cnab_options.advection=='ppm' else convection)
         self._helmholtz_diagonal = []
         for c,u in enumerate(self.grid.zeros(device=self.pressure_solver.diagonals[0].device,
                                               dtype=self.pressure_solver.diagonals[0].dtype)):
@@ -201,6 +212,9 @@ class MACCNABFlow(MACFlow):
     @torch.no_grad()
     def stokes(self,b,initial=None):
         """Solve H u + dt/rho G p=b, D u=0 with true residual acceptance."""
+        if self.cnab_options.stokes_solver=='fgmres':
+            from .stokes_fgmres import solve
+            return solve(self,b,initial)
         self.stokes_calls += 1
         b = zero_normal(b)
         opt = self.pressure_solver.options
@@ -309,6 +323,14 @@ class MidpointMACIBStepper(MACIBStepper):
             from .execution import tensor_kernel
             self._force_checks = tensor_kernel(self._force_checks,self.solid_execution.model.mesh.X.device)
 
+    @torch.no_grad()
+    def initialize(self,x):
+        state=super().initialize(x)
+        # Midpoint stages own their stencils. The lagged stepper's initial
+        # cache is never reused here and can otherwise retain millions of sites.
+        self._cached_state,self._cached_version,self._stencil=None,None,None
+        return state
+
     def _force_checks(self,flags,force,points):
         return torch.stack((flags.all(),self.transfer._support_flags(points),torch.isfinite(force).all()))
 
@@ -359,7 +381,7 @@ class MidpointMACIBStepper(MACIBStepper):
         else:
             self.flow.grid.check_velocity(state.previous_advection)
             x_half = state.x+.5*dt*U_n
-            half_adv = blend(current_adv,state.previous_advection,1.5,-.5)
+            half_adv = extrapolated_advection(current_adv,state.previous_advection,dt,state.previous_dt)
         half_force = self._force_geometry(x_half,half_time)
         stencil_half = self.transfer.prepare(x_half)
         density,spread_info = self.transfer.spread(half_force,stencil_half)
@@ -372,7 +394,7 @@ class MidpointMACIBStepper(MACIBStepper):
             raise ValueError('CNAB solid displacement exceeds grid-based limit; reduce dt')
         force_new = self._force_geometry(x_new,target)
         new = MACState(state.step+1,target,x_new,flow.velocity,flow.pressure,force_new,target,
-                       tuple(a.detach().clone() for a in current_adv))
+                       tuple(a.detach().clone() for a in current_adv),dt,half_time)
         # No driver history is committed before acceptance; failed trials keep
         # state/history intact and can be saved or retried reproducibly.
         info = dict(flow=flow.diagnostics,force_mass=asdict(spread_info),velocity_mass=asdict(interpolation_info),

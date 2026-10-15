@@ -6,6 +6,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from afsi_torch.config import (LVSimulationConfig, TimeConfig, FluidConfig, OutputConfig,
                                LVExecutionConfig, LVConfig, GuccioneParameters, AFSI337Loads, MGOptions, mass_options)
 from afsi_torch.simulation.cli import lv_main
+from afsi_torch.mac.implicit import MACCouplingOptions
+from afsi_torch.mac.cnab import CNABOptions
+from afsi_torch.mac.adaptive_transfer import InteractionQuadratureOptions
 
 # Units: cm, g, s. Keep the solid inside the full IB support region.
 CONFIG = LVSimulationConfig(
@@ -16,6 +19,9 @@ CONFIG = LVSimulationConfig(
     material=GuccioneParameters(C=20000., bf=8., bt=2., bfs=4., kappa=500000.),
     loads=AFSI337Loads(pressure=150000., tension=600000., ramp_time=1.5),
     beta=500000.,basal_constraint='spring',
+    coupling=MACCouplingOptions(scheme='cnab-midpoint',
+        cnab=CNABOptions(advection='xsppm7',stokes_solver='fgmres',max_stokes_iterations=100)),
+    interaction_quadrature=InteractionQuadratureOptions(mode='adaptive',point_density=3.,max_order=12,rule_family='xiao-gimbutas'),
     pressure_solver=MGOptions(rtol=1e-10, atol=1e-12, max_cycles=100, smooth=4, check_every=2),
     mass_solver=mass_options(),  # rtol=1e-12, atol=1e-13, max_iterations=500
     execution=LVExecutionConfig(execution_backend='fused',pressure_backend='graph',

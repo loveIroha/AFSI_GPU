@@ -1,5 +1,7 @@
 # 理想左心室 2 s IB/FEM 流固耦合 demo
 
+**MAC 新运行默认使用 Griffith–Luo 2017 方法对齐配置**：CN–AB2/xsPPM7、半步 IB、P2 自适应积分与一致质量投影、FGMRES 联立 Stokes。请先阅读 [方法、验证与后台运行](../../docs/GRIFFITH_LUO_2017.md)。下方旧性能记录来自旧一阶配置，不代表新方法耗时。
+
 **AFSI 一致性验证的正式入口为 `run.py` / `run_fem.py`，配置为 `configs/afsi337_fem.json`。使用同一原生网格、fiber/sheet、Q2/Q1 流体、隐式黏性和节点 IB。准备、验证和后台命令见 [FEM 对齐指南](../../docs/AFSI337_FEM_ALIGNMENT.md)。
 
 **运行入口：[当前完整指南](RUN_GUIDE.md)**，包含 MAC/FEM 安装、短运行、完整后台命令、离散与时间格式、参数、续算和输出。下文保留设计与历史实验细节；新用户优先使用完整指南。
