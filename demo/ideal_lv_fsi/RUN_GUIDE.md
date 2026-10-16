@@ -119,3 +119,5 @@ python -u demo/ideal_lv_fsi/run_mac.py \
 续算不要再传 `--config`。`simulation/` 保存 `configuration.json`、`history.csv`、`report.json` 和 `checkpoint.npz`。MAC 的 ParaView 集合在 `simulation/vtk/solid.pvd` 与 `fluid.pvd`；FEM 集合在 `simulation/solid.pvd` 与 `fluid.pvd`。固体坐标已变形，不要再次按位移 Warp。用 `--output-every` 调整帧间隔，`--no-vtk` 禁用可视化；日志与检查点频率分别是 `--log-every`、`--checkpoint-every`。
 
 完成 2 s 表示加载保持试验完成，不代表稳态心动周期，也没有瓣膜/循环系统模型。
+
+32³ MAC、FEM 与 grad-div FEM 三组后台对照见 [32³ 对照指南](../../docs/LV_GRID32_COMPARISON.md)。
